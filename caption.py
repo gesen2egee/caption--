@@ -155,13 +155,14 @@ LOCALIZATION = {
         "btn_prev": "上一頁",
         "btn_next": "下一頁",
         "btn_find_replace": "尋找/取代",
-        "btn_unmask": "一鍵去背",
-        "btn_batch_unmask": "Batch Unmask",
+        "btn_unmask": "單圖去背景",
+        "btn_batch_unmask": "Batch 去背景",
+        "btn_mask_text": "單圖去文字",
+        "btn_batch_mask_text": "Batch 去文字",
+        "btn_restore_original": "放回原檔",
         "btn_stroke_eraser": "手繪橡皮擦",
-        "btn_mask_text": "Batch Mask Text",
-        "btn_settings": "設定",
-        "status_loading": "載入中...",
-        "status_ready": "就緒",
+        "btn_cancel_batch": "中止",
+        "menu_tools": "工具",
         "msg_delete_confirm": "確定要將此圖片移動到 no_used？",
         "msg_batch_delete_char_tags": "是否自動刪除特徵標籤 (Character Tags)？",
         "msg_batch_delete_info": "將根據設定中的黑白名單過濾標籤或句子。",
@@ -236,12 +237,13 @@ LOCALIZATION = {
         "btn_next": "Next",
         "btn_find_replace": "Find/Replace",
         "btn_unmask": "Unmask Background",
-        "btn_batch_unmask": "Batch Unmask",
+        "btn_batch_unmask": "Batch Unmask Background",
+        "btn_mask_text": "Unmask Text",
+        "btn_batch_mask_text": "Batch Unmask Text",
+        "btn_restore_original": "Restore Original",
         "btn_stroke_eraser": "Stroke Eraser",
-        "btn_mask_text": "Batch Mask Text",
-        "btn_settings": "Settings",
-        "status_loading": "Loading...",
-        "status_ready": "Ready",
+        "btn_cancel_batch": "Cancel",
+        "menu_tools": "Tools",
         "msg_delete_confirm": "Move this image to no_used?",
         "msg_batch_delete_char_tags": "Delete Character Tags automatically?",
         "msg_batch_delete_info": "Tags will be filtered based on your blacklist/whitelist.",
@@ -755,10 +757,13 @@ def normalize_for_match(s: str) -> str:
     return t.strip()
 
 
-def cleanup_csv_like_text(text: str) -> str:
+def cleanup_csv_like_text(text: str, force_lower: bool = False) -> str:
     parts = [p.strip() for p in text.split(",")]
     parts = [p for p in parts if p]
-    return ", ".join(parts)
+    result = ", ".join(parts)
+    if force_lower:
+        result = result.lower()
+    return result
 
 
 def split_csv_like_text(text: str):
