@@ -48,7 +48,7 @@ source venv/bin/activate
 ### 2. 安裝依賴
 ```bash
 pip install PyQt6 Pillow natsort openai
-pip install imgutils[ocr]       # WD14 Tagger + OCR
+pip install dghs-imgutils[gpu]       # WD14 Tagger + OCR
 pip install transparent-background  # 去背功能 (選用)
 pip install transformers        # Token 計數 (選用)
 ```
