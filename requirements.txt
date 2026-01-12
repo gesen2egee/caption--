@@ -1,0 +1,9 @@
+PyQt6>=6.5.0
+Pillow>=9.0.0
+natsort>=8.0.0
+openai>=1.0.0
+imgutils[ocr]>=0.5.0
+
+# Optional (uncomment if needed)
+# transparent-background>=1.2.0
+# transformers>=4.30.0
