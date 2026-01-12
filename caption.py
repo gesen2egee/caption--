@@ -3,28 +3,28 @@
 # ============================================================
 #
 # [Ln 32-97]    Imports & 外部依賴
-# [Ln 98-185]   Configuration & Globals (含 Batch to txt 與 Char Tag 過濾設定)
-# [Ln 187-255]  Settings Helpers (load/save/coerce 函式)
-# [Ln 257-410]  Utils: delete_matching_npz、JSON sidecar、checkerboard
-# [Ln 412-580]  Utils / Parsing / Tag Logic (含 is_basic_character_tag)
-# [Ln 582-840]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 842-1000] BatchMaskTextWorker (OCR 批次遮罩)
-# [Ln 1002-1130] BatchUnmaskWorker (批次去背)
-# [Ln 1132-1270] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1272-1530] UI Components (TagButton 紅框、TagFlowWidget、Advanced Find/Replace)
-# [Ln 1532-1780] SettingsDialog (Text 分頁新增 Batch 選項 + Tags Filter 分頁)
-# [Ln 1782-1850] MainWindow.__init__ (主視窗初始化)
-# [Ln 1852-2150] MainWindow.init_ui (新增 Batch to txt 按鈕)
-# [Ln 2152-2200] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 2202-2370] MainWindow 檔案/圖片載入 & on_text_changed
-# [Ln 2372-2440] MainWindow Token 計數
-# [Ln 2442-2610] MainWindow TAGS/NL (JSON sidecar 整合)
-# [Ln 2612-2700] MainWindow NL Paging
-# [Ln 2702-2850] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2852-2990] MainWindow LLM 生成
-# [Ln 2992-3080] MainWindow Tools: Unmask / Stroke Eraser
-# [Ln 3082-3220] MainWindow Batch Tagger / LLM to txt (含寫入與過濾邏輯)
-# [Ln 3222-3235] MainWindow Settings 儲存 & main 入口
+# [Ln 98-300]   Configuration, I18n Resource & Globals
+# [Ln 302-380]  Settings Helpers (load/save/coerce 函式)
+# [Ln 382-530]  Utils: delete_matching_npz、JSON sidecar、checkerboard
+# [Ln 532-700]  Utils / Parsing / Tag Logic (含 is_basic_character_tag)
+# [Ln 702-1000] Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 1002-1160] BatchMaskTextWorker (OCR 批次遮罩)
+# [Ln 1162-1260] BatchUnmaskWorker (批次去背)
+# [Ln 1262-1360] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1362-1590] UI Components (TagButton 多主題適配、TagFlowWidget、Advanced Find/Replace)
+# [Ln 1592-1880] SettingsDialog (UI 分頁新增語言/主題、I18n 覆蓋)
+# [Ln 1882-1940] MainWindow.__init__ (主視窗初始化、tr 輔助函式)
+# [Ln 1942-2190] MainWindow.init_ui (UI 佈局、分頁、按鈕)
+# [Ln 2192-2260] MainWindow 快捷鍵 & 滾輪事件
+# [Ln 2262-2430] MainWindow 檔案讀取 & on_text_changed
+# [Ln 2432-2500] MainWindow Token 計數
+# [Ln 2502-2680] MainWindow TAGS/NL (JSON sidecar 整合)
+# [Ln 2682-2770] MainWindow NL Paging
+# [Ln 2772-2920] MainWindow Tag 插入/移除 & Tagger
+# [Ln 2922-3060] MainWindow LLM 生成
+# [Ln 3062-3150] MainWindow Tools: Unmask / Stroke Eraser
+# [Ln 3152-3290] MainWindow Batch Tagger / LLM to txt (含寫入與過濾邏輯)
+# [Ln 3292-3560] MainWindow Settings 儲存、retranslate_ui & main 入口
 #
 # ============================================================
 
@@ -132,6 +132,221 @@ A short English sentence about the subject
 DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 
 # --------------------------
+# Localization (I18n)
+# --------------------------
+LOCALIZATION = {
+    "zh_tw": {
+        "app_title": "AI Captioning Assistant (Caption 神器)",
+        "menu_file": "檔案",
+        "menu_open_dir": "開啟目錄",
+        "menu_exit": "結束",
+        "tab_tags": "TAGS",
+        "tab_nl": "NL",
+        "sec_folder_meta": "資料夾 / Meta",
+        "sec_custom": "自訂 (按資料夾)",
+        "sec_tagger": "Tagger (WD14)",
+        "btn_auto_tag": "Auto Tag (WD14)",
+        "btn_batch_tagger": "Batch Tagger",
+        "btn_batch_tagger_to_txt": "Batch Tagger to txt",
+        "btn_add_tag": "Add Tag",
+        "btn_run_llm": "Run LLM",
+        "btn_batch_llm": "Batch LLM",
+        "btn_batch_llm_to_txt": "Batch LLM to txt",
+        "btn_prev": "上一頁",
+        "btn_next": "下一頁",
+        "btn_find_replace": "尋找/取代",
+        "btn_unmask": "一鍵去背",
+        "btn_batch_unmask": "Batch Unmask",
+        "btn_stroke_eraser": "手繪橡皮擦",
+        "btn_mask_text": "Batch Mask Text",
+        "btn_settings": "設定",
+        "status_loading": "載入中...",
+        "status_ready": "就緒",
+        "msg_delete_confirm": "確定要將此圖片移動到 no_used？",
+        "msg_batch_delete_char_tags": "是否自動刪除特徵標籤 (Character Tags)？",
+        "msg_batch_delete_info": "將根據設定中的黑白名單過濾標籤或句子。",
+        "btn_auto_delete": "自動刪除",
+        "btn_keep": "保留",
+        "setting_tab_ui": "UI 介面",
+        "setting_ui_lang": "介面語言:",
+        "setting_ui_theme": "介面主題:",
+        "setting_lang_zh": "繁體中文",
+        "setting_lang_en": "English",
+        "setting_theme_light": "日間模式 (Light)",
+        "setting_theme_dark": "夜間模式 (Dark)",
+        "setting_save": "儲存",
+        "setting_cancel": "取消",
+        "setting_text_force_lower": "英文文字是否一律小寫（LLM 英文句 / tags 正規化）",
+        "setting_text_auto_remove_empty": "自動移除空行（text 裡面有空行或全空白自動移除）",
+        "setting_text_auto_format": "自動格式化（插入時用 , 分割去除空白，用 ', ' 重組）",
+        "setting_text_auto_save": "自動儲存 txt（有改動時自動儲存）",
+        "setting_batch_to_txt": "Batch to txt 設定",
+        "setting_batch_mode": "寫入模式",
+        "setting_batch_append": "附加到句尾",
+        "setting_batch_overwrite": "覆寫原檔",
+        "setting_batch_trigger": "將資料夾名作為觸發詞加到句首",
+        "setting_tagger_model": "Tagger 預設模型:",
+        "setting_mask_alpha": "mask 預設透明度 alpha (0-255):",
+        "setting_mask_format": "mask 預設轉換格式 (webp/png):",
+        "setting_mask_only_bg": "mask batch 是否只針對有 background 的 tag",
+        "setting_mask_ocr": "batch 自動 mask 有文字的地方（OCR）",
+        "setting_mask_delete_npz": "移動舊圖時刪除對應 npz",
+        "setting_filter_title": "<b>特徵標籤 (Character Tags) 過濾設定</b>",
+        "setting_filter_info": "符合黑名單且不符合白名單的標籤將被標記為紅框，且在 Batch to txt 時可選擇刪除。",
+        "setting_wl_words": "白名單單字 (Whitelist Words):",
+        "setting_wl_prefixes": "白名單前綴 (Whitelist Prefixes):",
+        "setting_wl_suffixes": "白名單後綴 (Whitelist Suffixes):",
+        "setting_bl_prefixes": "黑名單前綴 (Blacklist Prefixes):",
+        "setting_bl_suffixes": "黑名單後綴 (Blacklist Suffixes):",
+        "msg_select_dir": "選擇圖片目錄",
+        "msg_no_images": "在此目錄下找不到圖片。",
+        "msg_unmask_done": "去背處理完成。",
+    },
+    "en": {
+        "app_title": "AI Captioning Assistant",
+        "menu_file": "File",
+        "menu_open_dir": "Open Directory",
+        "menu_exit": "Exit",
+        "tab_tags": "TAGS",
+        "tab_nl": "NL",
+        "sec_folder_meta": "Folder / Meta",
+        "sec_custom": "Custom (per folder)",
+        "sec_tagger": "Tagger (WD14)",
+        "btn_auto_tag": "Auto Tag (WD14)",
+        "btn_batch_tagger": "Batch Tagger",
+        "btn_batch_tagger_to_txt": "Batch Tagger to txt",
+        "btn_add_tag": "Add Tag",
+        "btn_run_llm": "Run LLM",
+        "btn_batch_llm": "Batch LLM",
+        "btn_batch_llm_to_txt": "Batch LLM to txt",
+        "btn_prev": "Prev",
+        "btn_next": "Next",
+        "btn_find_replace": "Find/Replace",
+        "btn_unmask": "Unmask Background",
+        "btn_batch_unmask": "Batch Unmask",
+        "btn_stroke_eraser": "Stroke Eraser",
+        "btn_mask_text": "Batch Mask Text",
+        "btn_settings": "Settings",
+        "status_loading": "Loading...",
+        "status_ready": "Ready",
+        "msg_delete_confirm": "Move this image to no_used?",
+        "msg_batch_delete_char_tags": "Delete Character Tags automatically?",
+        "msg_batch_delete_info": "Tags will be filtered based on your blacklist/whitelist.",
+        "btn_auto_delete": "Auto Delete",
+        "btn_keep": "Keep",
+        "setting_tab_ui": "UI",
+        "setting_ui_lang": "Language:",
+        "setting_ui_theme": "Theme:",
+        "setting_lang_zh": "Traditional Chinese",
+        "setting_lang_en": "English",
+        "setting_theme_light": "Light Mode",
+        "setting_theme_dark": "Dark Mode",
+        "setting_save": "Save",
+        "setting_cancel": "Cancel",
+        "setting_text_force_lower": "Force lowercase for English text (LLM sentences / tags normalization)",
+        "setting_text_auto_remove_empty": "Auto remove empty lines",
+        "setting_text_auto_format": "Auto format on insert (clean whitespace and re-join with ', ')",
+        "setting_text_auto_save": "Auto save txt (on change)",
+        "setting_batch_to_txt": "Batch to txt Settings",
+        "setting_batch_mode": "Write Mode",
+        "setting_batch_append": "Append to end",
+        "setting_batch_overwrite": "Overwrite file",
+        "setting_batch_trigger": "Use folder name as trigger word (add to start of sentence)",
+        "setting_tagger_model": "Default Tagger Model:",
+        "setting_mask_alpha": "Mask default alpha (0-255):",
+        "setting_mask_format": "Mask default format (webp/png):",
+        "setting_mask_only_bg": "Batch mask only if has 'background' tag",
+        "setting_mask_ocr": "Batch mask text automatically (OCR)",
+        "setting_mask_delete_npz": "Delete matching .npz when moving image",
+        "setting_filter_title": "<b>Character Tags Filter Settings</b>",
+        "setting_filter_info": "Tags matching blacklist and NOT in whitelist will be highlighted red and can be filtered in Batch to txt.",
+        "setting_wl_words": "Whitelist Words:",
+        "setting_wl_prefixes": "Whitelist Prefixes:",
+        "setting_wl_suffixes": "Whitelist Suffixes:",
+        "setting_bl_prefixes": "Blacklist Prefixes:",
+        "setting_bl_suffixes": "Blacklist Suffixes:",
+        "msg_select_dir": "Select Image Directory",
+        "msg_no_images": "No images found in this directory.",
+        "msg_unmask_done": "Background removal finished.",
+    }
+}
+
+# --------------------------
+# Themes (CSS)
+# --------------------------
+THEME_STYLES = {
+    "light": "",  # Use system default
+    "dark": """
+        QMainWindow, QDialog {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        QWidget {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        QPlainTextEdit, QLineEdit, QTextEdit {
+            background-color: #252526;
+            color: #cccccc;
+            border: 1px solid #3e3e42;
+        }
+        QPushButton {
+            background-color: #333333;
+            color: #d4d4d4;
+            border: 1px solid #444444;
+            padding: 5px;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background-color: #444444;
+            border: 1px solid #666666;
+        }
+        QPushButton:pressed {
+            background-color: #222222;
+        }
+        QTabWidget::pane {
+            border: 1px solid #3e3e42;
+            background-color: #1e1e1e;
+        }
+        QTabBar::tab {
+            background-color: #2d2d2d;
+            color: #969696;
+            padding: 8px 15px;
+            border: 1px solid #3e3e42;
+            border-bottom: none;
+        }
+        QTabBar::tab:selected {
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+        QScrollArea {
+            border: 1px solid #3e3e42;
+            background-color: #1e1e1e;
+        }
+        QLabel {
+            color: #d4d4d4;
+        }
+        QGroupBox {
+            border: 1px solid #3e3e42;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 3px 0 3px;
+        }
+        QStatusBar {
+            background-color: #007acc;
+            color: white;
+        }
+        QSplitter::handle {
+            background-color: #3e3e42;
+        }
+    """
+}
+
+# --------------------------
 # App Settings (persisted)
 # --------------------------
 APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json")
@@ -175,6 +390,10 @@ DEFAULT_APP_SETTINGS = {
     "mask_batch_only_if_has_background_tag": False,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
+
+    # UI / Theme
+    "ui_language": "zh_tw",   # zh_tw | en
+    "ui_theme": "light",      # light | dark
 }
 
 def load_app_settings() -> dict:
@@ -1180,32 +1399,57 @@ class TagButton(QPushButton):
         self.update_style()
 
     def update_style(self):
-        border_color = "red" if self.is_character else "#ccc"
-        border_width = "2px" if self.is_character else "1px"
-        checked_border = "red" if self.is_character else "#0055aa"
+        # 嘗試從 Parent 鏈取得主題
+        theme = "light"
+        p = self.parent()
+        while p:
+            if hasattr(p, "settings"):
+                theme = p.settings.get("ui_theme", "light")
+                break
+            p = p.parent()
         
+        is_dark = (theme == "dark")
+        border_color = "red" if self.is_character else ("#555" if is_dark else "#ccc")
+        border_width = "2px" if self.is_character else "1px"
+        checked_border = "red" if self.is_character else ("#007acc" if is_dark else "#0055aa")
+        bg_color = "#333" if is_dark else "#f0f0f0"
+        checked_bg = "#444" if is_dark else "#d0e8ff"
+        text_color = "#d4d4d4" if is_dark else "#333"
+
         self.setStyleSheet(f"""
             QPushButton {{
                 border: {border_width} solid {border_color};
                 border-radius: 4px;
-                background-color: #f0f0f0;
+                background-color: {bg_color};
+                color: {text_color};
             }}
             QPushButton:checked {{
-                background-color: #d0e8ff;
+                background-color: {checked_bg};
                 border: {border_width} solid {checked_border};
             }}
             QPushButton:hover {{
-                border: {border_width} solid #999;
+                border: {border_width} solid {"#777" if is_dark else "#999"};
             }}
         """)
 
     def update_label(self):
+        # 取得主題以決定顏色
+        theme = "light"
+        p = self.parent()
+        while p:
+            if hasattr(p, "settings"):
+                theme = p.settings.get("ui_theme", "light")
+                break
+            p = p.parent()
+        text_color = "#d4d4d4" if theme == "dark" else "#000"
+        trans_color = "#999" if theme == "dark" else "#666"
+
         safe_text = str(self.raw_text).replace("<", "&lt;").replace(">", "&gt;")
-        content = f"<span style='font-size:13px; font-weight:bold; color:#000;'>{safe_text}</span>"
+        content = f"<span style='font-size:13px; font-weight:bold; color:{text_color};'>{safe_text}</span>"
 
         if self.translation:
             safe_trans = str(self.translation).replace("<", "&lt;").replace(">", "&gt;")
-            content += f"<br><span style='color:#666; font-size:11px;'>{safe_trans}</span>"
+            content += f"<br><span style='color:{trans_color}; font-size:11px;'>{safe_trans}</span>"
 
         self.label.setText(content)
 
@@ -1381,13 +1625,46 @@ class AdvancedFindReplaceDialog(QDialog):
 class SettingsDialog(QDialog):
     def __init__(self, cfg: dict, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.setMinimumWidth(640)
         self.cfg = dict(cfg or {})
+        self.setWindowTitle(self.tr("btn_settings"))
+        self.setMinimumWidth(640)
 
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
+
+    def tr(self, key: str) -> str:
+        lang = self.cfg.get("ui_language", "zh_tw")
+        return LOCALIZATION.get(lang, LOCALIZATION["zh_tw"]).get(key, key)
+
+        # ---- UI ----
+        tab_ui = QWidget()
+        ui_layout = QVBoxLayout(tab_ui)
+        ui_form = QFormLayout()
+        
+        self.cb_lang = QComboBox()
+        self.cb_lang.addItem(self.tr("setting_lang_zh"), "zh_tw")
+        self.cb_lang.addItem(self.tr("setting_lang_en"), "en")
+        idx_lang = self.cb_lang.findData(self.cfg.get("ui_language", "zh_tw"))
+        self.cb_lang.setCurrentIndex(idx_lang if idx_lang >= 0 else 0)
+        
+        ui_form.addRow(self.tr("setting_ui_lang"), self.cb_lang)
+        
+        self.rb_light = QRadioButton(self.tr("setting_theme_light"))
+        self.rb_dark = QRadioButton(self.tr("setting_theme_dark"))
+        if self.cfg.get("ui_theme", "light") == "dark":
+            self.rb_dark.setChecked(True)
+        else:
+            self.rb_light.setChecked(True)
+        
+        ui_theme_lay = QHBoxLayout()
+        ui_theme_lay.addWidget(self.rb_light)
+        ui_theme_lay.addWidget(self.rb_dark)
+        ui_form.addRow(self.tr("setting_ui_theme"), ui_theme_lay)
+        
+        ui_layout.addLayout(ui_form)
+        ui_layout.addStretch(1)
+        self.tabs.addTab(tab_ui, self.tr("setting_tab_ui"))
 
         # ---- LLM ----
         tab_llm = QWidget()
@@ -1423,8 +1700,7 @@ class SettingsDialog(QDialog):
         self.ed_custom_template.setMinimumHeight(200)
         llm_layout.addWidget(self.ed_custom_template, 1)
 
-
-        llm_layout.addWidget(QLabel("預設 Custom Tags（逗號或每行一個）:"))
+        llm_layout.addWidget(QLabel("預設 Custom Tags (Comma or Newline):"))
         self.ed_default_custom_tags = QPlainTextEdit()
         tags = self.cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS))
         if isinstance(tags, list):
@@ -1452,7 +1728,7 @@ class SettingsDialog(QDialog):
         self.chk_drop_overlap = QCheckBox("drop_overlap")
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
 
-        form2.addRow("Tagger 預設 Model:", self.ed_tagger_model)
+        form2.addRow(self.tr("setting_tagger_model"), self.ed_tagger_model)
         form2.addRow("general_threshold:", self.ed_general_threshold)
         form2.addRow("", self.chk_general_mcut)
         form2.addRow("character_threshold:", self.ed_character_threshold)
@@ -1466,30 +1742,30 @@ class SettingsDialog(QDialog):
         # ---- Text ----
         tab_text = QWidget()
         text_layout = QVBoxLayout(tab_text)
-        self.chk_force_lower = QCheckBox("英文文字是否一律小寫（LLM 英文句 / tags 正規化）")
+        self.chk_force_lower = QCheckBox(self.tr("setting_text_force_lower"))
         self.chk_force_lower.setChecked(bool(self.cfg.get("english_force_lowercase", True)))
         text_layout.addWidget(self.chk_force_lower)
 
-        self.chk_auto_remove_empty = QCheckBox("自動移除空行（text 裡面有空行或全空白自動移除）")
+        self.chk_auto_remove_empty = QCheckBox(self.tr("setting_text_auto_remove_empty"))
         self.chk_auto_remove_empty.setChecked(bool(self.cfg.get("text_auto_remove_empty_lines", True)))
         text_layout.addWidget(self.chk_auto_remove_empty)
 
-        self.chk_auto_format = QCheckBox("自動格式化（插入時用 , 分割去除空白，用 ', ' 重組）")
+        self.chk_auto_format = QCheckBox(self.tr("setting_text_auto_format"))
         self.chk_auto_format.setChecked(bool(self.cfg.get("text_auto_format", True)))
         text_layout.addWidget(self.chk_auto_format)
 
-        self.chk_auto_save = QCheckBox("自動儲存 txt（有改動時自動儲存）")
+        self.chk_auto_save = QCheckBox(self.tr("setting_text_auto_save"))
         self.chk_auto_save.setChecked(bool(self.cfg.get("text_auto_save", True)))
         text_layout.addWidget(self.chk_auto_save)
 
         # Batch to txt options
         text_layout.addWidget(self.make_hline())
-        text_layout.addWidget(QLabel("<b>Batch to txt 設定</b>"))
+        text_layout.addWidget(QLabel(f"<b>{self.tr('setting_batch_to_txt')}</b>"))
         
-        mode_grp = QGroupBox("寫入模式")
+        mode_grp = QGroupBox(self.tr("setting_batch_mode"))
         mode_lay = QHBoxLayout()
-        self.rb_batch_append = QRadioButton("附加到句尾")
-        self.rb_batch_overwrite = QRadioButton("覆寫原檔")
+        self.rb_batch_append = QRadioButton(self.tr("setting_batch_append"))
+        self.rb_batch_overwrite = QRadioButton(self.tr("setting_batch_overwrite"))
         if self.cfg.get("batch_to_txt_mode", "append") == "overwrite":
             self.rb_batch_overwrite.setChecked(True)
         else:
@@ -1499,7 +1775,7 @@ class SettingsDialog(QDialog):
         mode_grp.setLayout(mode_lay)
         text_layout.addWidget(mode_grp)
         
-        self.chk_folder_trigger = QCheckBox("將資料夾名作為觸發詞加到句首")
+        self.chk_folder_trigger = QCheckBox(self.tr("setting_batch_trigger"))
         self.chk_folder_trigger.setChecked(bool(self.cfg.get("batch_to_txt_folder_trigger", False)))
         text_layout.addWidget(self.chk_folder_trigger)
 
@@ -1513,20 +1789,20 @@ class SettingsDialog(QDialog):
 
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
         self.ed_mask_format = QLineEdit(str(self.cfg.get("mask_default_format", "webp")))
-        form3.addRow("mask 預設透明度 alpha (0-255):", self.ed_mask_alpha)
-        form3.addRow("mask 預設轉換格式 (webp/png):", self.ed_mask_format)
+        form3.addRow(self.tr("setting_mask_alpha"), self.ed_mask_alpha)
+        form3.addRow(self.tr("setting_mask_format"), self.ed_mask_format)
 
-        self.chk_only_bg = QCheckBox("mask batch 是否只針對有 background 的 tag")
+        self.chk_only_bg = QCheckBox(self.tr("setting_mask_only_bg"))
         self.chk_only_bg.setChecked(bool(self.cfg.get("mask_batch_only_if_has_background_tag", False)))
 
-        self.chk_detect_text = QCheckBox("batch 自動 mask 有文字的地方（OCR）")
+        self.chk_detect_text = QCheckBox(self.tr("setting_mask_ocr"))
         self.chk_detect_text.setChecked(bool(self.cfg.get("mask_batch_detect_text_enabled", True)))
 
         mask_layout.addLayout(form3)
         mask_layout.addWidget(self.chk_only_bg)
         mask_layout.addWidget(self.chk_detect_text)
 
-        self.chk_delete_npz = QCheckBox("移動舊圖時刪除對應 npz（含完整圖檔名的 npz 會被刪除）")
+        self.chk_delete_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
         self.chk_delete_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
         mask_layout.addWidget(self.chk_delete_npz)
 
@@ -1539,8 +1815,8 @@ class SettingsDialog(QDialog):
         # ---- Tags Filter (Character Tags) ----
         tab_filter = QWidget()
         filter_layout = QVBoxLayout(tab_filter)
-        filter_layout.addWidget(QLabel("<b>特徵標籤 (Character Tags) 過濾設定</b>"))
-        filter_layout.addWidget(QLabel("符合黑名單且不符合白名單的標籤將被標記為紅框，且在 Batch to txt 時可選擇刪除。"))
+        filter_layout.addWidget(QLabel(self.tr("setting_filter_title")))
+        filter_layout.addWidget(QLabel(self.tr("setting_filter_info")))
         
         f_form = QFormLayout()
         self.ed_wl_words = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
@@ -1550,13 +1826,13 @@ class SettingsDialog(QDialog):
         self.ed_bl_suffixes = QPlainTextEdit(", ".join(self.cfg.get("char_tag_blacklist_suffixes", [])))
         self.ed_bl_suffixes.setMaximumHeight(100)
 
-        f_form.addRow("白名單單字 (Whitelist Words):", self.ed_wl_words)
-        f_form.addRow("白名單前綴 (Whitelist Prefixes):", self.ed_wl_prefixes)
-        f_form.addRow("白名單後綴 (Whitelist Suffixes):", self.ed_wl_suffixes)
-        f_form.addRow("黑名單前綴 (Blacklist Prefixes):", self.ed_bl_prefixes)
+        f_form.addRow(self.tr("setting_wl_words"), self.ed_wl_words)
+        f_form.addRow(self.tr("setting_wl_prefixes"), self.ed_wl_prefixes)
+        f_form.addRow(self.tr("setting_wl_suffixes"), self.ed_wl_suffixes)
+        f_form.addRow(self.tr("setting_bl_prefixes"), self.ed_bl_prefixes)
         filter_layout.addLayout(f_form)
         
-        filter_layout.addWidget(QLabel("黑名單後綴 (Blacklist Suffixes):"))
+        filter_layout.addWidget(QLabel(self.tr("setting_bl_suffixes")))
         filter_layout.addWidget(self.ed_bl_suffixes)
         filter_layout.addStretch(1)
         
@@ -1565,8 +1841,8 @@ class SettingsDialog(QDialog):
         # Buttons
         btns = QHBoxLayout()
         btns.addStretch(1)
-        self.btn_ok = QPushButton("Save")
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_ok = QPushButton(self.tr("setting_save"))
+        self.btn_cancel = QPushButton(self.tr("setting_cancel"))
         self.btn_ok.clicked.connect(self.accept)
         self.btn_cancel.clicked.connect(self.reject)
         btns.addWidget(self.btn_ok)
@@ -1629,6 +1905,9 @@ class SettingsDialog(QDialog):
         raw_bl_suf = self.ed_bl_suffixes.toPlainText().replace("\n", ",")
         cfg["char_tag_blacklist_suffixes"] = [x.strip() for x in raw_bl_suf.split(",") if x.strip()]
 
+        cfg["ui_language"] = self.cb_lang.currentData()
+        cfg["ui_theme"] = "dark" if self.rb_dark.isChecked() else "light"
+
         return cfg
 
 
@@ -1678,8 +1957,20 @@ class MainWindow(QMainWindow):
         self.batch_mask_text_thread = None
 
         self.init_ui()
+        self.apply_theme()
         self.setup_shortcuts()
         self._hf_tokenizer = None
+
+    def tr(self, key: str) -> str:
+        lang = self.settings.get("ui_language", "zh_tw")
+        return LOCALIZATION.get(lang, LOCALIZATION["zh_tw"]).get(key, key)
+
+    def apply_theme(self):
+        theme = self.settings.get("ui_theme", "light")
+        self.setStyleSheet(THEME_STYLES.get(theme, ""))
+        # 強制刷新所有 TagButton 的樣式
+        for btn in self.findChildren(TagButton):
+            btn.update_style()
 
     def init_ui(self):
         font = QFont()
@@ -1738,19 +2029,19 @@ class MainWindow(QMainWindow):
         tags_label = QLabel("<b>TAGS</b>")
         tags_toolbar.addWidget(tags_label)
 
-        self.btn_auto_tag = QPushButton("Auto Tag (WD14)")
+        self.btn_auto_tag = QPushButton(self.tr("btn_auto_tag"))
         self.btn_auto_tag.clicked.connect(self.run_tagger)
         tags_toolbar.addWidget(self.btn_auto_tag)
 
-        self.btn_batch_tagger = QPushButton("Batch Tagger")
+        self.btn_batch_tagger = QPushButton(self.tr("btn_batch_tagger"))
         self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
         tags_toolbar.addWidget(self.btn_batch_tagger)
 
-        self.btn_batch_tagger_to_txt = QPushButton("Batch Tagger to txt")
+        self.btn_batch_tagger_to_txt = QPushButton(self.tr("btn_batch_tagger_to_txt"))
         self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
         tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
 
-        self.btn_add_custom_tag = QPushButton("Add Tag")
+        self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
         self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
         tags_toolbar.addWidget(self.btn_add_custom_tag)
 
@@ -1767,7 +2058,7 @@ class MainWindow(QMainWindow):
         self.tags_scroll_layout.setContentsMargins(0, 0, 0, 0)
         self.tags_scroll_layout.setSpacing(8)
 
-        self.sec1_title = QLabel("<b>Folder / Meta</b>")
+        self.sec1_title = QLabel(f"<b>{self.tr('sec_folder_meta')}</b>")
         self.tags_scroll_layout.addWidget(self.sec1_title)
         self.flow_top = TagFlowWidget(use_scroll=False)
         self.flow_top.set_translations_csv(self.translations_csv)
@@ -1776,7 +2067,7 @@ class MainWindow(QMainWindow):
 
         self.tags_scroll_layout.addWidget(self.make_hline())
 
-        self.sec2_title = QLabel("<b>Custom (per folder)</b>")
+        self.sec2_title = QLabel(f"<b>{self.tr('sec_custom')}</b>")
         self.tags_scroll_layout.addWidget(self.sec2_title)
         self.flow_custom = TagFlowWidget(use_scroll=False)
         self.flow_custom.set_translations_csv(self.translations_csv)
@@ -1785,7 +2076,7 @@ class MainWindow(QMainWindow):
 
         self.tags_scroll_layout.addWidget(self.make_hline())
 
-        self.sec3_title = QLabel("<b>Tagger (WD14)</b>")
+        self.sec3_title = QLabel(f"<b>{self.tr('sec_tagger')}</b>")
         self.tags_scroll_layout.addWidget(self.sec3_title)
         self.flow_tagger = TagFlowWidget(use_scroll=False)
         self.flow_tagger.set_translations_csv(self.translations_csv)
@@ -1806,24 +2097,24 @@ class MainWindow(QMainWindow):
         nl_label = QLabel("<b>NL</b>")
         nl_toolbar.addWidget(nl_label)
 
-        self.btn_run_llm = QPushButton("Run LLM")
+        self.btn_run_llm = QPushButton(self.tr("btn_run_llm"))
         self.btn_run_llm.clicked.connect(self.run_llm_generation)
         nl_toolbar.addWidget(self.btn_run_llm)
 
         # ✅ Batch 按鍵保留在上方
-        self.btn_batch_llm = QPushButton("Batch LLM")
+        self.btn_batch_llm = QPushButton(self.tr("btn_batch_llm"))
         self.btn_batch_llm.clicked.connect(self.run_batch_llm)
         nl_toolbar.addWidget(self.btn_batch_llm)
 
-        self.btn_batch_llm_to_txt = QPushButton("Batch LLM to txt")
+        self.btn_batch_llm_to_txt = QPushButton(self.tr("btn_batch_llm_to_txt"))
         self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
         nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
 
-        self.btn_prev_nl = QPushButton("Prev")
+        self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
         self.btn_prev_nl.clicked.connect(self.prev_nl_page)
         nl_toolbar.addWidget(self.btn_prev_nl)
 
-        self.btn_next_nl = QPushButton("Next")
+        self.btn_next_nl = QPushButton(self.tr("btn_next"))
         self.btn_next_nl.clicked.connect(self.next_nl_page)
         nl_toolbar.addWidget(self.btn_next_nl)
 
@@ -1913,29 +2204,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress_bar)
 
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
-        open_action = QAction("Open Directory", self)
-        open_action.triggered.connect(self.open_directory)
-        file_menu.addAction(open_action)
-        settings_action = QAction("Settings", self)
-        settings_action.triggered.connect(self.open_settings)
-        file_menu.addAction(settings_action)
+        self._setup_menus()
 
-        tools_menu = menubar.addMenu("Tools")
-        unmask_action = QAction("Remove Background (Unmask)", self)
-        unmask_action.triggered.connect(self.unmask_current_image)
-        tools_menu.addAction(unmask_action)
-
-        batch_unmask_action = QAction("Batch Remove Background (*background)", self)
+        batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
         batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
         tools_menu.addAction(batch_unmask_action)
 
-        mask_text_action = QAction("Batch Mask Text (OCR)", self)
+        mask_text_action = QAction(self.tr("btn_mask_text"), self)
         mask_text_action.triggered.connect(self.run_batch_mask_text)
         tools_menu.addAction(mask_text_action)
 
-        stroke_action = QAction("Stroke Eraser (Transparent)", self)
+        stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
         stroke_action.triggered.connect(self.open_stroke_eraser)
         tools_menu.addAction(stroke_action)
 
@@ -1977,7 +2256,7 @@ class MainWindow(QMainWindow):
     # Logic: Storage & Init
     # ==========================
     def open_directory(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Image Directory")
+        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"))
         if dir_path:
             self.root_dir_path = dir_path
             self.image_files = []
@@ -2016,7 +2295,7 @@ class MainWindow(QMainWindow):
                 self.current_index = 0
                 self.load_image()
             else:
-                QMessageBox.information(self, "Info", "No images found.")
+                QMessageBox.information(self, "Info", self.tr("msg_no_images"))
 
     def load_image(self):
         if 0 <= self.current_index < len(self.image_files):
@@ -2079,7 +2358,7 @@ class MainWindow(QMainWindow):
         if not self.current_image_path:
             return
         reply = QMessageBox.question(
-            self, "Delete", "Move to 'no_used'?",
+            self, "Confirm", self.tr("msg_delete_confirm"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -3210,6 +3489,10 @@ class MainWindow(QMainWindow):
             save_app_settings(new_cfg)
 
             # apply immediately
+            self.apply_theme()
+            self.retranslate_ui()
+
+            # update LLM props
             self.llm_base_url = str(new_cfg.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
             self.api_key = str(new_cfg.get("llm_api_key", ""))
             self.model_name = str(new_cfg.get("llm_model", DEFAULT_APP_SETTINGS["llm_model"]))
@@ -3219,12 +3502,60 @@ class MainWindow(QMainWindow):
             self.default_custom_tags_global = list(new_cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
             self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
 
-            # update current UI defaults
             if hasattr(self, "prompt_edit") and self.prompt_edit:
                 self.prompt_edit.setPlainText(self.default_user_prompt_template)
 
-            # refresh custom tags default file creation only affects new folders; existing folders keep their .custom_tags.json
-            self.statusBar().showMessage("Settings 已儲存", 4000)
+            self.statusBar().showMessage(self.tr("status_ready"), 4000)
+
+    def retranslate_ui(self):
+        self.setWindowTitle(self.tr("app_title"))
+        # Update main controls
+        self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
+        self.btn_batch_tagger.setText(self.tr("btn_batch_tagger"))
+        self.btn_batch_tagger_to_txt.setText(self.tr("btn_batch_tagger_to_txt"))
+        self.btn_add_custom_tag.setText(self.tr("btn_add_tag"))
+        self.btn_run_llm.setText(self.tr("btn_run_llm"))
+        self.btn_batch_llm.setText(self.tr("btn_batch_llm"))
+        self.btn_batch_llm_to_txt.setText(self.tr("btn_batch_llm_to_txt"))
+        self.btn_prev_nl.setText(self.tr("btn_prev"))
+        self.btn_next_nl.setText(self.tr("btn_next"))
+        self.btn_find_replace.setText(self.tr("btn_find_replace"))
+        
+        # Labels
+        self.sec1_title.setText(f"<b>{self.tr('sec_folder_meta')}</b>")
+        self.sec2_title.setText(f"<b>{self.tr('sec_custom')}</b>")
+        self.sec3_title.setText(f"<b>{self.tr('sec_tagger')}</b>")
+        
+        # Menus
+        self.menuBar().clear()
+        self._setup_menus()
+
+    def _setup_menus(self):
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu(self.tr("menu_file"))
+        open_action = QAction(self.tr("menu_open_dir"), self)
+        open_action.triggered.connect(self.open_directory)
+        file_menu.addAction(open_action)
+        settings_action = QAction(self.tr("btn_settings"), self)
+        settings_action.triggered.connect(self.open_settings)
+        file_menu.addAction(settings_action)
+
+        tools_menu = menubar.addMenu("Tools")
+        unmask_action = QAction(self.tr("btn_unmask"), self)
+        unmask_action.triggered.connect(self.unmask_current_image)
+        tools_menu.addAction(unmask_action)
+        
+        batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
+        batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
+        tools_menu.addAction(batch_unmask_action)
+
+        mask_text_action = QAction(self.tr("btn_mask_text"), self)
+        mask_text_action.triggered.connect(self.run_batch_mask_text)
+        tools_menu.addAction(mask_text_action)
+
+        stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
+        stroke_action.triggered.connect(self.open_stroke_eraser)
+        tools_menu.addAction(stroke_action)
 
 
 if __name__ == "__main__":
