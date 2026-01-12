@@ -2,31 +2,31 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 1-65]     Imports & 外部依賴
-# [Ln 66-135]   Configuration & Globals (設定檔、預設值)
-# [Ln 137-205]  Settings Helpers (load/save/coerce 函式)
-# [Ln 207-390]  Utils / Parsing (標籤解析、文字處理)
-# [Ln 392-600]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 601-725]  BatchMaskTextWorker (OCR 批次遮罩)
-# [Ln 727-815]  BatchUnmaskWorker (批次去背)
-# [Ln 817-968]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 970-1185] UI Components (TagButton, TagFlowWidget, AdvancedFindReplaceDialog)
-# [Ln 1187-1360] SettingsDialog (設定對話框)
-# [Ln 1363-1410] MainWindow.__init__ (主視窗初始化)
-# [Ln 1412-1665] MainWindow.init_ui (UI 建構)
-# [Ln 1668-1695] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 1696-1850] MainWindow 檔案/圖片載入 & on_text_changed
-# [Ln 1851-1910] MainWindow Token 計數
-# [Ln 1912-2080] MainWindow TAGS Sources (top/custom/tagger)
-# [Ln 2081-2155] MainWindow NL Paging
-# [Ln 2155-2290] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2291-2420] MainWindow LLM 生成
-# [Ln 2422-2583] MainWindow Tools: Unmask / Stroke Eraser
-# [Ln 2584-2695] MainWindow Batch Tagger / LLM
-# [Ln 2698-2762] MainWindow Find/Replace
-# [Ln 2764-2792] MainWindow Batch Mask Text
-# [Ln 2794-2820] MainWindow Settings 儲存
-# [Ln 2823-2827] main 入口
+# [Ln 33-97]    Imports & 外部依賴
+# [Ln 99-171]   Configuration & Globals (設定檔、預設值、含新增 text_auto_* 與 mask_delete_npz_on_move)
+# [Ln 173-240]  Settings Helpers (load/save/coerce 函式)
+# [Ln 242-305]  Utils: delete_matching_npz (新增), create_checkerboard
+# [Ln 307-430]  Utils / Parsing (標籤解析、文字處理)
+# [Ln 432-670]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 672-800]  BatchMaskTextWorker (OCR 批次遮罩，含 npz 刪除)
+# [Ln 802-895]  BatchUnmaskWorker (批次去背，含 npz 刪除)
+# [Ln 897-1040] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1042-1260] UI Components (TagButton, TagFlowWidget, AdvancedFindReplaceDialog)
+# [Ln 1262-1450] SettingsDialog (設定對話框，新增 Text 3選項 + Mask 1選項)
+# [Ln 1452-1510] MainWindow.__init__ (主視窗初始化)
+# [Ln 1512-1760] MainWindow.init_ui (UI 建構)
+# [Ln 1762-1800] MainWindow 快捷鍵 & 滾輪事件
+# [Ln 1802-1970] MainWindow 檔案/圖片載入 & on_text_changed (新增自動格式化邏輯)
+# [Ln 1972-2040] MainWindow Token 計數
+# [Ln 2042-2200] MainWindow TAGS Sources (top/custom/tagger)
+# [Ln 2202-2280] MainWindow NL Paging
+# [Ln 2282-2420] MainWindow Tag 插入/移除 & Tagger
+# [Ln 2422-2550] MainWindow LLM 生成
+# [Ln 2552-2720] MainWindow Tools: Unmask / Stroke Eraser (含 npz 刪除)
+# [Ln 2722-2830] MainWindow Batch Tagger / LLM
+# [Ln 2832-2900] MainWindow Find/Replace
+# [Ln 2902-2935] MainWindow Batch Mask Text
+# [Ln 2937-2959] MainWindow Settings 儲存 & main 入口
 #
 # ============================================================
 
@@ -158,12 +158,16 @@ DEFAULT_APP_SETTINGS = {
 
     # Text / normalization
     "english_force_lowercase": True,
+    "text_auto_remove_empty_lines": True,  # 自動移除空行
+    "text_auto_format": True,              # 插入時自動格式化
+    "text_auto_save": True,                # 改動時自動儲存
 
     # Mask / batch mask text
     "mask_default_alpha": 0,  # 0-255, 0 = fully transparent
     "mask_default_format": "webp",  # webp | png
     "mask_batch_only_if_has_background_tag": False,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
+    "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
 }
 
 def load_app_settings() -> dict:
@@ -266,6 +270,37 @@ def create_checkerboard_png_bytes():
         return base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
+
+
+def delete_matching_npz(image_path: str) -> int:
+    """
+    刪除與圖檔名匹配的 npz 檔案。
+    例如圖檔 '1b7f4f85fac7f8f7076fa528e95176fb.webp' 
+    會匹配 '1b7f4f85fac7f8f7076fa528e95176fb_0849x0849_sdxl.npz'
+    回傳刪除的檔案數量。
+    """
+    if not image_path:
+        return 0
+    
+    try:
+        src_dir = os.path.dirname(image_path)
+        # 取得不含副檔名的完整檔名 (例如 1b7f4f85fac7f8f7076fa528e95176fb)
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        
+        deleted = 0
+        for f in os.listdir(src_dir):
+            if f.endswith(".npz") and f.startswith(base_name):
+                npz_path = os.path.join(src_dir, f)
+                try:
+                    os.remove(npz_path)
+                    deleted += 1
+                    print(f"[NPZ] 已刪除: {f}")
+                except Exception as e:
+                    print(f"[NPZ] 刪除失敗 {f}: {e}")
+        return deleted
+    except Exception as e:
+        print(f"[NPZ] delete_matching_npz 錯誤: {e}")
+        return 0
 
 
 def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
@@ -727,6 +762,9 @@ class BatchMaskTextWorker(QThread):
                 if ext == f".{fmt}":
                     moved_original = self._unique_path(os.path.join(out_dir, os.path.basename(pth)))
                     shutil.move(pth, moved_original)
+                    # 刪除對應 npz
+                    if self.cfg.get("mask_delete_npz_on_move", True):
+                        delete_matching_npz(pth)
                     src_for_processing = moved_original
                     out_path = pth
                 else:
@@ -749,6 +787,9 @@ class BatchMaskTextWorker(QThread):
                 if ext != f".{fmt}":
                     moved_original = self._unique_path(os.path.join(out_dir, os.path.basename(pth)))
                     shutil.move(pth, moved_original)
+                    # 刪除對應 npz
+                    if self.cfg.get("mask_delete_npz_on_move", True):
+                        delete_matching_npz(pth)
 
                 self.per_image.emit(pth, out_path)
 
@@ -763,9 +804,10 @@ class BatchUnmaskWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths):
+    def __init__(self, image_paths, cfg: dict = None):
         super().__init__()
         self.image_paths = list(image_paths)
+        self.cfg = dict(cfg or {})
         self._stop = False
 
     def stop(self):
@@ -819,7 +861,7 @@ class BatchUnmaskWorker(QThread):
             moved_original = BatchUnmaskWorker._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
             shutil.move(image_path, moved_original)
 
-        return target_file
+        return target_file, image_path  # 回傳 (new_path, old_path) 以便外部處理 npz 刪除
 
     def run(self):
         try:
@@ -835,8 +877,12 @@ class BatchUnmaskWorker(QThread):
                     break
                 self.progress.emit(i, total, os.path.basename(p))
                 try:
-                    new_path = self.remove_background_to_webp(p, remover)
-                    if new_path:
+                    result = self.remove_background_to_webp(p, remover)
+                    if result:
+                        new_path, old_path = result
+                        # 刪除對應 npz
+                        if self.cfg.get("mask_delete_npz_on_move", True):
+                            delete_matching_npz(old_path)
                         self.per_image.emit(p, new_path)
                 except Exception as e:
                     print(f"[BatchUnmask] {p} 失敗: {e}")
@@ -1308,6 +1354,19 @@ class SettingsDialog(QDialog):
         self.chk_force_lower = QCheckBox("英文文字是否一律小寫（LLM 英文句 / tags 正規化）")
         self.chk_force_lower.setChecked(bool(self.cfg.get("english_force_lowercase", True)))
         text_layout.addWidget(self.chk_force_lower)
+
+        self.chk_auto_remove_empty = QCheckBox("自動移除空行（text 裡面有空行或全空白自動移除）")
+        self.chk_auto_remove_empty.setChecked(bool(self.cfg.get("text_auto_remove_empty_lines", True)))
+        text_layout.addWidget(self.chk_auto_remove_empty)
+
+        self.chk_auto_format = QCheckBox("自動格式化（插入時用 , 分割去除空白，用 ', ' 重組）")
+        self.chk_auto_format.setChecked(bool(self.cfg.get("text_auto_format", True)))
+        text_layout.addWidget(self.chk_auto_format)
+
+        self.chk_auto_save = QCheckBox("自動儲存 txt（有改動時自動儲存）")
+        self.chk_auto_save.setChecked(bool(self.cfg.get("text_auto_save", True)))
+        text_layout.addWidget(self.chk_auto_save)
+
         text_layout.addStretch(1)
         self.tabs.addTab(tab_text, "Text")
 
@@ -1330,6 +1389,10 @@ class SettingsDialog(QDialog):
         mask_layout.addLayout(form3)
         mask_layout.addWidget(self.chk_only_bg)
         mask_layout.addWidget(self.chk_detect_text)
+
+        self.chk_delete_npz = QCheckBox("移動舊圖時刪除對應 npz（含完整圖檔名的 npz 會被刪除）")
+        self.chk_delete_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
+        mask_layout.addWidget(self.chk_delete_npz)
 
         hint = QLabel("OCR 依賴 imgutils.ocr.detect_text_with_ocr；未安裝時會自動略過。")
         hint.setStyleSheet("color:#666;")
@@ -1377,6 +1440,9 @@ class SettingsDialog(QDialog):
         cfg["drop_overlap"] = self.chk_drop_overlap.isChecked()
 
         cfg["english_force_lowercase"] = self.chk_force_lower.isChecked()
+        cfg["text_auto_remove_empty_lines"] = self.chk_auto_remove_empty.isChecked()
+        cfg["text_auto_format"] = self.chk_auto_format.isChecked()
+        cfg["text_auto_save"] = self.chk_auto_save.isChecked()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
         a = max(0, min(255, a))
@@ -1388,6 +1454,7 @@ class SettingsDialog(QDialog):
         cfg["mask_default_format"] = fmt
         cfg["mask_batch_only_if_has_background_tag"] = self.chk_only_bg.isChecked()
         cfg["mask_batch_detect_text_enabled"] = self.chk_detect_text.isChecked()
+        cfg["mask_delete_npz_on_move"] = self.chk_delete_npz.isChecked()
 
         return cfg
 
@@ -1864,13 +1931,42 @@ class MainWindow(QMainWindow):
     def on_text_changed(self):
         if not self.current_image_path:
             return
-        txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
+        
         content = self.txt_edit.toPlainText()
-        try:
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-        except Exception:
-            pass
+        original_content = content
+        
+        # 自動移除空行
+        if self.settings.get("text_auto_remove_empty_lines", True):
+            lines = content.split("\n")
+            lines = [line for line in lines if line.strip()]
+            content = "\n".join(lines)
+        
+        # 自動格式化 (用 , 分割，去除空白，用 ', ' 重組)
+        if self.settings.get("text_auto_format", True):
+            # 如果內容看起來是 CSV 格式
+            if "," in content and "\n" not in content.strip():
+                parts = [p.strip() for p in content.split(",") if p.strip()]
+                content = ", ".join(parts)
+        
+        # 如果內容有變動，更新編輯框
+        if content != original_content:
+            cursor_pos = self.txt_edit.textCursor().position()
+            self.txt_edit.blockSignals(True)
+            self.txt_edit.setPlainText(content)
+            self.txt_edit.blockSignals(False)
+            # 嘗試恢復游標位置
+            cursor = self.txt_edit.textCursor()
+            cursor.setPosition(min(cursor_pos, len(content)))
+            self.txt_edit.setTextCursor(cursor)
+        
+        # 自動儲存 txt
+        if self.settings.get("text_auto_save", True):
+            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
+            try:
+                with open(txt_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            except Exception:
+                pass
 
         self.flow_top.sync_state(content)
         self.flow_custom.sync_state(content)
@@ -2494,9 +2590,13 @@ class MainWindow(QMainWindow):
         try:
             remover = Remover()
             old_path = self.current_image_path
-            new_path = BatchUnmaskWorker.remove_background_to_webp(old_path, remover)
-            if not new_path:
+            result = BatchUnmaskWorker.remove_background_to_webp(old_path, remover)
+            if not result:
                 return
+            new_path, _ = result
+            # 刪除對應 npz
+            if self.settings.get("mask_delete_npz_on_move", True):
+                delete_matching_npz(old_path)
             self._replace_image_path_in_list(old_path, new_path)
             self.load_image()
             self.statusBar().showMessage("Unmask 完成", 5000)
@@ -2515,7 +2615,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Batch Unmask", "找不到 tagger 含 background 的圖片")
             return
 
-        self.batch_unmask_thread = BatchUnmaskWorker(targets)
+        self.batch_unmask_thread = BatchUnmaskWorker(targets, self.settings)
         self.batch_unmask_thread.progress.connect(self.show_progress)
         self.batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
         self.batch_unmask_thread.done.connect(self.on_batch_unmask_done)
