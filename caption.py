@@ -2206,18 +2206,6 @@ class MainWindow(QMainWindow):
 
         self._setup_menus()
 
-        batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
-        batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
-        tools_menu.addAction(batch_unmask_action)
-
-        mask_text_action = QAction(self.tr("btn_mask_text"), self)
-        mask_text_action.triggered.connect(self.run_batch_mask_text)
-        tools_menu.addAction(mask_text_action)
-
-        stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
-        stroke_action.triggered.connect(self.open_stroke_eraser)
-        tools_menu.addAction(stroke_action)
-
     def make_hline(self):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
