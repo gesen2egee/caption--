@@ -200,7 +200,22 @@ LOCALIZATION = {
         "setting_bl_suffixes": "黑名單後綴 (Blacklist Suffixes):",
         "msg_select_dir": "選擇圖片目錄",
         "msg_no_images": "在此目錄下找不到圖片。",
+        "msg_delete_confirm": "確定要將此圖片移動到 no_used 資料夾？",
         "msg_unmask_done": "去背處理完成。",
+        "setting_tab_text": "Text (文字)",
+        "setting_tab_llm": "LLM (模型)",
+        "setting_tab_tagger": "Tagger (標籤)",
+        "setting_tab_mask": "Mask (遮罩)",
+        "setting_llm_sys_prompt": "系統提示詞 (System Prompt):",
+        "setting_llm_def_prompt": "預設提示詞模板 (Default Prompt):",
+        "setting_llm_cust_prompt": "自訂提示詞模板 (Custom Prompt):",
+        "setting_llm_def_tags": "預設 Custom Tags (以逗號或換行分隔):",
+        "setting_tagger_gen_thresh": "一般標籤閾值 (General Threshold):",
+        "setting_tagger_char_thresh": "特徵標籤閾值 (Character Threshold):",
+        "setting_tagger_gen_mcut": "一般標籤啟用 MCut",
+        "setting_tagger_char_mcut": "特徵標籤啟用 MCut",
+        "setting_tagger_drop_overlap": "移除重疊標籤 (Drop Overlap)",
+        "setting_mask_ocr_hint": "OCR 依賴 imgutils.ocr.detect_text_with_ocr；未安裝時會自動略過。",
     },
     "en": {
         "app_title": "AI Captioning Assistant",
@@ -267,7 +282,22 @@ LOCALIZATION = {
         "setting_bl_suffixes": "Blacklist Suffixes:",
         "msg_select_dir": "Select Image Directory",
         "msg_no_images": "No images found in this directory.",
+        "msg_delete_confirm": "Move image to 'no_used' folder?",
         "msg_unmask_done": "Background removal finished.",
+        "setting_tab_text": "Text",
+        "setting_tab_llm": "LLM",
+        "setting_tab_tagger": "Tagger",
+        "setting_tab_mask": "Mask",
+        "setting_llm_sys_prompt": "System Prompt:",
+        "setting_llm_def_prompt": "Default Prompt Template:",
+        "setting_llm_cust_prompt": "Custom Prompt Template:",
+        "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
+        "setting_tagger_gen_thresh": "General Threshold:",
+        "setting_tagger_char_thresh": "Character Threshold:",
+        "setting_tagger_gen_mcut": "General MCut Enabled",
+        "setting_tagger_char_mcut": "Character MCut Enabled",
+        "setting_tagger_drop_overlap": "Drop Overlap",
+        "setting_mask_ocr_hint": "OCR relies on imgutils.ocr.detect_text_with_ocr; skips if not installed.",
     }
 }
 
@@ -1629,14 +1659,18 @@ class SettingsDialog(QDialog):
         self.setWindowTitle(self.tr("btn_settings"))
         self.setMinimumWidth(640)
 
-        layout = QVBoxLayout(self)
+        self.layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
-        layout.addWidget(self.tabs, 1)
+        self.layout.addWidget(self.tabs, 1)
+        
+        # 初始化 UI
+        self._init_ui()
 
     def tr(self, key: str) -> str:
         lang = self.cfg.get("ui_language", "zh_tw")
         return LOCALIZATION.get(lang, LOCALIZATION["zh_tw"]).get(key, key)
 
+    def _init_ui(self):
         # ---- UI ----
         tab_ui = QWidget()
         ui_layout = QVBoxLayout(tab_ui)
@@ -1681,26 +1715,26 @@ class SettingsDialog(QDialog):
         form.addRow("Model:", self.ed_model)
         llm_layout.addLayout(form)
 
-        llm_layout.addWidget(QLabel("System Prompt:"))
+        llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
         self.ed_system_prompt = QPlainTextEdit()
         self.ed_system_prompt.setPlainText(str(self.cfg.get("llm_system_prompt", DEFAULT_SYSTEM_PROMPT)))
         self.ed_system_prompt.setMinimumHeight(90)
         llm_layout.addWidget(self.ed_system_prompt)
 
-        llm_layout.addWidget(QLabel("Default Prompt:"))
+        llm_layout.addWidget(QLabel(self.tr("setting_llm_def_prompt")))
         self.ed_user_template = QPlainTextEdit()
         self.ed_user_template.setPlainText(str(self.cfg.get("llm_user_prompt_template", DEFAULT_USER_PROMPT_TEMPLATE)))
         self.ed_user_template.setMinimumHeight(200)
         llm_layout.addWidget(self.ed_user_template, 1)
 
 
-        llm_layout.addWidget(QLabel("Custom Prompt:"))
+        llm_layout.addWidget(QLabel(self.tr("setting_llm_cust_prompt")))
         self.ed_custom_template = QPlainTextEdit()
         self.ed_custom_template.setPlainText(str(self.cfg.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
         self.ed_custom_template.setMinimumHeight(200)
         llm_layout.addWidget(self.ed_custom_template, 1)
 
-        llm_layout.addWidget(QLabel("預設 Custom Tags (Comma or Newline):"))
+        llm_layout.addWidget(QLabel(self.tr("setting_llm_def_tags")))
         self.ed_default_custom_tags = QPlainTextEdit()
         tags = self.cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS))
         if isinstance(tags, list):
@@ -1710,7 +1744,7 @@ class SettingsDialog(QDialog):
         self.ed_default_custom_tags.setMinimumHeight(80)
         llm_layout.addWidget(self.ed_default_custom_tags)
 
-        self.tabs.addTab(tab_llm, "LLM")
+        self.tabs.addTab(tab_llm, self.tr("setting_tab_llm"))
 
         # ---- Tagger ----
         tab_tagger = QWidget()
@@ -1718,26 +1752,26 @@ class SettingsDialog(QDialog):
         form2 = QFormLayout()
         self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
         self.ed_general_threshold = QLineEdit(str(self.cfg.get("general_threshold", 0.2)))
-        self.chk_general_mcut = QCheckBox("general_mcut_enabled")
+        self.chk_general_mcut = QCheckBox(self.tr("setting_tagger_gen_mcut"))
         self.chk_general_mcut.setChecked(bool(self.cfg.get("general_mcut_enabled", False)))
 
         self.ed_character_threshold = QLineEdit(str(self.cfg.get("character_threshold", 0.85)))
-        self.chk_character_mcut = QCheckBox("character_mcut_enabled")
+        self.chk_character_mcut = QCheckBox(self.tr("setting_tagger_char_mcut"))
         self.chk_character_mcut.setChecked(bool(self.cfg.get("character_mcut_enabled", True)))
 
-        self.chk_drop_overlap = QCheckBox("drop_overlap")
+        self.chk_drop_overlap = QCheckBox(self.tr("setting_tagger_drop_overlap"))
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
 
         form2.addRow(self.tr("setting_tagger_model"), self.ed_tagger_model)
-        form2.addRow("general_threshold:", self.ed_general_threshold)
+        form2.addRow(self.tr("setting_tagger_gen_thresh"), self.ed_general_threshold)
         form2.addRow("", self.chk_general_mcut)
-        form2.addRow("character_threshold:", self.ed_character_threshold)
+        form2.addRow(self.tr("setting_tagger_char_thresh"), self.ed_character_threshold)
         form2.addRow("", self.chk_character_mcut)
         form2.addRow("", self.chk_drop_overlap)
 
         tagger_layout.addLayout(form2)
         tagger_layout.addStretch(1)
-        self.tabs.addTab(tab_tagger, "Tagger")
+        self.tabs.addTab(tab_tagger, self.tr("setting_tab_tagger"))
 
         # ---- Text ----
         tab_text = QWidget()
@@ -1780,7 +1814,7 @@ class SettingsDialog(QDialog):
         text_layout.addWidget(self.chk_folder_trigger)
 
         text_layout.addStretch(1)
-        self.tabs.addTab(tab_text, "Text")
+        self.tabs.addTab(tab_text, self.tr("setting_tab_text"))
 
         # ---- Mask ----
         tab_mask = QWidget()
@@ -1806,11 +1840,11 @@ class SettingsDialog(QDialog):
         self.chk_delete_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
         mask_layout.addWidget(self.chk_delete_npz)
 
-        hint = QLabel("OCR 依賴 imgutils.ocr.detect_text_with_ocr；未安裝時會自動略過。")
+        hint = QLabel(self.tr("setting_mask_ocr_hint"))
         hint.setStyleSheet("color:#666;")
         mask_layout.addWidget(hint)
         mask_layout.addStretch(1)
-        self.tabs.addTab(tab_mask, "Mask")
+        self.tabs.addTab(tab_mask, self.tr("setting_tab_mask"))
 
         # ---- Tags Filter (Character Tags) ----
         tab_filter = QWidget()
