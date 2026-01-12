@@ -2,30 +2,29 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 33-97]    Imports & 外部依賴
-# [Ln 99-171]   Configuration & Globals (設定檔、預設值、text_auto_*、mask_delete_npz_on_move)
-# [Ln 173-240]  Settings Helpers (load/save/coerce 函式)
-# [Ln 242-340]  Utils: delete_matching_npz、JSON sidecar (load/save_image_sidecar)、create_checkerboard
-# [Ln 342-470]  Utils / Parsing (標籤解析、文字處理)
-# [Ln 472-710]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 712-840]  BatchMaskTextWorker (OCR 批次遮罩，輸出到 unmask/，記錄 masked_text)
-# [Ln 842-940]  BatchUnmaskWorker (批次去背，記錄 masked_background)
-# [Ln 942-1080] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1082-1300] UI Components (TagButton, TagFlowWidget, AdvancedFindReplaceDialog)
-# [Ln 1302-1490] SettingsDialog (設定對話框，Text 3選項 + Mask 1選項)
-# [Ln 1492-1550] MainWindow.__init__ (主視窗初始化)
-# [Ln 1552-1800] MainWindow.init_ui (UI 建構)
-# [Ln 1802-1840] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 1842-2000] MainWindow 檔案/圖片載入 & on_text_changed (自動格式化)
-# [Ln 2002-2070] MainWindow Token 計數
-# [Ln 2072-2230] MainWindow TAGS/NL (改用 JSON sidecar，不再產生 .tagger.txt/.nl.txt)
-# [Ln 2232-2320] MainWindow NL Paging
-# [Ln 2322-2460] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2462-2590] MainWindow LLM 生成
-# [Ln 2592-2760] MainWindow Tools: Unmask / Stroke Eraser (含 npz 刪除、masked_background 記錄)
-# [Ln 2762-2870] MainWindow Batch Tagger / LLM
-# [Ln 2872-2940] MainWindow Find/Replace & Batch Mask Text
-# [Ln 2942-2981] MainWindow Settings 儲存 & main 入口
+# [Ln 32-97]    Imports & 外部依賴
+# [Ln 98-185]   Configuration & Globals (含 Batch to txt 與 Char Tag 過濾設定)
+# [Ln 187-255]  Settings Helpers (load/save/coerce 函式)
+# [Ln 257-410]  Utils: delete_matching_npz、JSON sidecar、checkerboard
+# [Ln 412-580]  Utils / Parsing / Tag Logic (含 is_basic_character_tag)
+# [Ln 582-840]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 842-1000] BatchMaskTextWorker (OCR 批次遮罩)
+# [Ln 1002-1130] BatchUnmaskWorker (批次去背)
+# [Ln 1132-1270] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1272-1530] UI Components (TagButton 紅框、TagFlowWidget、Advanced Find/Replace)
+# [Ln 1532-1780] SettingsDialog (Text 分頁新增 Batch 選項 + Tags Filter 分頁)
+# [Ln 1782-1850] MainWindow.__init__ (主視窗初始化)
+# [Ln 1852-2150] MainWindow.init_ui (新增 Batch to txt 按鈕)
+# [Ln 2152-2200] MainWindow 快捷鍵 & 滾輪事件
+# [Ln 2202-2370] MainWindow 檔案/圖片載入 & on_text_changed
+# [Ln 2372-2440] MainWindow Token 計數
+# [Ln 2442-2610] MainWindow TAGS/NL (JSON sidecar 整合)
+# [Ln 2612-2700] MainWindow NL Paging
+# [Ln 2702-2850] MainWindow Tag 插入/移除 & Tagger
+# [Ln 2852-2990] MainWindow LLM 生成
+# [Ln 2992-3080] MainWindow Tools: Unmask / Stroke Eraser
+# [Ln 3082-3220] MainWindow Batch Tagger / LLM to txt (含寫入與過濾邏輯)
+# [Ln 3222-3235] MainWindow Settings 儲存 & main 入口
 #
 # ============================================================
 
@@ -160,6 +159,15 @@ DEFAULT_APP_SETTINGS = {
     "text_auto_remove_empty_lines": True,  # 自動移除空行
     "text_auto_format": True,              # 插入時自動格式化
     "text_auto_save": True,                # 改動時自動儲存
+    "batch_to_txt_mode": "append",         # append | overwrite
+    "batch_to_txt_folder_trigger": False,  # 是否將資料夾名作為觸發詞加到句首
+
+    # Character Tags Filter (based on imgutils)
+    "char_tag_whitelist_suffixes": ['anal_hair', 'anal_tail', 'arm_behind_head', 'arm_hair', 'arm_under_breasts', 'arms_behind_head', 'bird_on_head', 'blood_in_hair', 'breasts_on_glass', 'breasts_on_head', 'cat_on_head', 'closed_eyes', 'clothed_female_nude_female', 'clothed_female_nude_male', 'clothed_male_nude_female', 'clothes_between_breasts', 'cream_on_face', 'drying_hair', 'empty_eyes', 'face_to_breasts', 'facial', 'food_on_face', 'food_on_head', 'game_boy', "grabbing_another's_hair", 'grabbing_own_breast', 'gun_to_head', 'half-closed_eyes', 'head_between_breasts', 'heart_in_eye', 'multiple_boys', 'multiple_girls', 'object_on_breast', 'object_on_head', 'paint_splatter_on_face', 'parted_lips', 'penis_on_face', 'person_on_head', 'pokemon_on_head', 'pubic_hair', 'rabbit_on_head', 'rice_on_face', 'severed_head', 'star_in_eye', 'sticker_on_face', 'tentacles_on_male', 'tying_hair'],
+    "char_tag_whitelist_prefixes": ['holding', 'hand on', 'hands on', 'hand to', 'hands to', 'hand in', 'hands in', 'hand over', 'hands over', 'futa with', 'futa on', 'cum on', 'covering', 'adjusting', 'rubbing', 'sitting', 'shading', 'playing', 'cutting'],
+    "char_tag_whitelist_words": ['drill'],
+    "char_tag_blacklist_suffixes": ['eyes', 'skin', 'hair', 'bun', 'bangs', 'cut', 'sidelocks', 'twintails', 'braid', 'braids', 'afro', 'ahoge', 'drill', 'drills', 'bald', 'dreadlocks', 'side up', 'ponytail', 'updo', 'beard', 'mustache', 'pointy ears', 'ear', 'horn', 'tail', 'wing', 'ornament', 'hairband', 'pupil', 'bow', 'eyewear', 'headwear', 'ribbon', 'crown', 'cap', 'hat', 'hairclip', 'breast', 'mole', 'halo', 'earrings', 'animal ear fluff', 'hair flower', 'glasses', 'fang', 'female', 'girl', 'boy', 'male', 'beret', 'heterochromia', 'headdress', 'headgear', 'eyepatch', 'headphones', 'eyebrows', 'eyelashes', 'sunglasses', 'hair intakes', 'scrunchie', 'ear_piercing', 'head', 'on face', 'on head', 'on hair', 'headband', 'hair rings', 'under_mouth', 'freckles', 'lip', 'eyeliner', 'eyeshadow', 'tassel', 'over one eye', 'drill', 'drill hair'],
+    "char_tag_blacklist_prefixes": ['hair over', 'hair between', 'facial'],
 
     # Mask / batch mask text
     "mask_default_alpha": 0,  # 0-255, 0 = fully transparent
@@ -459,6 +467,50 @@ def smart_parse_tags(text):
                 parsed_items.append({'text': s.strip(), 'trans': None})
 
     return parsed_items
+
+
+def is_basic_character_tag(tag: str, cfg: dict) -> bool:
+    """
+    判定一個 tag 是否為特徵標籤 (Basic Character Tag)。
+    邏輯：(匹配黑名單前綴/呼綴) AND (不匹配白名單單字/前綴/後綴)。
+    """
+    if not tag:
+        return False
+    
+    # 正規化標籤以進行匹配
+    t = tag.strip().lower().replace("_", " ")
+    
+    # 1. 檢查白名單 (優先)
+    wl_words = cfg.get("char_tag_whitelist_words", [])
+    if t in [w.strip().lower().replace("_", " ") for w in wl_words]:
+        return False
+        
+    wl_prefixes = cfg.get("char_tag_whitelist_prefixes", [])
+    for p in wl_prefixes:
+        pre = p.strip().lower().replace("_", " ")
+        if t.startswith(pre + " ") or t == pre:
+            return False
+            
+    wl_suffixes = cfg.get("char_tag_whitelist_suffixes", [])
+    for s in wl_suffixes:
+        suf = s.strip().lower().replace("_", " ")
+        if t.endswith(" " + suf) or t == suf:
+            return False
+            
+    # 2. 檢查黑名單
+    bl_prefixes = cfg.get("char_tag_blacklist_prefixes", [])
+    for p in bl_prefixes:
+        pre = p.strip().lower().replace("_", " ")
+        if t.startswith(pre + " ") or t == pre:
+            return True
+            
+    bl_suffixes = cfg.get("char_tag_blacklist_suffixes", [])
+    for s in bl_suffixes:
+        suf = s.strip().lower().replace("_", " ")
+        if t.endswith(" " + suf) or t == suf:
+            return True
+            
+    return False
 
 
 def normalize_for_match(s: str) -> str:
@@ -1119,21 +1171,33 @@ class TagButton(QPushButton):
 
         self.update_label()
 
-        self.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #ccc;
+        self.is_character = False
+        self.update_style()
+        self.clicked.connect(self.on_click)
+
+    def set_is_character(self, val: bool):
+        self.is_character = val
+        self.update_style()
+
+    def update_style(self):
+        border_color = "red" if self.is_character else "#ccc"
+        border_width = "2px" if self.is_character else "1px"
+        checked_border = "red" if self.is_character else "#0055aa"
+        
+        self.setStyleSheet(f"""
+            QPushButton {{
+                border: {border_width} solid {border_color};
                 border-radius: 4px;
                 background-color: #f0f0f0;
-            }
-            QPushButton:checked {
+            }}
+            QPushButton:checked {{
                 background-color: #d0e8ff;
-                border: 1px solid #0055aa;
-            }
-            QPushButton:hover {
-                border: 1px solid #999;
-            }
+                border: {border_width} solid {checked_border};
+            }}
+            QPushButton:hover {{
+                border: {border_width} solid #999;
+            }}
         """)
-        self.clicked.connect(self.on_click)
 
     def update_label(self):
         safe_text = str(self.raw_text).replace("<", "&lt;").replace(">", "&gt;")
@@ -1184,7 +1248,7 @@ class TagFlowWidget(QWidget):
     def set_translations_csv(self, trans):
         self.translations_csv = trans
 
-    def render_tags_flow(self, parsed_items, active_text_content):
+    def render_tags_flow(self, parsed_items, active_text_content, cfg=None):
         while self.container_layout.count():
             child = self.container_layout.takeAt(0)
             if child.widget():
@@ -1229,7 +1293,13 @@ class TagFlowWidget(QWidget):
 
             btn.toggled_tag.connect(self.handle_tag_toggle)
             self.buttons[text] = btn
-
+            # 特徵標籤標記
+            if cfg:
+                if is_basic_character_tag(text, cfg):
+                    btn.set_is_character(True)
+            elif is_basic_character_tag(text, DEFAULT_APP_SETTINGS):
+                btn.set_is_character(True)
+            
             current_row_layout.addWidget(btn)
             item_count_in_row += 1
 
@@ -1412,6 +1482,27 @@ class SettingsDialog(QDialog):
         self.chk_auto_save.setChecked(bool(self.cfg.get("text_auto_save", True)))
         text_layout.addWidget(self.chk_auto_save)
 
+        # Batch to txt options
+        text_layout.addWidget(self.make_hline())
+        text_layout.addWidget(QLabel("<b>Batch to txt 設定</b>"))
+        
+        mode_grp = QGroupBox("寫入模式")
+        mode_lay = QHBoxLayout()
+        self.rb_batch_append = QRadioButton("附加到句尾")
+        self.rb_batch_overwrite = QRadioButton("覆寫原檔")
+        if self.cfg.get("batch_to_txt_mode", "append") == "overwrite":
+            self.rb_batch_overwrite.setChecked(True)
+        else:
+            self.rb_batch_append.setChecked(True)
+        mode_lay.addWidget(self.rb_batch_append)
+        mode_lay.addWidget(self.rb_batch_overwrite)
+        mode_grp.setLayout(mode_lay)
+        text_layout.addWidget(mode_grp)
+        
+        self.chk_folder_trigger = QCheckBox("將資料夾名作為觸發詞加到句首")
+        self.chk_folder_trigger.setChecked(bool(self.cfg.get("batch_to_txt_folder_trigger", False)))
+        text_layout.addWidget(self.chk_folder_trigger)
+
         text_layout.addStretch(1)
         self.tabs.addTab(tab_text, "Text")
 
@@ -1444,6 +1535,32 @@ class SettingsDialog(QDialog):
         mask_layout.addWidget(hint)
         mask_layout.addStretch(1)
         self.tabs.addTab(tab_mask, "Mask")
+
+        # ---- Tags Filter (Character Tags) ----
+        tab_filter = QWidget()
+        filter_layout = QVBoxLayout(tab_filter)
+        filter_layout.addWidget(QLabel("<b>特徵標籤 (Character Tags) 過濾設定</b>"))
+        filter_layout.addWidget(QLabel("符合黑名單且不符合白名單的標籤將被標記為紅框，且在 Batch to txt 時可選擇刪除。"))
+        
+        f_form = QFormLayout()
+        self.ed_wl_words = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
+        self.ed_wl_prefixes = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_prefixes", [])))
+        self.ed_wl_suffixes = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_suffixes", [])))
+        self.ed_bl_prefixes = QLineEdit(", ".join(self.cfg.get("char_tag_blacklist_prefixes", [])))
+        self.ed_bl_suffixes = QPlainTextEdit(", ".join(self.cfg.get("char_tag_blacklist_suffixes", [])))
+        self.ed_bl_suffixes.setMaximumHeight(100)
+
+        f_form.addRow("白名單單字 (Whitelist Words):", self.ed_wl_words)
+        f_form.addRow("白名單前綴 (Whitelist Prefixes):", self.ed_wl_prefixes)
+        f_form.addRow("白名單後綴 (Whitelist Suffixes):", self.ed_wl_suffixes)
+        f_form.addRow("黑名單前綴 (Blacklist Prefixes):", self.ed_bl_prefixes)
+        filter_layout.addLayout(f_form)
+        
+        filter_layout.addWidget(QLabel("黑名單後綴 (Blacklist Suffixes):"))
+        filter_layout.addWidget(self.ed_bl_suffixes)
+        filter_layout.addStretch(1)
+        
+        self.tabs.addTab(tab_filter, "Tags Filter")
 
         # Buttons
         btns = QHBoxLayout()
@@ -1488,6 +1605,8 @@ class SettingsDialog(QDialog):
         cfg["text_auto_remove_empty_lines"] = self.chk_auto_remove_empty.isChecked()
         cfg["text_auto_format"] = self.chk_auto_format.isChecked()
         cfg["text_auto_save"] = self.chk_auto_save.isChecked()
+        cfg["batch_to_txt_mode"] = "overwrite" if self.rb_batch_overwrite.isChecked() else "append"
+        cfg["batch_to_txt_folder_trigger"] = self.chk_folder_trigger.isChecked()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
         a = max(0, min(255, a))
@@ -1500,6 +1619,15 @@ class SettingsDialog(QDialog):
         cfg["mask_batch_only_if_has_background_tag"] = self.chk_only_bg.isChecked()
         cfg["mask_batch_detect_text_enabled"] = self.chk_detect_text.isChecked()
         cfg["mask_delete_npz_on_move"] = self.chk_delete_npz.isChecked()
+
+        # Tags Filter
+        cfg["char_tag_whitelist_words"] = [x.strip() for x in self.ed_wl_words.text().split(",") if x.strip()]
+        cfg["char_tag_whitelist_prefixes"] = [x.strip() for x in self.ed_wl_prefixes.text().split(",") if x.strip()]
+        cfg["char_tag_whitelist_suffixes"] = [x.strip() for x in self.ed_wl_suffixes.text().split(",") if x.strip()]
+        cfg["char_tag_blacklist_prefixes"] = [x.strip() for x in self.ed_bl_prefixes.text().split(",") if x.strip()]
+        
+        raw_bl_suf = self.ed_bl_suffixes.toPlainText().replace("\n", ",")
+        cfg["char_tag_blacklist_suffixes"] = [x.strip() for x in raw_bl_suf.split(",") if x.strip()]
 
         return cfg
 
@@ -1618,6 +1746,10 @@ class MainWindow(QMainWindow):
         self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
         tags_toolbar.addWidget(self.btn_batch_tagger)
 
+        self.btn_batch_tagger_to_txt = QPushButton("Batch Tagger to txt")
+        self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
+        tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
+
         self.btn_add_custom_tag = QPushButton("Add Tag")
         self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
         tags_toolbar.addWidget(self.btn_add_custom_tag)
@@ -1682,6 +1814,10 @@ class MainWindow(QMainWindow):
         self.btn_batch_llm = QPushButton("Batch LLM")
         self.btn_batch_llm.clicked.connect(self.run_batch_llm)
         nl_toolbar.addWidget(self.btn_batch_llm)
+
+        self.btn_batch_llm_to_txt = QPushButton("Batch LLM to txt")
+        self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
+        nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
 
         self.btn_prev_nl = QPushButton("Prev")
         self.btn_prev_nl.clicked.connect(self.prev_nl_page)
@@ -2219,22 +2355,26 @@ class MainWindow(QMainWindow):
 
         self.flow_top.render_tags_flow(
             smart_parse_tags(", ".join(self.top_tags)),
-            active_text
+            active_text,
+            self.settings
         )
         self.flow_custom.render_tags_flow(
             smart_parse_tags(", ".join(self.custom_tags)),
-            active_text
+            active_text,
+            self.settings
         )
         self.flow_tagger.render_tags_flow(
             smart_parse_tags(", ".join(self.tagger_tags)),
-            active_text
+            active_text,
+            self.settings
         )
 
     def refresh_nl_tab(self):
         active_text = self.txt_edit.toPlainText()
         self.flow_nl.render_tags_flow(
             smart_parse_tags(self.nl_latest),
-            active_text
+            active_text,
+            self.settings
         )
 
 
@@ -2755,12 +2895,113 @@ class MainWindow(QMainWindow):
         self.btn_batch_tagger.setEnabled(False)
         self.btn_auto_tag.setEnabled(False)
 
-        self.batch_tagger_thread = BatchTaggerWorker(self.image_files, self.settings)
+        self.batch_tagger_thread = TaggerWorker(self.image_files, self.settings) if isinstance(self.image_files, str) else BatchTaggerWorker(self.image_files, self.settings)
         self.batch_tagger_thread.progress.connect(self.show_progress)
         self.batch_tagger_thread.per_image.connect(self.on_batch_tagger_per_image)
         self.batch_tagger_thread.done.connect(self.on_batch_tagger_done)
         self.batch_tagger_thread.error.connect(self.on_batch_error)
         self.batch_tagger_thread.start()
+
+    def run_batch_tagger_to_txt(self):
+        if not self.image_files:
+            return
+        
+        delete_chars = self.prompt_delete_chars()
+        if delete_chars is None:
+            return
+            
+        self._is_batch_to_txt = True
+        self._batch_delete_chars = delete_chars
+        
+        self.btn_batch_tagger_to_txt.setEnabled(False)
+        self.run_batch_tagger()
+
+    def run_batch_llm_to_txt(self):
+        if not self.image_files:
+            return
+            
+        delete_chars = self.prompt_delete_chars()
+        if delete_chars is None:
+            return
+            
+        self._is_batch_to_txt = True
+        self._batch_delete_chars = delete_chars
+        
+        self.btn_batch_llm_to_txt.setEnabled(False)
+        self.run_batch_llm()
+
+    def prompt_delete_chars(self) -> bool:
+        """回傳 True=刪除, False=保留, None=取消"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Batch to txt")
+        msg.setText("是否自動刪除特徵標籤 (Character Tags)？")
+        msg.setInformativeText("將根據設定中的黑白名單過濾標籤或句子。")
+        btn_yes = msg.addButton("自動刪除", QMessageBox.ButtonRole.YesRole)
+        btn_no = msg.addButton("保留", QMessageBox.ButtonRole.NoRole)
+        btn_cancel = msg.addButton(QMessageBox.StandardButton.Cancel)
+        
+        msg.exec()
+        if msg.clickedButton() == btn_yes:
+            return True
+        elif msg.clickedButton() == btn_no:
+            return False
+        return None
+
+    def write_batch_result_to_txt(self, image_path, content, is_tagger: bool):
+        cfg = self.settings
+        delete_chars = getattr(self, "_batch_delete_chars", False)
+        mode = cfg.get("batch_to_txt_mode", "append")
+        folder_trigger = cfg.get("batch_to_txt_folder_trigger", False)
+        
+        items = []
+        if is_tagger:
+            raw_list = [x.strip() for x in content.split(",") if x.strip()]
+            if delete_chars:
+                raw_list = [t for t in raw_list if not is_basic_character_tag(t, cfg)]
+            items = raw_list
+        else:
+            sentences = [s.strip() for s in content.replace("\n", ". ").split(". ") if s.strip()]
+            if delete_chars:
+                sentences = [s for s in sentences if not is_basic_character_tag(s, cfg)]
+            items = sentences
+
+        if folder_trigger:
+            trigger = os.path.basename(os.path.dirname(image_path)).strip()
+            if trigger and trigger not in items:
+                items.insert(0, trigger)
+
+        txt_path = os.path.splitext(image_path)[0] + ".txt"
+        existing_content = ""
+        if mode == "append" and os.path.exists(txt_path):
+            try:
+                with open(txt_path, "r", encoding="utf-8") as f:
+                    existing_content = f.read().strip()
+            except Exception: pass
+        
+        if is_tagger:
+            new_part = ", ".join(items)
+            force_lower = cfg.get("english_force_lowercase", True)
+            if mode == "append" and existing_content:
+                final = cleanup_csv_like_text(existing_content + ", " + new_part, force_lower)
+            else:
+                final = cleanup_csv_like_text(new_part, force_lower)
+        else:
+            new_part = ". ".join(items)
+            if items and not new_part.endswith("."): 
+                new_part += "."
+            if mode == "append" and existing_content:
+                sep = " " if not existing_content.endswith(".") else " "
+                final = existing_content + sep + new_part
+            else:
+                final = new_part
+                
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(final)
+            if image_path == self.current_image_path:
+                self.txt_edit.setPlainText(final)
+        except Exception as e:
+            print(f"[BatchWriter] 寫入失敗 {txt_path}: {e}")
 
     def on_batch_tagger_per_image(self, image_path, raw_tags_str):
         self.save_tagger_tags_for_image(image_path, raw_tags_str)
@@ -2772,10 +3013,15 @@ class MainWindow(QMainWindow):
             self.tagger_tags = parts
             self.refresh_tags_tab()
             self.on_text_changed()
+        
+        if getattr(self, "_is_batch_to_txt", False):
+            self.write_batch_result_to_txt(image_path, raw_tags_str, is_tagger=True)
 
     def on_batch_tagger_done(self):
         self.btn_batch_tagger.setEnabled(True)
+        self.btn_batch_tagger_to_txt.setEnabled(True)
         self.btn_auto_tag.setEnabled(True)
+        self._is_batch_to_txt = False
         self.hide_progress()
         self.statusBar().showMessage("Batch Tagger 完成", 5000)
 
@@ -2834,17 +3080,25 @@ class MainWindow(QMainWindow):
             self.update_nl_page_controls()
             self.on_text_changed()
 
+        if getattr(self, "_is_batch_to_txt", False):
+            self.write_batch_result_to_txt(image_path, nl_content, is_tagger=False)
+
     def on_batch_llm_done(self):
         self.btn_batch_llm.setEnabled(True)
+        self.btn_batch_llm_to_txt.setEnabled(True)
         self.btn_run_llm.setEnabled(True)
+        self._is_batch_to_txt = False
         self.hide_progress()
         self.statusBar().showMessage("Batch LLM 完成", 5000)
 
     def on_batch_error(self, err):
         self.btn_batch_tagger.setEnabled(True)
+        self.btn_batch_tagger_to_txt.setEnabled(True)
         self.btn_auto_tag.setEnabled(True)
         self.btn_batch_llm.setEnabled(True)
+        self.btn_batch_llm_to_txt.setEnabled(True)
         self.btn_run_llm.setEnabled(True)
+        self._is_batch_to_txt = False
         self.hide_progress()
         self.statusBar().showMessage(f"Batch Error: {err}", 8000)
 

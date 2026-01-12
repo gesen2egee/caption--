@@ -11,7 +11,9 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 ### 🏷️ 智慧標籤
 - **WD14 Tagger** - 自動生成圖片標籤
 - **Batch Tagger** - 批次處理整個資料夾
+- **Batch Tagger to txt** - 批次將標籤直接寫入實體 `.txt` 檔案 (含過濾與格式化)
 - **標籤管理** - 支援資料夾/Meta/自訂標籤
+- **特徵標籤 (Character Tags)** - 自動識別並高亮 (紅框)，支援黑白名單過濾
 - **中英對照** - 自動載入 Tags.csv 翻譯
 
 ### 🤖 LLM 描述生成
@@ -19,6 +21,7 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 - **自然語言描述** - 生成英文句子 + 中文翻譯
 - **Default/Custom Prompt** - 雙模板切換
 - **NL 歷史** - 保留多次生成結果
+- **Batch LLM to txt** - 批次將 NL 描述直接寫入實體 `.txt` 檔案
 
 ### 🎨 圖片處理工具
 - **Remove Background** - 一鍵去背 (transparent_background)
@@ -79,8 +82,9 @@ python caption.py
 ### 設定 (Settings)
 - **LLM** - API Key、Model、Prompt 模板
 - **Tagger** - WD14 閾值、模型選擇
-- **Text** - 英文強制小寫
-- **Mask** - 預設透明度、格式、OCR 開關
+- **Text** - 英文強制小寫、自動格式化、Batch 寫入模式 (附加/覆寫)、資料夾觸發詞
+- **Tags Filter** - 特徵標籤黑白名單 (Prefixes/Suffixes/Words)
+- **Mask** - 預設透明度、格式、OCR 開關、舊圖移動時刪除對應 npz
 
 ---
 
