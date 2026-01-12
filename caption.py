@@ -192,12 +192,10 @@ LOCALIZATION = {
         "setting_mask_ocr": "自動遮罩文字區域",
         "setting_mask_delete_npz": "移動舊圖時刪除對應 npz",
         "setting_filter_title": "<b>特徵標籤過濾設定</b>",
-        "setting_filter_info": "符合黑名單且不符合白名單的標籤將顕示紅框，且在 Batch 寫入時可選擇刪除。",
-        "setting_wl_words": "白名單單字:",
-        "setting_wl_prefixes": "白名單前綴:",
-        "setting_wl_suffixes": "白名單後綴:",
-        "setting_bl_prefixes": "黑名單前綴:",
-        "setting_bl_suffixes": "黑名單後綴:",
+        "setting_filter_info": "符合黑名單且不符合白名單的內容將顯示紅框，且在 Batch 寫入時可選擇刪除。",
+        "setting_bl_words": "黑名單關鍵字:",
+        "setting_wl_words": "白名單關鍵字:",
+        "setting_tab_filter": "過濾",
         "msg_select_dir": "選擇圖片目錄",
         "msg_no_images": "在此目錄下找不到圖片。",
         "msg_delete_confirm": "確定要將此圖片移動到 no_used 資料夾？",
@@ -273,13 +271,11 @@ LOCALIZATION = {
         "setting_mask_only_bg": "Batch mask only if has 'background' tag",
         "setting_mask_ocr": "Batch mask text automatically (OCR)",
         "setting_mask_delete_npz": "Delete matching .npz when moving image",
-        "setting_filter_title": "<b>Character Tags Filter Settings</b>",
-        "setting_filter_info": "Tags matching blacklist and NOT in whitelist will be highlighted red and can be filtered in Batch to txt.",
-        "setting_wl_words": "Whitelist Words:",
-        "setting_wl_prefixes": "Whitelist Prefixes:",
-        "setting_wl_suffixes": "Whitelist Suffixes:",
-        "setting_bl_prefixes": "Blacklist Prefixes:",
-        "setting_bl_suffixes": "Blacklist Suffixes:",
+        "setting_filter_title": "<b>Content Filter Settings</b>",
+        "setting_filter_info": "Content matching blacklist and NOT in whitelist will be highlighted red and can be filtered on Batch write.",
+        "setting_bl_words": "Blacklist Keywords:",
+        "setting_wl_words": "Whitelist Keywords:",
+        "setting_tab_filter": "Filter",
         "msg_select_dir": "Select Image Directory",
         "msg_no_images": "No images found in this directory.",
         "msg_delete_confirm": "Move image to 'no_used' folder?",
@@ -407,12 +403,11 @@ DEFAULT_APP_SETTINGS = {
     "batch_to_txt_mode": "append",         # append | overwrite
     "batch_to_txt_folder_trigger": False,  # 是否將資料夾名作為觸發詞加到句首
 
-    # Character Tags Filter (based on imgutils)
-    "char_tag_whitelist_suffixes": ['anal_hair', 'anal_tail', 'arm_behind_head', 'arm_hair', 'arm_under_breasts', 'arms_behind_head', 'bird_on_head', 'blood_in_hair', 'breasts_on_glass', 'breasts_on_head', 'cat_on_head', 'closed_eyes', 'clothed_female_nude_female', 'clothed_female_nude_male', 'clothed_male_nude_female', 'clothes_between_breasts', 'cream_on_face', 'drying_hair', 'empty_eyes', 'face_to_breasts', 'facial', 'food_on_face', 'food_on_head', 'game_boy', "grabbing_another's_hair", 'grabbing_own_breast', 'gun_to_head', 'half-closed_eyes', 'head_between_breasts', 'heart_in_eye', 'multiple_boys', 'multiple_girls', 'object_on_breast', 'object_on_head', 'paint_splatter_on_face', 'parted_lips', 'penis_on_face', 'person_on_head', 'pokemon_on_head', 'pubic_hair', 'rabbit_on_head', 'rice_on_face', 'severed_head', 'star_in_eye', 'sticker_on_face', 'tentacles_on_male', 'tying_hair'],
-    "char_tag_whitelist_prefixes": ['holding', 'hand on', 'hands on', 'hand to', 'hands to', 'hand in', 'hands in', 'hand over', 'hands over', 'futa with', 'futa on', 'cum on', 'covering', 'adjusting', 'rubbing', 'sitting', 'shading', 'playing', 'cutting'],
-    "char_tag_whitelist_words": ['drill'],
-    "char_tag_blacklist_suffixes": ['eyes', 'skin', 'hair', 'bun', 'bangs', 'cut', 'sidelocks', 'twintails', 'braid', 'braids', 'afro', 'ahoge', 'drill', 'drills', 'bald', 'dreadlocks', 'side up', 'ponytail', 'updo', 'beard', 'mustache', 'pointy ears', 'ear', 'horn', 'tail', 'wing', 'ornament', 'hairband', 'pupil', 'bow', 'eyewear', 'headwear', 'ribbon', 'crown', 'cap', 'hat', 'hairclip', 'breast', 'mole', 'halo', 'earrings', 'animal ear fluff', 'hair flower', 'glasses', 'fang', 'female', 'girl', 'boy', 'male', 'beret', 'heterochromia', 'headdress', 'headgear', 'eyepatch', 'headphones', 'eyebrows', 'eyelashes', 'sunglasses', 'hair intakes', 'scrunchie', 'ear_piercing', 'head', 'on face', 'on head', 'on hair', 'headband', 'hair rings', 'under_mouth', 'freckles', 'lip', 'eyeliner', 'eyeshadow', 'tassel', 'over one eye', 'drill', 'drill hair'],
-    "char_tag_blacklist_prefixes": ['hair over', 'hair between', 'facial'],
+    # Character Tags Filter (simple word matching)
+    # 黑名單：包含這些 word 的 tag/句子會被標記
+    "char_tag_blacklist_words": ["hair", "eyes", "skin", "bun", "bangs", "sidelocks", "twintails", "braid", "ponytail", "beard", "mustache", "ear", "horn", "tail", "wing", "breast", "mole", "halo", "glasses", "fang", "heterochromia", "headband", "freckles", "lip", "eyebrows", "eyelashes"],
+    # 白名單：若包含這些 word，即使符合黑名單也不標記
+    "char_tag_whitelist_words": ["holding", "hand", "sitting", "covering", "playing", "background", "looking"],
 
     # Mask / batch mask text
     "mask_default_alpha": 0,  # 0-255, 0 = fully transparent
@@ -718,48 +713,36 @@ def smart_parse_tags(text):
     return parsed_items
 
 
-def is_basic_character_tag(tag: str, cfg: dict) -> bool:
+def is_basic_character_tag(text: str, cfg: dict) -> bool:
     """
-    判定一個 tag 是否為特徵標籤 (Basic Character Tag)。
-    邏輯：(匹配黑名單前綴/呼綴) AND (不匹配白名單單字/前綴/後綴)。
+    判定一段文字（tag 或句子）是否為特徵內容。
+    邏輯：任何黑名單 word 包含在文字中，且沒有任何白名單 word 包含在文字中。
     """
-    if not tag:
+    if not text:
         return False
     
-    # 正規化標籤以進行匹配
-    t = tag.strip().lower().replace("_", " ")
+    # 正規化：小寫，保持空格
+    t = text.strip().lower()
     
-    # 1. 檢查白名單 (優先)
-    wl_words = cfg.get("char_tag_whitelist_words", [])
-    if t in [w.strip().lower().replace("_", " ") for w in wl_words]:
+    # 取得黑白名單 words（以逗號分隔）
+    bl_words = [w.strip().lower() for w in cfg.get("char_tag_blacklist_words", []) if w.strip()]
+    wl_words = [w.strip().lower() for w in cfg.get("char_tag_whitelist_words", []) if w.strip()]
+    
+    # 如果沒有黑名單，直接回傳 False
+    if not bl_words:
         return False
-        
-    wl_prefixes = cfg.get("char_tag_whitelist_prefixes", [])
-    for p in wl_prefixes:
-        pre = p.strip().lower().replace("_", " ")
-        if t.startswith(pre + " ") or t == pre:
-            return False
-            
-    wl_suffixes = cfg.get("char_tag_whitelist_suffixes", [])
-    for s in wl_suffixes:
-        suf = s.strip().lower().replace("_", " ")
-        if t.endswith(" " + suf) or t == suf:
-            return False
-            
-    # 2. 檢查黑名單
-    bl_prefixes = cfg.get("char_tag_blacklist_prefixes", [])
-    for p in bl_prefixes:
-        pre = p.strip().lower().replace("_", " ")
-        if t.startswith(pre + " ") or t == pre:
-            return True
-            
-    bl_suffixes = cfg.get("char_tag_blacklist_suffixes", [])
-    for s in bl_suffixes:
-        suf = s.strip().lower().replace("_", " ")
-        if t.endswith(" " + suf) or t == suf:
-            return True
-            
-    return False
+    
+    # 檢查是否包含任何黑名單 word
+    has_blacklist = any(bw in t for bw in bl_words)
+    if not has_blacklist:
+        return False
+    
+    # 檢查是否包含任何白名單 word（若有則不算符合）
+    has_whitelist = any(ww in t for ww in wl_words)
+    if has_whitelist:
+        return False
+    
+    return True
 
 
 def normalize_for_match(s: str) -> str:
@@ -1439,9 +1422,11 @@ class TagButton(QPushButton):
             p = p.parent()
         
         is_dark = (theme == "dark")
+        # 紅框僅在未點選時顯示，點選後統一為藍色
         border_color = "red" if self.is_character else ("#555" if is_dark else "#ccc")
         border_width = "2px" if self.is_character else "1px"
-        checked_border = "red" if self.is_character else ("#007acc" if is_dark else "#0055aa")
+        # 點選後一律變藍色
+        checked_border = "#007acc" if is_dark else "#0055aa"
         bg_color = "#333" if is_dark else "#f0f0f0"
         checked_bg = "#444" if is_dark else "#d0e8ff"
         text_color = "#d4d4d4" if is_dark else "#333"
@@ -1455,7 +1440,7 @@ class TagButton(QPushButton):
             }}
             QPushButton:checked {{
                 background-color: {checked_bg};
-                border: {border_width} solid {checked_border};
+                border: 2px solid {checked_border};
             }}
             QPushButton:hover {{
                 border: {border_width} solid {"#777" if is_dark else "#999"};
@@ -1853,24 +1838,16 @@ class SettingsDialog(QDialog):
         filter_layout.addWidget(QLabel(self.tr("setting_filter_info")))
         
         f_form = QFormLayout()
+        self.ed_bl_words = QLineEdit(", ".join(self.cfg.get("char_tag_blacklist_words", [])))
         self.ed_wl_words = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
-        self.ed_wl_prefixes = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_prefixes", [])))
-        self.ed_wl_suffixes = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_suffixes", [])))
-        self.ed_bl_prefixes = QLineEdit(", ".join(self.cfg.get("char_tag_blacklist_prefixes", [])))
-        self.ed_bl_suffixes = QPlainTextEdit(", ".join(self.cfg.get("char_tag_blacklist_suffixes", [])))
-        self.ed_bl_suffixes.setMaximumHeight(100)
 
+        f_form.addRow(self.tr("setting_bl_words"), self.ed_bl_words)
         f_form.addRow(self.tr("setting_wl_words"), self.ed_wl_words)
-        f_form.addRow(self.tr("setting_wl_prefixes"), self.ed_wl_prefixes)
-        f_form.addRow(self.tr("setting_wl_suffixes"), self.ed_wl_suffixes)
-        f_form.addRow(self.tr("setting_bl_prefixes"), self.ed_bl_prefixes)
         filter_layout.addLayout(f_form)
         
-        filter_layout.addWidget(QLabel(self.tr("setting_bl_suffixes")))
-        filter_layout.addWidget(self.ed_bl_suffixes)
         filter_layout.addStretch(1)
         
-        self.tabs.addTab(tab_filter, "Tags Filter")
+        self.tabs.addTab(tab_filter, self.tr("setting_tab_filter"))
 
         # Buttons
         btns = QHBoxLayout()
@@ -1881,7 +1858,7 @@ class SettingsDialog(QDialog):
         self.btn_cancel.clicked.connect(self.reject)
         btns.addWidget(self.btn_ok)
         btns.addWidget(self.btn_cancel)
-        layout.addLayout(btns)
+        self.layout.addLayout(btns)
 
     def _parse_tags(self, s: str):
         raw = (s or "").strip()
@@ -1892,6 +1869,12 @@ class SettingsDialog(QDialog):
         else:
             parts = [x.strip() for x in raw.split(",") if x.strip()]
         return [p.replace("_", " ").strip() for p in parts if p.strip()]
+
+    def make_hline(self):
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        return line
 
     def get_cfg(self) -> dict:
         cfg = dict(self.cfg)
@@ -1931,13 +1914,8 @@ class SettingsDialog(QDialog):
         cfg["mask_delete_npz_on_move"] = self.chk_delete_npz.isChecked()
 
         # Tags Filter
+        cfg["char_tag_blacklist_words"] = [x.strip() for x in self.ed_bl_words.text().split(",") if x.strip()]
         cfg["char_tag_whitelist_words"] = [x.strip() for x in self.ed_wl_words.text().split(",") if x.strip()]
-        cfg["char_tag_whitelist_prefixes"] = [x.strip() for x in self.ed_wl_prefixes.text().split(",") if x.strip()]
-        cfg["char_tag_whitelist_suffixes"] = [x.strip() for x in self.ed_wl_suffixes.text().split(",") if x.strip()]
-        cfg["char_tag_blacklist_prefixes"] = [x.strip() for x in self.ed_bl_prefixes.text().split(",") if x.strip()]
-        
-        raw_bl_suf = self.ed_bl_suffixes.toPlainText().replace("\n", ",")
-        cfg["char_tag_blacklist_suffixes"] = [x.strip() for x in raw_bl_suf.split(",") if x.strip()]
 
         cfg["ui_language"] = self.cb_lang.currentData()
         cfg["ui_theme"] = "dark" if self.rb_dark.isChecked() else "light"
