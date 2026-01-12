@@ -90,13 +90,21 @@ python caption.py
 your_dataset/
 ├── image1.webp
 ├── image1.txt           # 標註文字
+├── image1.json          # Tagger/NL/Mask 記錄 (整合)
 ├── image1.boorutag      # (可選) Booru 元資料
-├── image1.tagger.txt    # Tagger 快取
-├── image1.nl.txt        # LLM 生成歷史
 ├── .custom_tags.json    # 資料夾自訂標籤
 ├── no_used/             # 刪除的檔案
-├── unmask/              # 去背前的原圖
-└── masked/              # Mask 前的原圖
+└── unmask/              # 去背/Mask 前的原圖
+```
+
+### JSON Sidecar 結構
+```json
+{
+  "tagger_tags": "rating:general, 1girl, ...",
+  "nl_pages": ["LLM 生成結果 1", "LLM 生成結果 2"],
+  "masked_background": true,
+  "masked_text": false
+}
 ```
 
 ---

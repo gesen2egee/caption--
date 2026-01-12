@@ -3,30 +3,29 @@
 # ============================================================
 #
 # [Ln 33-97]    Imports & 外部依賴
-# [Ln 99-171]   Configuration & Globals (設定檔、預設值、含新增 text_auto_* 與 mask_delete_npz_on_move)
+# [Ln 99-171]   Configuration & Globals (設定檔、預設值、text_auto_*、mask_delete_npz_on_move)
 # [Ln 173-240]  Settings Helpers (load/save/coerce 函式)
-# [Ln 242-305]  Utils: delete_matching_npz (新增), create_checkerboard
-# [Ln 307-430]  Utils / Parsing (標籤解析、文字處理)
-# [Ln 432-670]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 672-800]  BatchMaskTextWorker (OCR 批次遮罩，含 npz 刪除)
-# [Ln 802-895]  BatchUnmaskWorker (批次去背，含 npz 刪除)
-# [Ln 897-1040] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1042-1260] UI Components (TagButton, TagFlowWidget, AdvancedFindReplaceDialog)
-# [Ln 1262-1450] SettingsDialog (設定對話框，新增 Text 3選項 + Mask 1選項)
-# [Ln 1452-1510] MainWindow.__init__ (主視窗初始化)
-# [Ln 1512-1760] MainWindow.init_ui (UI 建構)
-# [Ln 1762-1800] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 1802-1970] MainWindow 檔案/圖片載入 & on_text_changed (新增自動格式化邏輯)
-# [Ln 1972-2040] MainWindow Token 計數
-# [Ln 2042-2200] MainWindow TAGS Sources (top/custom/tagger)
-# [Ln 2202-2280] MainWindow NL Paging
-# [Ln 2282-2420] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2422-2550] MainWindow LLM 生成
-# [Ln 2552-2720] MainWindow Tools: Unmask / Stroke Eraser (含 npz 刪除)
-# [Ln 2722-2830] MainWindow Batch Tagger / LLM
-# [Ln 2832-2900] MainWindow Find/Replace
-# [Ln 2902-2935] MainWindow Batch Mask Text
-# [Ln 2937-2959] MainWindow Settings 儲存 & main 入口
+# [Ln 242-340]  Utils: delete_matching_npz、JSON sidecar (load/save_image_sidecar)、create_checkerboard
+# [Ln 342-470]  Utils / Parsing (標籤解析、文字處理)
+# [Ln 472-710]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 712-840]  BatchMaskTextWorker (OCR 批次遮罩，輸出到 unmask/，記錄 masked_text)
+# [Ln 842-940]  BatchUnmaskWorker (批次去背，記錄 masked_background)
+# [Ln 942-1080] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1082-1300] UI Components (TagButton, TagFlowWidget, AdvancedFindReplaceDialog)
+# [Ln 1302-1490] SettingsDialog (設定對話框，Text 3選項 + Mask 1選項)
+# [Ln 1492-1550] MainWindow.__init__ (主視窗初始化)
+# [Ln 1552-1800] MainWindow.init_ui (UI 建構)
+# [Ln 1802-1840] MainWindow 快捷鍵 & 滾輪事件
+# [Ln 1842-2000] MainWindow 檔案/圖片載入 & on_text_changed (自動格式化)
+# [Ln 2002-2070] MainWindow Token 計數
+# [Ln 2072-2230] MainWindow TAGS/NL (改用 JSON sidecar，不再產生 .tagger.txt/.nl.txt)
+# [Ln 2232-2320] MainWindow NL Paging
+# [Ln 2322-2460] MainWindow Tag 插入/移除 & Tagger
+# [Ln 2462-2590] MainWindow LLM 生成
+# [Ln 2592-2760] MainWindow Tools: Unmask / Stroke Eraser (含 npz 刪除、masked_background 記錄)
+# [Ln 2762-2870] MainWindow Batch Tagger / LLM
+# [Ln 2872-2940] MainWindow Find/Replace & Batch Mask Text
+# [Ln 2942-2981] MainWindow Settings 儲存 & main 入口
 #
 # ============================================================
 
@@ -301,6 +300,43 @@ def delete_matching_npz(image_path: str) -> int:
     except Exception as e:
         print(f"[NPZ] delete_matching_npz 錯誤: {e}")
         return 0
+
+
+def image_sidecar_json_path(image_path: str) -> str:
+    """取得圖片對應的 sidecar JSON 路徑"""
+    return os.path.splitext(image_path)[0] + ".json"
+
+
+def load_image_sidecar(image_path: str) -> dict:
+    """
+    載入圖片對應的 sidecar JSON。
+    結構: {
+        "tagger_tags": "...",
+        "nl_pages": [...],
+        "masked_background": bool,
+        "masked_text": bool
+    }
+    """
+    p = image_sidecar_json_path(image_path)
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            print(f"[Sidecar] 載入失敗 {p}: {e}")
+    return {}
+
+
+def save_image_sidecar(image_path: str, data: dict):
+    """儲存圖片對應的 sidecar JSON"""
+    p = image_sidecar_json_path(image_path)
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Sidecar] 儲存失敗 {p}: {e}")
 
 
 def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
@@ -750,7 +786,7 @@ class BatchMaskTextWorker(QThread):
                     continue
 
                 src_dir = os.path.dirname(pth)
-                out_dir = os.path.join(src_dir, "masked")
+                out_dir = os.path.join(src_dir, "unmask")
                 os.makedirs(out_dir, exist_ok=True)
 
                 base_no_ext = os.path.splitext(pth)[0]
@@ -790,6 +826,11 @@ class BatchMaskTextWorker(QThread):
                     # 刪除對應 npz
                     if self.cfg.get("mask_delete_npz_on_move", True):
                         delete_matching_npz(pth)
+
+                # 記錄 masked_text 到 JSON sidecar
+                sidecar = load_image_sidecar(out_path)
+                sidecar["masked_text"] = True
+                save_image_sidecar(out_path, sidecar)
 
                 self.per_image.emit(pth, out_path)
 
@@ -883,6 +924,10 @@ class BatchUnmaskWorker(QThread):
                         # 刪除對應 npz
                         if self.cfg.get("mask_delete_npz_on_move", True):
                             delete_matching_npz(old_path)
+                        # 記錄 masked_background 到 JSON sidecar
+                        sidecar = load_image_sidecar(new_path)
+                        sidecar["masked_background"] = True
+                        save_image_sidecar(new_path, sidecar)
                         self.per_image.emit(p, new_path)
                 except Exception as e:
                     print(f"[BatchUnmask] {p} 失敗: {e}")
@@ -1908,7 +1953,7 @@ class MainWindow(QMainWindow):
                 os.makedirs(no_used_dir)
 
             files_to_move = [self.current_image_path]
-            for ext in [".txt", ".npz", ".boorutag", ".pool.json", ".tagger.txt", ".nl.txt"]:
+            for ext in [".txt", ".npz", ".boorutag", ".pool.json", ".json"]:
                 p = os.path.splitext(self.current_image_path)[0] + ext
                 if os.path.exists(p):
                     files_to_move.append(p)
@@ -2123,49 +2168,30 @@ class MainWindow(QMainWindow):
             self.refresh_tags_tab()
             self.on_text_changed()
 
-    def tagger_sidecar_path(self, image_path):
-        return os.path.splitext(image_path)[0] + ".tagger.txt"
-
     def load_tagger_tags_for_current_image(self):
-        p = self.tagger_sidecar_path(self.current_image_path)
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    raw = f.read().strip()
-                parts = [x.strip() for x in raw.split(",") if x.strip()]
-                parts = [t.replace("_", " ").strip() for t in parts]
-                if self.english_force_lowercase:
-                    parts = [t.lower() for t in parts]
-                return parts
-            except Exception:
-                return []
-        return []
+        """從 JSON sidecar 載入 tagger_tags"""
+        sidecar = load_image_sidecar(self.current_image_path)
+        raw = sidecar.get("tagger_tags", "")
+        if not raw:
+            return []
+        parts = [x.strip() for x in raw.split(",") if x.strip()]
+        parts = [t.replace("_", " ").strip() for t in parts]
+        if self.english_force_lowercase:
+            parts = [t.lower() for t in parts]
+        return parts
 
     def save_tagger_tags_for_image(self, image_path, raw_tags_str):
-        p = self.tagger_sidecar_path(image_path)
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(raw_tags_str)
-        except Exception:
-            pass
-
-    def nl_sidecar_path(self, image_path):
-        return os.path.splitext(image_path)[0] + ".nl.txt"
+        """儲存 tagger_tags 到 JSON sidecar"""
+        sidecar = load_image_sidecar(image_path)
+        sidecar["tagger_tags"] = raw_tags_str
+        save_image_sidecar(image_path, sidecar)
 
     def load_nl_pages_for_image(self, image_path):
-        p = self.nl_sidecar_path(image_path)
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    raw = f.read()
-                raw = raw.strip()
-                if not raw:
-                    return []
-                pages = [x.strip() for x in raw.split(NL_PAGE_DELIM)]
-                pages = [p for p in pages if p]
-                return pages
-            except Exception:
-                return []
+        """從 JSON sidecar 載入 nl_pages"""
+        sidecar = load_image_sidecar(image_path)
+        pages = sidecar.get("nl_pages", [])
+        if isinstance(pages, list):
+            return [p for p in pages if p and str(p).strip()]
         return []
 
     def load_nl_for_current_image(self):
@@ -2173,22 +2199,20 @@ class MainWindow(QMainWindow):
         return pages[-1] if pages else ""
 
     def save_nl_for_image(self, image_path, content):
-        # append (do not overwrite)
+        """Append nl content 到 JSON sidecar"""
         if not content:
             return
         content = str(content).strip()
         if not content:
             return
 
-        p = self.nl_sidecar_path(image_path)
-        pages = self.load_nl_pages_for_image(image_path)
+        sidecar = load_image_sidecar(image_path)
+        pages = sidecar.get("nl_pages", [])
+        if not isinstance(pages, list):
+            pages = []
         pages.append(content)
-
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(NL_PAGE_DELIM.join(pages))
-        except Exception:
-            pass
+        sidecar["nl_pages"] = pages
+        save_image_sidecar(image_path, sidecar)
 
     def refresh_tags_tab(self):
         active_text = self.txt_edit.toPlainText()
@@ -2450,16 +2474,12 @@ class MainWindow(QMainWindow):
             top_tags = []
 
         tagger_parts = []
-        p = self.tagger_sidecar_path(image_path)
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    raw = f.read().strip()
-                parts = [x.strip() for x in raw.split(",") if x.strip()]
-                parts = try_tags_to_text_list(parts)
-                tagger_parts = [t.replace("_", " ").strip() for t in parts if t.strip()]
-            except Exception:
-                tagger_parts = []
+        sidecar = load_image_sidecar(image_path)
+        raw = sidecar.get("tagger_tags", "")
+        if raw:
+            parts = [x.strip() for x in raw.split(",") if x.strip()]
+            parts = try_tags_to_text_list(parts)
+            tagger_parts = [t.replace("_", " ").strip() for t in parts if t.strip()]
 
         all_tags = []
         seen2 = set()
@@ -2571,15 +2591,12 @@ class MainWindow(QMainWindow):
                 break
 
     def _tagger_has_background(self, image_path: str) -> bool:
-        p = self.tagger_sidecar_path(image_path)
-        if not os.path.exists(p):
+        """檢查 tagger_tags 是否含有 background"""
+        sidecar = load_image_sidecar(image_path)
+        raw = sidecar.get("tagger_tags", "")
+        if not raw:
             return False
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                raw = f.read()
-            return re.search(r"background", raw, re.IGNORECASE) is not None
-        except Exception:
-            return False
+        return re.search(r"background", raw, re.IGNORECASE) is not None
 
     def unmask_current_image(self):
         if not self.current_image_path:
@@ -2597,6 +2614,10 @@ class MainWindow(QMainWindow):
             # 刪除對應 npz
             if self.settings.get("mask_delete_npz_on_move", True):
                 delete_matching_npz(old_path)
+            # 記錄 masked_background 到 JSON sidecar
+            sidecar = load_image_sidecar(new_path)
+            sidecar["masked_background"] = True
+            save_image_sidecar(new_path, sidecar)
             self._replace_image_path_in_list(old_path, new_path)
             self.load_image()
             self.statusBar().showMessage("Unmask 完成", 5000)
