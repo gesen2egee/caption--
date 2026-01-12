@@ -136,25 +136,35 @@ DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 # --------------------------
 LOCALIZATION = {
     "zh_tw": {
-        "app_title": "AI Captioning Assistant (Caption 神器)",
+        "app_title": "Caption 神器",
         "menu_file": "檔案",
         "menu_open_dir": "開啟目錄",
         "menu_exit": "結束",
         "tab_tags": "TAGS",
         "tab_nl": "NL",
-        "sec_folder_meta": "資料夾 / Meta",
-        "sec_custom": "自訂 (按資料夾)",
-        "sec_tagger": "Tagger (WD14)",
-        "btn_auto_tag": "Auto Tag (WD14)",
-        "btn_batch_tagger": "Batch Tagger",
-        "btn_batch_tagger_to_txt": "Batch Tagger to txt",
-        "btn_add_tag": "Add Tag",
-        "btn_run_llm": "Run LLM",
-        "btn_batch_llm": "Batch LLM",
-        "btn_batch_llm_to_txt": "Batch LLM to txt",
+        "sec_folder_meta": "資料夾標籤 (Top 30)",
+        "sec_custom": "自定義標籤",
+        "sec_tagger": "圖片識別標籤",
+        "sec_tags": "標籤處理",
+        "sec_nl": "自然語言處理",
+        "btn_auto_tag": "自動標籤 (WD14)",
+        "btn_batch_tagger": "批量標籤",
+        "btn_batch_tagger_to_txt": "批量標籤轉文字",
+        "btn_add_tag": "新增標籤",
+        "btn_run_llm": "執行 LLM",
+        "btn_batch_llm": "批量 LLM",
+        "btn_batch_llm_to_txt": "批量 LLM 轉文字",
         "btn_prev": "上一頁",
         "btn_next": "下一頁",
+        "btn_default_prompt": "預設提示詞",
+        "btn_custom_prompt": "自訂提示詞",
+        "label_nl_result": "LLM 結果",
+        "label_txt_content": "實際內容 (.txt)",
+        "label_tokens": "詞元數: ",
+        "label_page": "頁數",
         "btn_find_replace": "尋找/取代",
+        "btn_undo": "復原文字",
+        "btn_redo": "重做文字",
         "btn_unmask": "單圖去背景",
         "btn_batch_unmask": "Batch 去背景",
         "btn_mask_text": "單圖去文字",
@@ -217,15 +227,17 @@ LOCALIZATION = {
         "setting_mask_ocr_hint": "OCR 需要 imgutils，未安裝則略過。",
     },
     "en": {
-        "app_title": "AI Captioning Assistant",
+        "app_title": "Caption Tool",
         "menu_file": "File",
         "menu_open_dir": "Open Directory",
         "menu_exit": "Exit",
         "tab_tags": "TAGS",
         "tab_nl": "NL",
-        "sec_folder_meta": "Folder / Meta",
-        "sec_custom": "Custom (per folder)",
-        "sec_tagger": "Tagger (WD14)",
+        "sec_folder_meta": "Folder Meta / Top 30 Tags",
+        "sec_custom": "Custom Tags in Folder",
+        "sec_tagger": "Tagger Tags",
+        "sec_tags": "Tag Processing",
+        "sec_nl": "Natural Language",
         "btn_auto_tag": "Auto Tag (WD14)",
         "btn_batch_tagger": "Batch Tagger",
         "btn_batch_tagger_to_txt": "Batch Tagger to txt",
@@ -235,7 +247,15 @@ LOCALIZATION = {
         "btn_batch_llm_to_txt": "Batch LLM to txt",
         "btn_prev": "Prev",
         "btn_next": "Next",
+        "btn_default_prompt": "Default Prompt",
+        "btn_custom_prompt": "Custom Prompt",
+        "label_nl_result": "LLM Result",
+        "label_txt_content": "Actual Content (.txt)",
+        "label_tokens": "Tokens: ",
+        "label_page": "Page",
         "btn_find_replace": "Find/Replace",
+        "btn_undo": "Undo Txt",
+        "btn_redo": "Redo Txt",
         "btn_unmask": "Unmask Background",
         "btn_batch_unmask": "Batch Unmask Background",
         "btn_mask_text": "Unmask Text",
@@ -1023,6 +1043,10 @@ class BatchMaskTextWorker(QThread):
         return path
 
     def _should_process(self, image_path: str) -> bool:
+        sidecar = load_image_sidecar(image_path)
+        if sidecar.get("masked_text", False):
+            return False
+
         only_bg = bool(self.cfg.get("mask_batch_only_if_has_background_tag", False))
         if not only_bg:
             return True
@@ -1206,6 +1230,12 @@ class BatchUnmaskWorker(QThread):
                 if self._stop:
                     break
                 self.progress.emit(i, total, os.path.basename(p))
+                
+                # Check sidecar to skip
+                sidecar = load_image_sidecar(p)
+                if sidecar.get("masked_background", False):
+                    continue
+
                 try:
                     result = self.remove_background_to_webp(p, remover)
                     if result:
@@ -2102,8 +2132,8 @@ class MainWindow(QMainWindow):
 
         self.tags_scroll_layout.addStretch(1)
         self.tags_scroll.setWidget(tags_scroll_container)
-
-        self.tabs.addTab(tags_tab, "TAGS")
+        
+        self.tabs.addTab(tags_tab, self.tr("sec_tags"))
 
         # ---- NL Tab ----
         nl_tab = QWidget()
@@ -2111,8 +2141,8 @@ class MainWindow(QMainWindow):
         nl_layout.setContentsMargins(5, 5, 5, 5)
 
         nl_toolbar = QHBoxLayout()
-        nl_label = QLabel("<b>NL</b>")
-        nl_toolbar.addWidget(nl_label)
+        self.nl_label = QLabel(f"<b>{self.tr('sec_nl')}</b>")
+        nl_toolbar.addWidget(self.nl_label)
 
         self.btn_run_llm = QPushButton(self.tr("btn_run_llm"))
         self.btn_run_llm.clicked.connect(self.run_llm_generation)
@@ -2135,21 +2165,21 @@ class MainWindow(QMainWindow):
         self.btn_next_nl.clicked.connect(self.next_nl_page)
         nl_toolbar.addWidget(self.btn_next_nl)
 
-        self.btn_default_prompt = QPushButton("Default Prompt")
+        self.btn_default_prompt = QPushButton(self.tr("btn_default_prompt"))
         self.btn_default_prompt.clicked.connect(self.use_default_prompt)
         nl_toolbar.addWidget(self.btn_default_prompt)
 
-        self.btn_custom_prompt = QPushButton("Custom Prompt")
+        self.btn_custom_prompt = QPushButton(self.tr("btn_custom_prompt"))
         self.btn_custom_prompt.clicked.connect(self.use_custom_prompt)
         nl_toolbar.addWidget(self.btn_custom_prompt)
-        self.nl_page_label = QLabel("Page 0/0")
+        self.nl_page_label = QLabel(f"{self.tr('label_page')} 0/0")
         nl_toolbar.addWidget(self.nl_page_label)
 
         nl_toolbar.addStretch(1)
         nl_layout.addLayout(nl_toolbar)
 
         # ✅ RESULT 最上面
-        self.nl_result_title = QLabel("<b>LLM Result</b>")
+        self.nl_result_title = QLabel(f"<b>{self.tr('label_nl_result')}</b>")
         nl_layout.addWidget(self.nl_result_title)
 
         self.flow_nl = TagFlowWidget(use_scroll=True)
@@ -2167,7 +2197,7 @@ class MainWindow(QMainWindow):
         self.prompt_edit.setPlainText(self.default_user_prompt_template)
         nl_layout.addWidget(self.prompt_edit, 1)
 
-        self.tabs.addTab(nl_tab, "NL")
+        self.tabs.addTab(nl_tab, self.tr("sec_nl"))
 
         # ---- Bottom: txt ----
         bot_widget = QWidget()
@@ -2175,19 +2205,19 @@ class MainWindow(QMainWindow):
         bot_layout.setContentsMargins(5, 5, 5, 5)
 
         bot_toolbar = QHBoxLayout()
-        bot_label = QLabel("<b>Actual Content (.txt)</b>")
-        bot_toolbar.addWidget(bot_label)
+        self.bot_label = QLabel(f"<b>{self.tr('label_txt_content')}</b>")
+        bot_toolbar.addWidget(self.bot_label)
         bot_toolbar.addSpacing(10)
-        self.txt_token_label = QLabel("Tokens: 0")
+        self.txt_token_label = QLabel(f"{self.tr('label_tokens')}0")
         bot_toolbar.addWidget(self.txt_token_label)
         bot_toolbar.addStretch(1)
 
-        self.btn_find_replace = QPushButton("Find/Replace")
+        self.btn_find_replace = QPushButton(self.tr("btn_find_replace"))
         self.btn_find_replace.clicked.connect(self.open_find_replace)
         bot_toolbar.addWidget(self.btn_find_replace)
 
-        self.btn_txt_undo = QPushButton("Undo Txt")
-        self.btn_txt_redo = QPushButton("Redo Txt")
+        self.btn_txt_undo = QPushButton(self.tr("btn_undo"))
+        self.btn_txt_redo = QPushButton(self.tr("btn_redo"))
         bot_toolbar.addWidget(self.btn_txt_undo)
         bot_toolbar.addWidget(self.btn_txt_redo)
 
@@ -2217,9 +2247,13 @@ class MainWindow(QMainWindow):
 
         # status bar progress
         self.progress_bar = QProgressBar()
-        self.progress_bar.setMaximumWidth(380)
         self.progress_bar.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress_bar)
+
+        self.btn_cancel_batch = QPushButton(self.tr("btn_cancel_batch"))
+        self.btn_cancel_batch.setVisible(False)
+        self.btn_cancel_batch.clicked.connect(self.cancel_batch)
+        self.statusBar().addPermanentWidget(self.btn_cancel_batch)
 
         self._setup_menus()
 
@@ -2487,20 +2521,27 @@ class MainWindow(QMainWindow):
                         tokens = re.findall(r'\w+|[^\w\s]', content)
                         count = len(tokens)
                 
-                # === 修改重點開始 ===
-                
                 # 設定顏色：超過 225 才變紅，否則全黑
                 text_color = "red" if count > 225 else "black"
                 self.txt_token_label.setStyleSheet(f"color: {text_color}")
                 
                 # 設定文字：只顯示 "Tokens: 數字"
-                self.txt_token_label.setText(f"Tokens: {count}")
+                self.txt_token_label.setText(f"{self.tr('label_tokens')}{count}")
                 
-                # === 修改重點結束 ===
-
             except Exception as e:
                 print(f"Token count error: {e}")
-                self.txt_token_label.setText("Tokens: Err")
+                self.txt_token_label.setText(self.tr("label_tokens_err"))
+
+    def retranslate_ui(self):
+        # ... other retranslate calls ...
+        self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
+        self.btn_reset_prompt.setText(self.tr("btn_reset_prompt"))
+        # Update token label text if it's currently showing "Tokens: Err"
+        if self.txt_token_label.text() == "Tokens: Err":
+            self.txt_token_label.setText(self.tr("label_tokens_err"))
+        # Update NL page label
+        self.update_nl_page_controls()
+
 
 # ==========================
     # TAGS sources
@@ -2570,7 +2611,7 @@ class MainWindow(QMainWindow):
     def add_custom_tag_dialog(self):
         if not self.current_folder_path:
             return
-        tag, ok = QInputDialog.getText(self, "Add Tag", "新增 tag：")
+        tag, ok = QInputDialog.getText(self, self.tr("dialog_add_tag_title"), self.tr("dialog_add_tag_label"))
         if not ok:
             return
         tag = str(tag).strip()
@@ -2685,7 +2726,7 @@ class MainWindow(QMainWindow):
         total = len(self.nl_pages)
         if total <= 0:
             if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText("Page 0/0")
+                self.nl_page_label.setText(f"{self.tr('label_page')} 0/0")
             if hasattr(self, "btn_prev_nl"):
                 self.btn_prev_nl.setEnabled(False)
             if hasattr(self, "btn_next_nl"):
@@ -3005,14 +3046,22 @@ class MainWindow(QMainWindow):
         return path
 
     def _replace_image_path_in_list(self, old_path: str, new_path: str):
-        if not old_path or not new_path or old_path == new_path:
+        if not old_path or not new_path or os.path.abspath(old_path) == os.path.abspath(new_path):
             return
+        
+        # Update current path first if match
+        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(old_path):
+            self.current_image_path = new_path
+
+        found = False
+        abs_old = os.path.abspath(old_path)
         for i, p in enumerate(self.image_files):
-            if os.path.abspath(p) == os.path.abspath(old_path):
+            if os.path.abspath(p) == abs_old:
                 self.image_files[i] = new_path
-                if i == self.current_index:
-                    self.current_image_path = new_path
+                found = True
                 break
+        
+        # If not found (rare), append? No, just ignore.
 
     def _tagger_has_background(self, image_path: str) -> bool:
         """檢查 tagger_tags 是否含有 background"""
@@ -3047,6 +3096,114 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Unmask 完成", 5000)
         except Exception as e:
             QMessageBox.warning(self, "Unmask", f"失敗: {e}")
+
+    def mask_text_current_image(self):
+        if not self.current_image_path:
+            return
+        if not self.settings.get("mask_batch_detect_text_enabled", True):
+            QMessageBox.information(self, "Info", "OCR text detection is disabled in settings.")
+            return
+
+        image_path = self.current_image_path
+        # Use BatchMaskTextWorker method logic manually
+        # Needs to detect text and process
+        # For single image, we can just instantiate a worker for 1 item
+        if detect_text_with_ocr is None:
+             QMessageBox.warning(self, "Mask Text", self.tr("setting_mask_ocr_hint"))
+             return
+
+        # Simple approach: reuse logic by making a list of 1
+        # reusing worker might be complex due to threading, let's run logic directly?
+        # Re-using worker for single image is safer to keep logic consistent.
+        
+        self.batch_mask_text_thread = BatchMaskTextWorker(
+            [image_path], 
+            self.settings, 
+            background_tag_checker=None # Force run for single image
+        )
+        self.batch_mask_text_thread.progress.connect(self.show_progress)
+        self.batch_mask_text_thread.per_image.connect(self.on_batch_mask_text_per_image)
+        self.batch_mask_text_thread.done.connect(lambda: self.on_batch_done("Mask Text 完成"))
+        self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Mask Text", e))
+        self.batch_mask_text_thread.start()
+
+    def restore_current_image(self):
+        if not self.current_image_path:
+            return
+        
+        current_path = self.current_image_path
+        # Check if original exists in "unmask" subfolder
+        src_dir = os.path.dirname(current_path)
+        unmask_dir = os.path.join(src_dir, "unmask")
+        filename = os.path.basename(current_path)
+        
+        # The worker moves original to "unmask/filename"
+        # BUT it might have been renamed with _unique_path if conflict.
+        # We try to find the best match? Or just the exact name?
+        # Usually exact name matches the original.
+        
+        original_restore_path = os.path.join(unmask_dir, filename)
+        
+        # If current file is .webp, original might be .jpg/.png
+        # We need to find if there is a file in unmask that matches base name?
+        # The worker logic:
+        # if ext == .webp: moves original (if .webp) to unmask/.
+        # if ext != .webp: moves original (if !.webp) to unmask/ AND saves .webp to current.
+        
+        # So we look for any file in unmask/ with same stem?
+        stem = os.path.splitext(filename)[0]
+        
+        candidate = None
+        if os.path.exists(unmask_dir):
+            for f in os.listdir(unmask_dir):
+                if os.path.splitext(f)[0] == stem:
+                    candidate = os.path.join(unmask_dir, f)
+                    break
+        
+        if not candidate:
+            QMessageBox.information(self, "Restore", "找不到位於 unmask/ 資料夾的原檔備份")
+            return
+            
+        try:
+            # Move candidate back to current_path or replace current_path
+            # If current_path is the webp result, we should remove it and put original back?
+            # Or just overwrite?
+            
+            # Case 1: result is .webp, original was .jpg
+            # We want to restore .jpg to current folder.
+            # And Remove .webp? Yes, usually.
+            
+            # Destination: src_dir + candidate_filename
+            dest_path = os.path.join(src_dir, os.path.basename(candidate))
+            
+            # If dest_path != current_path, we might have 2 files now.
+            # We should probably remove current_path if it was generated.
+            
+            # Move back
+            shutil.move(candidate, dest_path)
+            
+            # Update sidecar: remove masked flags
+            sidecar = load_image_sidecar(dest_path)
+            if "masked_background" in sidecar: del sidecar["masked_background"]
+            if "masked_text" in sidecar: del sidecar["masked_text"]
+            save_image_sidecar(dest_path, sidecar)
+            
+            # If we restored a file that has different name/ext than current_path,
+            # we should update list.
+            # AND if current_path was a generated webp, we should delete it?
+            if os.path.abspath(dest_path) != os.path.abspath(current_path):
+                 # Ask user or just delete?
+                 # Assuming we want to swap back.
+                 try:
+                     os.remove(current_path)
+                 except: pass
+            
+            self._replace_image_path_in_list(current_path, dest_path)
+            self.load_image()
+            self.statusBar().showMessage("已還原原檔", 3000)
+            
+        except Exception as e:
+             QMessageBox.warning(self, "Restore", f"還原失敗: {e}")
 
     def run_batch_unmask_background(self):
         if not self.image_files:
@@ -3165,10 +3322,15 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(current)
-        self.progress_bar.setFormat(f"{current}/{total}  {name}")
+        self.progress_bar.setFormat(f"{name} ({current}/{total})")
+        if hasattr(self, "btn_cancel_batch"):
+            self.btn_cancel_batch.setVisible(True)
+            self.btn_cancel_batch.setEnabled(True)
 
     def hide_progress(self):
         self.progress_bar.setVisible(False)
+        if hasattr(self, "btn_cancel_batch"):
+            self.btn_cancel_batch.setVisible(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("")
 
@@ -3466,6 +3628,13 @@ class MainWindow(QMainWindow):
             pass
         return False
 
+    def on_batch_mask_text_per_image(self, old_path, new_path):
+        if old_path != new_path:
+            self._replace_image_path_in_list(old_path, new_path)
+            # If current image is the one processed, reload it
+            if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
+                self.load_image()
+
     def run_batch_mask_text(self):
         if not self.image_files:
             QMessageBox.information(self, "Info", "No images loaded.")
@@ -3476,11 +3645,19 @@ class MainWindow(QMainWindow):
             self.settings,
             background_tag_checker=self._image_has_background_tag
         )
-        self.batch_mask_text_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, f"MaskText: {name}"))
-        self.batch_mask_text_thread.per_image.connect(lambda oldp, newp: None)
+        self.batch_mask_text_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, name))
+        self.batch_mask_text_thread.per_image.connect(self.on_batch_mask_text_per_image)
         self.batch_mask_text_thread.done.connect(lambda: self.on_batch_done("Batch Mask Text 完成"))
         self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Batch Mask Text", e))
         self.batch_mask_text_thread.start()
+
+    def cancel_batch(self):
+        self.statusBar().showMessage("正在中止...", 2000)
+        if hasattr(self, 'batch_unmask_thread') and self.batch_unmask_thread.isRunning():
+            self.batch_unmask_thread.stop()
+        if hasattr(self, 'batch_mask_text_thread') and self.batch_mask_text_thread.isRunning():
+            self.batch_mask_text_thread.stop()
+        # Add logic for other batch threads if needed
 
 
     # ==========================
@@ -3525,9 +3702,25 @@ class MainWindow(QMainWindow):
         self.btn_prev_nl.setText(self.tr("btn_prev"))
         self.btn_next_nl.setText(self.tr("btn_next"))
         self.btn_find_replace.setText(self.tr("btn_find_replace"))
+        self.btn_default_prompt.setText(self.tr("btn_default_prompt"))
+        self.btn_custom_prompt.setText(self.tr("btn_custom_prompt"))
+        self.btn_txt_undo.setText(self.tr("btn_undo"))
+        self.btn_txt_redo.setText(self.tr("btn_redo"))
+        
+        self.nl_label.setText(f"<b>{self.tr('sec_nl')}</b>")
+        self.bot_label.setText(f"<b>{self.tr('label_txt_content')}</b>")
+        self.nl_result_title.setText(f"<b>{self.tr('label_nl_result')}</b>")
+        self.update_txt_token_count()
+        self.update_nl_page_controls()
+
+        # Update tabs
+        self.tabs.setTabText(0, self.tr("sec_tags"))
+        self.tabs.setTabText(1, self.tr("sec_nl"))
         
         # Labels
         self.sec1_title.setText(f"<b>{self.tr('sec_folder_meta')}</b>")
+        if hasattr(self, 'btn_cancel_batch') and self.btn_cancel_batch:
+            self.btn_cancel_batch.setText(self.tr("btn_cancel_batch"))
         self.sec2_title.setText(f"<b>{self.tr('sec_custom')}</b>")
         self.sec3_title.setText(f"<b>{self.tr('sec_tagger')}</b>")
         
@@ -3537,6 +3730,7 @@ class MainWindow(QMainWindow):
 
     def _setup_menus(self):
         menubar = self.menuBar()
+        menubar.clear()
         file_menu = menubar.addMenu(self.tr("menu_file"))
         open_action = QAction(self.tr("menu_open_dir"), self)
         open_action.triggered.connect(self.open_directory)
@@ -3545,18 +3739,31 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.open_settings)
         file_menu.addAction(settings_action)
 
-        tools_menu = menubar.addMenu("Tools")
+        tools_menu = menubar.addMenu(self.tr("menu_tools"))
+        
         unmask_action = QAction(self.tr("btn_unmask"), self)
         unmask_action.triggered.connect(self.unmask_current_image)
         tools_menu.addAction(unmask_action)
+
+        mask_text_action = QAction(self.tr("btn_mask_text"), self)
+        mask_text_action.triggered.connect(self.mask_text_current_image)
+        tools_menu.addAction(mask_text_action)
+
+        tools_menu.addSeparator()
         
         batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
         batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
         tools_menu.addAction(batch_unmask_action)
 
-        mask_text_action = QAction(self.tr("btn_mask_text"), self)
-        mask_text_action.triggered.connect(self.run_batch_mask_text)
-        tools_menu.addAction(mask_text_action)
+        batch_mask_text_action = QAction(self.tr("btn_batch_mask_text"), self)
+        batch_mask_text_action.triggered.connect(self.run_batch_mask_text)
+        tools_menu.addAction(batch_mask_text_action)
+
+        tools_menu.addSeparator()
+
+        restore_action = QAction(self.tr("btn_restore_original"), self) 
+        restore_action.triggered.connect(self.restore_current_image)
+        tools_menu.addAction(restore_action)
 
         stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
         stroke_action.triggered.connect(self.open_stroke_eraser)
