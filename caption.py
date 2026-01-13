@@ -38,6 +38,7 @@ import json
 import traceback
 import warnings
 import inspect
+import gc  # 新增垃圾回收支援
 
 # silence some noisy third-party warnings
 warnings.filterwarnings("ignore", message="`torch.cuda.amp.custom_fwd")
@@ -54,7 +55,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QLineEdit, QDialog, QFormLayout, QComboBox,
     QCheckBox, QMessageBox, QPlainTextEdit, QInputDialog,
     QRadioButton, QGroupBox, QSizePolicy, QTabWidget,
-    QFrame, QProgressBar, QSlider
+    QFrame, QProgressBar, QSlider, QSpinBox, QDoubleSpinBox
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QRect, QPoint, 
@@ -139,6 +140,7 @@ LOCALIZATION = {
         "app_title": "Caption 神器",
         "menu_file": "檔案",
         "menu_open_dir": "開啟目錄",
+        "btn_settings": "設定",
         "menu_exit": "結束",
         "tab_tags": "TAGS",
         "tab_nl": "NL",
@@ -219,6 +221,7 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "預設提示詞模板:",
         "setting_llm_cust_prompt": "自訂提示詞模板:",
         "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
+        "setting_llm_max_dim": "LLM 圖片最大邊長 (Max Dimension):",
         "setting_tagger_gen_thresh": "一般標籤閾值:",
         "setting_tagger_char_thresh": "特徵標籤閾值:",
         "setting_tagger_gen_mcut": "一般標籤 MCut",
@@ -236,6 +239,7 @@ LOCALIZATION = {
         "app_title": "Caption Tool",
         "menu_file": "File",
         "menu_open_dir": "Open Directory",
+        "btn_settings": "Settings",
         "menu_exit": "Exit",
         "tab_tags": "TAGS",
         "tab_nl": "NL",
@@ -316,6 +320,7 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "Default Prompt Template:",
         "setting_llm_cust_prompt": "Custom Prompt Template:",
         "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
+        "setting_llm_max_dim": "LLM Max Image Dimension:",
         "setting_tagger_gen_thresh": "General Threshold:",
         "setting_tagger_char_thresh": "Character Threshold:",
         "setting_tagger_gen_mcut": "General MCut Enabled",
@@ -437,6 +442,9 @@ DEFAULT_APP_SETTINGS = {
     "batch_to_txt_mode": "append",         # append | overwrite
     "batch_to_txt_folder_trigger": False,  # 是否將資料夾名作為觸發詞加到句首
 
+    # LLM Resolution (Advanced)
+    "llm_max_image_dimension": 1024,
+
     # Character Tags Filter (simple word matching)
     # 黑名單：包含這些 word 的 tag/句子會被標記
     "char_tag_blacklist_words": ["hair", "eyes", "skin", "bun", "bangs", "sidelocks", "twintails", "braid", "ponytail", "beard", "mustache", "ear", "horn", "tail", "wing", "breast", "mole", "halo", "glasses", "fang", "heterochromia", "headband", "freckles", "lip", "eyebrows", "eyelashes"],
@@ -534,6 +542,20 @@ def call_wd14(img_pil, cfg: dict):
     chars = {remove_underline(k): v for k, v in chars.items()}
     
     return rating, features, chars
+
+
+def unload_all_models():
+    """ 
+    強制執行垃圾回收，並在支援 Torch 的環境下排空 CUDA 快取。
+    這有助於在完成 WD14、OCR 或去背景任務後釋放記憶體。
+    """
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 NL_PAGE_DELIM = "\n\n=====NL_PAGE=====\n\n"
@@ -852,15 +874,16 @@ class TaggerWorker(QThread):
             self.finished.emit(tags_str)
         except Exception as e:
             self.error.emit(str(e))
+        finally:
+            unload_all_models()
 
 
 class LLMWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context, max_dim=1024):
         super().__init__()
-        self.base_url = base_url
         self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
@@ -868,6 +891,7 @@ class LLMWorker(QThread):
         self.user_prompt = user_prompt
         self.image_path = image_path
         self.tags_context = tags_context
+        self.max_dim = max_dim
 
     def run(self):
         try:
@@ -880,7 +904,9 @@ class LLMWorker(QThread):
             if img.mode != 'RGB':
                 img = img.convert('RGB')
 
-            ratio = min(1024 / img.width, 1024 / img.height)
+            # Use self.max_dim for resizing
+            target_size = self.max_dim
+            ratio = min(target_size / img.width, target_size / img.height)
             if ratio < 1:
                 new_size = (int(img.width * ratio), int(img.height * ratio))
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
@@ -952,6 +978,8 @@ class BatchTaggerWorker(QThread):
             self.done.emit()
         except Exception:
             self.error.emit(traceback.format_exc())
+        finally:
+            unload_all_models()
 
 
 class BatchLLMWorker(QThread):
@@ -960,7 +988,7 @@ class BatchLLMWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -969,6 +997,7 @@ class BatchLLMWorker(QThread):
         self.user_prompt = user_prompt
         self.image_paths = list(image_paths)
         self.tags_context_getter = tags_context_getter
+        self.max_dim = max_dim
         self._stop = False
 
     def stop(self):
@@ -993,7 +1022,9 @@ class BatchLLMWorker(QThread):
                     img = Image.open(p)
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
-                    ratio = min(1024 / img.width, 1024 / img.height)
+                    
+                    target_size = self.max_dim
+                    ratio = min(target_size / img.width, target_size / img.height)
                     if ratio < 1:
                         new_size = (int(img.width * ratio), int(img.height * ratio))
                         img = img.resize(new_size, Image.Resampling.LANCZOS)
@@ -1122,7 +1153,6 @@ class BatchMaskTextWorker(QThread):
             fmt = str(self.cfg.get("mask_default_format", "webp")).lower().strip(".")
             if fmt not in ("webp", "png"):
                 fmt = "webp"
-
             for i, pth in enumerate(self.image_paths, start=1):
                 if self._stop:
                     break
@@ -1187,6 +1217,8 @@ class BatchMaskTextWorker(QThread):
             self.done.emit()
         except Exception:
             self.error.emit(traceback.format_exc())
+        finally:
+            unload_all_models()
 
 
 class BatchUnmaskWorker(QThread):
@@ -1291,6 +1323,10 @@ class BatchUnmaskWorker(QThread):
             self.done.emit()
         except Exception:
             self.error.emit(traceback.format_exc())
+        finally:
+            if 'remover' in locals():
+                del remover
+            unload_all_models()
 
 
 class StrokeCanvas(QLabel):
@@ -1652,12 +1688,35 @@ class TagFlowWidget(QWidget):
         self.tag_clicked.emit(tag, checked)
 
     def sync_state(self, active_text_content: str):
+        # 1. CSV split matching (exact full match of segments)
         current_tokens = split_csv_like_text(active_text_content)
         current_norm = set(normalize_for_match(t) for t in current_tokens)
+        
+        # 2. Text search (Word boundary regex match)
+        # 用於處理 LLM 產生的自然語言句子
+        search_text = active_text_content.lower()
 
         for tag, btn in self.buttons.items():
             btn.blockSignals(True)
+            
+            # Check 1: CSV match
             is_active = normalize_for_match(tag) in current_norm
+            
+            # Check 2: Regex match if not found yet
+            if not is_active:
+                try:
+                    # Escape tag for regex, add word boundaries
+                    esc = re.escape(tag.lower())
+                    # allow matching "tag" inside "tag," or "tag." but not "tagging"
+                    # \b matches word boundary.
+                    # Note: traditional \b might fail on non-ascii if not configured?
+                    # Python's re handles unicode word boundaries by default? 
+                    # Actually standard \w in python 3 re matches unicode.
+                    if re.search(rf"\b{esc}\b", search_text):
+                        is_active = True
+                except Exception:
+                    pass
+            
             btn.setChecked(is_active)
             btn.blockSignals(False)
 
@@ -1771,7 +1830,15 @@ class SettingsDialog(QDialog):
 
         form.addRow("LLM Base URL:", self.ed_base_url)
         form.addRow("API Key:", self.ed_api_key)
+        form.addRow("API Key:", self.ed_api_key)
         form.addRow("Model:", self.ed_model)
+        
+        self.spin_llm_dim = QSpinBox()
+        self.spin_llm_dim.setRange(256, 4096)
+        self.spin_llm_dim.setSingleStep(128)
+        self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
+        form.addRow(self.tr("setting_llm_max_dim"), self.spin_llm_dim)
+        
         llm_layout.addLayout(form)
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
@@ -1987,6 +2054,7 @@ class SettingsDialog(QDialog):
         cfg["llm_system_prompt"] = self.ed_system_prompt.toPlainText()
         cfg["llm_user_prompt_template"] = self.ed_user_template.toPlainText()
         cfg["llm_custom_prompt_template"] = self.ed_custom_template.toPlainText()
+        cfg["llm_max_image_dimension"] = self.spin_llm_dim.value()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
@@ -3042,7 +3110,8 @@ class MainWindow(QMainWindow):
             self.llm_system_prompt,
             user_prompt,
             self.current_image_path,
-            tags_text
+            tags_text,
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
         )
         self.llm_thread.finished.connect(self.on_llm_finished_latest_only)
         self.llm_thread.error.connect(self.on_llm_error_no_popup)
@@ -3166,6 +3235,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Unmask 完成", 5000)
         except Exception as e:
             QMessageBox.warning(self, "Unmask", f"失敗: {e}")
+        finally:
+            if 'remover' in locals():
+                del remover
+            unload_all_models()
 
     def mask_text_current_image(self):
         if not self.current_image_path:
@@ -3430,7 +3503,47 @@ class MainWindow(QMainWindow):
         self._batch_delete_chars = delete_chars
         
         self.btn_batch_tagger_to_txt.setEnabled(False)
-        self.run_batch_tagger()
+
+        # 1. Check Sidecar for cache
+        files_to_process = []
+        already_done_count = 0
+
+        try:
+            for img_path in self.image_files:
+                sidecar = load_image_sidecar(img_path)
+                tags_str = sidecar.get("tagger_tags", "")
+
+                if tags_str:
+                    # Cache hit: Write directly
+                    self.write_batch_result_to_txt(img_path, tags_str, is_tagger=True)
+                    already_done_count += 1
+                else:
+                    # Cache miss: Add to queue
+                    files_to_process.append(img_path)
+
+            if already_done_count > 0:
+                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 Tagger 結果至 txt", 5000)
+
+            # 2. Process missing files
+            if not files_to_process:
+                self.btn_batch_tagger_to_txt.setEnabled(True)
+                self._is_batch_to_txt = False
+                QMessageBox.information(self, "Batch Tagger to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
+                return
+
+            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 Tagger...", 5000)
+
+            self.batch_tagger_thread = BatchTaggerWorker(files_to_process, self.settings)
+            self.batch_tagger_thread.progress.connect(lambda i, t, n: self.show_progress(i, t, n)) # Re-bind if progress uses 3 args
+            self.batch_tagger_thread.per_image.connect(self.on_batch_tagger_per_image)
+            self.batch_tagger_thread.done.connect(self.on_batch_tagger_done)
+            self.batch_tagger_thread.error.connect(self.on_batch_error)
+            self.batch_tagger_thread.start()
+
+        except Exception as e:
+            self.btn_batch_tagger_to_txt.setEnabled(True)
+            self._is_batch_to_txt = False
+            QMessageBox.warning(self, "Error", f"Batch Processing Error: {e}")
 
     def run_batch_llm_to_txt(self):
         if not self.image_files:
@@ -3444,7 +3557,67 @@ class MainWindow(QMainWindow):
         self._batch_delete_chars = delete_chars
         
         self.btn_batch_llm_to_txt.setEnabled(False)
-        self.run_batch_llm()
+
+        # 1. 檢查 Sidecar，將已有結果者直接寫入 txt
+        files_to_process = []
+        already_done_count = 0
+        
+        try:
+            for img_path in self.image_files:
+                sidecar = load_image_sidecar(img_path)
+                nl = sidecar.get("nl_pages", [])
+                
+                content = ""
+                # 使用最後一次結果 (User request: "LLM用最後一次結果")
+                if nl and isinstance(nl, list):
+                    content = nl[-1]
+                
+                if content:
+                    # 已有結果 -> 直接寫入
+                    self.write_batch_result_to_txt(img_path, content, is_tagger=False)
+                    already_done_count += 1
+                else:
+                    # 無結果 -> 加入待處理清單
+                    files_to_process.append(img_path)
+            
+            if already_done_count > 0:
+                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 LLM 結果至 txt", 5000)
+
+            # 2. 針對無結果的檔案，執行 Batch LLM
+            if not files_to_process:
+                # 全部都有結果，直接結束
+                self.btn_batch_llm_to_txt.setEnabled(True)
+                self._is_batch_to_txt = False
+                QMessageBox.information(self, "Batch LLM to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
+                return
+
+            # 有缺漏 -> 跑 Batch LLM
+            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 LLM...", 5000)
+            
+            user_prompt = self.prompt_edit.toPlainText()
+
+            # 建立 Worker，只針對 files_to_process
+            self.batch_llm_thread = BatchLLMWorker(
+                self.llm_base_url,
+                self.api_key,
+                self.model_name,
+                self.llm_system_prompt,
+                user_prompt,
+                files_to_process,  # List of missing paths
+                self.build_llm_tags_context_for_image,
+                max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+            )
+            self.batch_llm_thread.progress.connect(self.show_progress)
+            self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
+            self.batch_llm_thread.done.connect(self.on_batch_llm_done)
+            self.batch_llm_thread.error.connect(self.on_batch_error)
+            self.batch_llm_thread.start()
+
+        except Exception as e:
+            self.btn_batch_llm_to_txt.setEnabled(True)
+            self._is_batch_to_txt = False
+            QMessageBox.warning(self, "Error", f"Batch Processing Error: {e}")
+            return
 
     def prompt_delete_chars(self) -> bool:
         """回傳 True=刪除, False=保留, None=取消"""
@@ -3604,7 +3777,8 @@ class MainWindow(QMainWindow):
             self.llm_system_prompt,
             user_prompt,
             self.image_files,
-            self.build_llm_tags_context_for_image
+            self.build_llm_tags_context_for_image,
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
         )
         self.batch_llm_thread.progress.connect(self.show_progress)
         self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
