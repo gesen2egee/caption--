@@ -83,7 +83,7 @@ except Exception:
     Remover = None
 
 from openai import OpenAI
-from imgutils.tagging import get_wd14_tags, tags_to_text
+from imgutils.tagging import get_wd14_tags, tags_to_text, remove_underline
 
 # optional: OCR for text box detection (batch mask text)
 try:
@@ -527,7 +527,13 @@ def call_wd14(img_pil, cfg: dict):
             "character_mcut_enabled": kwargs["character_mcut_enabled"],
             "drop_overlap": kwargs["drop_overlap"],
         }
-    return get_wd14_tags(img_pil, **use)
+    rating, features, chars = get_wd14_tags(img_pil, **use)
+    
+    # Normalize tags using remove_underline
+    features = {remove_underline(k): v for k, v in features.items()}
+    chars = {remove_underline(k): v for k, v in chars.items()}
+    
+    return rating, features, chars
 
 
 NL_PAGE_DELIM = "\n\n=====NL_PAGE=====\n\n"
@@ -656,7 +662,9 @@ def load_translations(csv_path=TAGS_CSV_LOCAL):
                 reader = csv.reader(f)
                 for row in reader:
                     if len(row) >= 2:
-                        translations[row[0].strip()] = row[1].strip()
+                        # 使用 remove_underline 統一格式
+                        key = remove_underline(row[0].strip())
+                        translations[key] = row[1].strip()
         except Exception as e:
             print(f"Error loading translations: {e}")
     return translations
@@ -954,6 +962,7 @@ class BatchLLMWorker(QThread):
 
     def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter):
         super().__init__()
+        self.base_url = base_url
         self.api_key = api_key
         self.model_name = model_name
         self.system_prompt = system_prompt
@@ -1602,7 +1611,9 @@ class TagFlowWidget(QWidget):
             text = item['text']
             trans = item['trans']
             if not trans:
-                trans = self.translations_csv.get(text)
+                # 使用 remove_underline 進行統一匹配
+                lookup_key = remove_underline(text)
+                trans = self.translations_csv.get(lookup_key)
 
             btn = TagButton(text, trans)
 
@@ -1918,13 +1929,21 @@ class SettingsDialog(QDialog):
         filter_layout.addWidget(QLabel(self.tr("setting_filter_title")))
         filter_layout.addWidget(QLabel(self.tr("setting_filter_info")))
         
-        f_form = QFormLayout()
-        self.ed_bl_words = QLineEdit(", ".join(self.cfg.get("char_tag_blacklist_words", [])))
-        self.ed_wl_words = QLineEdit(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
+        # f_form = QFormLayout()  <-- Remove FormLayout to stacking
+        
+        filter_layout.addWidget(QLabel(self.tr("setting_bl_words")))
+        self.ed_bl_words = QPlainTextEdit()
+        self.ed_bl_words.setPlainText(", ".join(self.cfg.get("char_tag_blacklist_words", [])))
+        self.ed_bl_words.setMinimumHeight(120)
+        filter_layout.addWidget(self.ed_bl_words)
 
-        f_form.addRow(self.tr("setting_bl_words"), self.ed_bl_words)
-        f_form.addRow(self.tr("setting_wl_words"), self.ed_wl_words)
-        filter_layout.addLayout(f_form)
+        filter_layout.addWidget(QLabel(self.tr("setting_wl_words")))
+        self.ed_wl_words = QPlainTextEdit()
+        self.ed_wl_words.setPlainText(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
+        self.ed_wl_words.setMinimumHeight(80)
+        filter_layout.addWidget(self.ed_wl_words)
+        
+        # filter_layout.addLayout(f_form)
         
         filter_layout.addStretch(1)
         
@@ -1998,8 +2017,8 @@ class SettingsDialog(QDialog):
         cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
 
         # Tags Filter
-        cfg["char_tag_blacklist_words"] = [x.strip() for x in self.ed_bl_words.text().split(",") if x.strip()]
-        cfg["char_tag_whitelist_words"] = [x.strip() for x in self.ed_wl_words.text().split(",") if x.strip()]
+        cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
+        cfg["char_tag_whitelist_words"] = self._parse_tags(self.ed_wl_words.toPlainText())
 
         cfg["ui_language"] = self.cb_lang.currentData()
         cfg["ui_theme"] = "dark" if self.rb_dark.isChecked() else "light"
@@ -3472,6 +3491,36 @@ class MainWindow(QMainWindow):
                 with open(txt_path, "r", encoding="utf-8") as f:
                     existing_content = f.read().strip()
             except Exception: pass
+
+        # Deduplication: 若內容已存在於文中 (Word Boundary Check)，則不附加
+        if mode == "append" and existing_content and items:
+            # Normalize search text
+            search_text = existing_content.lower().replace("_", " ").replace("\n", " ")
+            search_text = re.sub(r"\s+", " ", search_text)
+            
+            unique_items = []
+            for item in items:
+                t_norm = item.strip().lower().replace("_", " ")
+                t_norm = re.sub(r"\s+", " ", t_norm)
+                if not t_norm: 
+                    continue
+                
+                # Strict whole word check using regex lookbehind/lookahead
+                # e.g. "hair" won't match "chair", but "blonde hair" matches "blonde hair girl"
+                try:
+                    pattern = r"(?<!\w)" + re.escape(t_norm) + r"(?!\w)"
+                    if not re.search(pattern, search_text):
+                        unique_items.append(item)
+                except Exception:
+                    # Fallback if regex fails (rare)
+                    if t_norm not in search_text:
+                        unique_items.append(item)
+            
+            items = unique_items
+            # 如果全部都重複，items 為空，下面邏輯會寫入空字串或變成只寫入分隔符?
+            # 最好直接 return 避免寫入多餘的逗號或空行
+            if not items:
+                return
         
         if is_tagger:
             new_part = ", ".join(items)
