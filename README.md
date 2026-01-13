@@ -1,4 +1,7 @@
 # Caption 神器 🖼️✨
+<img width="2377" height="1245" alt="image" src="https://github.com/user-attachments/assets/800d3514-792a-4ace-b8cf-c0260602e7f1" />
+
+
 
 AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 
@@ -113,12 +116,6 @@ your_dataset/
   "masked_text": false
 }
 ```
-
----
-
-## 截圖
-
-![App Screenshot](uploaded_image_1768285101362.png)
 
 ---
 
