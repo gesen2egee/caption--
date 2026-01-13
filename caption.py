@@ -1127,7 +1127,6 @@ class BatchMaskTextWorker(QThread):
             results = detect_text_with_ocr(
                 image_path,
                 max_candidates=100,
-                rotation_threshold=1.0,
                 heat_threshold=heat,
                 box_threshold=box,
                 unclip_ratio=unclip
@@ -3447,6 +3446,14 @@ class MainWindow(QMainWindow):
             self.btn_cancel_batch.setVisible(False)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("")
+        
+    def on_batch_done(self, msg="Batch Process Completed"):
+        self.hide_progress()
+        if hasattr(self, "btn_cancel_batch"):
+            self.btn_cancel_batch.setVisible(False)
+            self.btn_cancel_batch.setEnabled(False)
+        QMessageBox.information(self, "Batch", msg)
+        unload_all_models()
 
     def run_batch_tagger(self):
         if not self.image_files:
