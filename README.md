@@ -62,14 +62,14 @@ python -m venv venv
 venv\Scripts\activate
 
 # 基礎依賴
-pip install PyQt6 Pillow natsort openai -i https://pypi.org/simple
+pip install PyQt6 Pillow natsort openai -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Pilmoji (Source fixed)
 pip install git+https://github.com/jay3332/pilmoji.git
 
 # Main Utils
-pip install dghs-imgutils[gpu] -i https://pypi.org/simple
-pip install transparent-background transformers -i https://pypi.org/simple
+pip install dghs-imgutils[gpu] -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install transparent-background transformers -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 ---

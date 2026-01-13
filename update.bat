@@ -15,7 +15,7 @@ if not exist venv (
 call venv\Scripts\activate
 
 echo [3/3] 更新 Python 依賴套件...
-pip install -r requirements.txt -i https://pypi.org/simple
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 echo 更新完成！
 pause
