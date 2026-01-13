@@ -2933,67 +2933,38 @@ class MainWindow(QMainWindow):
         text = edit.toPlainText()
         cursor = edit.textCursor()
         
-        # === 修改開始：強制游標邏輯 ===
-        # 如果游標在位置 0 (開頭) 且文字不為空，或者編輯框當前沒有焦點
-        # 我們假設使用者是想要 "Append" (附加) 到最後面，而不是插在開頭
-        if (cursor.position() == 0 and len(text) > 0) or not edit.hasFocus():
+        # (2) 如果沒有游標 (游標在開頭且沒焦點) 則附加在 text 尾
+        # 在 PyQt 中，hasFocus() 可以在點擊按鈕前判斷是否有交互
+        if cursor.position() == 0 and len(text) > 0 and not edit.hasFocus():
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            edit.setTextCursor(cursor) # 更新編輯框的游標狀態
-        # === 修改結束 ===
+            edit.setTextCursor(cursor)
 
+        # (1) 優先插入在游標位置
         pos = cursor.position()
-
-        if not text.strip():
-            # 如果原本是空的，直接取代
-            new_text = token
-            edit.blockSignals(True)
-            edit.setPlainText(new_text)
-            edit.blockSignals(False)
-            
-            # 設定游標到最後
-            c = edit.textCursor()
-            c.movePosition(QTextCursor.MoveOperation.End)
-            edit.setTextCursor(c)
-            edit.ensureCursorVisible() # 確保視窗捲動到游標處
-            return
-
         before = text[:pos]
         after = text[pos:]
 
-        prefix = ""
-        suffix = ""
-
-        before_strip = before.rstrip()
-        after_strip = after.lstrip()
-
-        # 智慧判斷逗號：如果是接在後面，前面補逗號
-        if before_strip and not before_strip.endswith(","):
-            prefix = ", "
-        # 如果是插在中間，後面補逗號
-        if after_strip and not after_strip.startswith(","):
-            suffix = ", "
-
-        inserted = before + prefix + token + suffix + after
-        inserted = cleanup_csv_like_text(inserted)
+        # 前後加 ", " 然後格式化
+        new_text = before + ", " + token + ", " + after
+        final = cleanup_csv_like_text(new_text, self.english_force_lowercase)
 
         edit.blockSignals(True)
-        edit.setPlainText(inserted)
+        edit.setPlainText(final)
         edit.blockSignals(False)
-
-        # 計算新的游標位置：原本位置 + 前綴長度 + token長度
-        # 這裡做一個優化：通常加完 Tag 後，使用者希望游標在該 Tag 的後面
-        new_pos_target = len(before) + len(prefix) + len(token)
         
-        # 如果我們原本就是在最後面加入，直接把游標移到全文字尾
-        if pos >= len(text): 
-             new_pos = len(inserted)
+        # 格式化後嘗試把游標移到插入的 token 之後
+        new_cursor = edit.textCursor()
+        # 簡單搜尋 token 出現的位置 (從之前位置附近開始找)
+        search_start = max(0, pos - 5)
+        new_pos = final.find(token, search_start)
+        if new_pos != -1:
+            new_cursor.setPosition(new_pos + len(token))
         else:
-             new_pos = min(len(inserted), new_pos_target)
-
-        c = edit.textCursor()
-        c.setPosition(new_pos)
-        edit.setTextCursor(c)
-        edit.ensureCursorVisible() # 關鍵：確保視窗會捲動到游標所在位置
+            new_cursor.movePosition(QTextCursor.MoveOperation.End)
+        
+        edit.setTextCursor(new_cursor)
+        edit.ensureCursorVisible()
+        # 不需要強行 setFocus，保留按鈕焦點可能更方便連續按
 
     def remove_token_everywhere(self, token: str):
         token = token.strip()
