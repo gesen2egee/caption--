@@ -5,5 +5,7 @@ openai
 numpy<2
 git+https://github.com/jay3332/pilmoji.git
 dghs-imgutils[gpu]
+nvidia-cudnn-cu12
+nvidia-cublas-cu12
 transparent-background
 transformers
