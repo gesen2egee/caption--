@@ -44,28 +44,32 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 
 ## 安裝
 
-### 1. 建立虛擬環境
+### 1. 快速安裝 (Windows)
+雙擊執行 `setup.bat` 即可自動建立虛擬環境並安裝所有依賴 (包含修復版 pilmoji 與 GPU 版 imgutils)。
+
+### 2. 啟動
+雙擊執行 `run.bat`。
+
+### 3. 更新
+若需更新程式碼與依賴，請執行 `update.bat`。
+
+---
+
+### 手動安裝 (Advanced)
+若不使用 bat 檔，請依序執行：
 ```bash
 python -m venv venv
-# Windows
 venv\Scripts\activate
-# Linux/Mac
-source venv/bin/activate
-```
 
-### 2. 安裝依賴
-```bash
+# 基礎依賴
 pip install PyQt6 Pillow natsort openai -i https://pypi.org/simple
-pip install git+https://github.com/jay3332/pilmoji.git
-pip install dghs-imgutils[gpu] -i https://pypi.org/simple      # WD14 Tagger + OCR
-pip install transparent-background -i https://pypi.org/simple  # 去背功能 (選用)
-pip install transformers -i https://pypi.org/simple        # Token 計數 (選用)
-```
 
-### 3. 執行
-```bash
-venv\Scripts\activate
-python caption.py
+# Pilmoji (Source fixed)
+pip install git+https://github.com/jay3332/pilmoji.git
+
+# Main Utils
+pip install dghs-imgutils[gpu] -i https://pypi.org/simple
+pip install transparent-background transformers -i https://pypi.org/simple
 ```
 
 ---

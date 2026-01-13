@@ -1,9 +1,8 @@
-PyQt6>=6.5.0
-Pillow>=9.0.0
-natsort>=8.0.0
-openai>=1.0.0
-dghs-imgutils[gpu]>=0.19.0
+PyQt6
+Pillow
+natsort
+openai
+git+https://github.com/jay3332/pilmoji.git
+dghs-imgutils[gpu]
 transparent-background
-
-# Optional (uncomment if needed)
-# transformers>=4.30.0
+transformers
