@@ -451,9 +451,9 @@ DEFAULT_APP_SETTINGS = {
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
     
     # Advanced OCR Settings
-    "mask_ocr_heat_threshold": 0.3,
-    "mask_ocr_box_threshold": 0.7,
-    "mask_ocr_unclip_ratio": 2.0,
+    "mask_ocr_heat_threshold": 0.2,
+    "mask_ocr_box_threshold": 0.6,
+    "mask_ocr_unclip_ratio": 2.3,
 
     # UI / Theme
     "ui_language": "zh_tw",   # zh_tw | en
@@ -1089,12 +1089,14 @@ class BatchMaskTextWorker(QThread):
         if not bool(self.cfg.get("mask_batch_detect_text_enabled", True)):
             return []
         try:
-            heat = float(self.cfg.get("mask_ocr_heat_threshold", 0.3))
-            box = float(self.cfg.get("mask_ocr_box_threshold", 0.7))
-            unclip = float(self.cfg.get("mask_ocr_unclip_ratio", 2.0))
+            heat = float(self.cfg.get("mask_ocr_heat_threshold", 0.2))
+            box = float(self.cfg.get("mask_ocr_box_threshold", 0.6))
+            unclip = float(self.cfg.get("mask_ocr_unclip_ratio", 2.3))
             
             results = detect_text_with_ocr(
                 image_path,
+                max_candidates=100,
+                rotation_threshold=1.0,
                 heat_threshold=heat,
                 box_threshold=box,
                 unclip_ratio=unclip
@@ -1896,21 +1898,21 @@ class SettingsDialog(QDialog):
         self.spin_ocr_heat = QDoubleSpinBox()
         self.spin_ocr_heat.setRange(0.01, 1.0)
         self.spin_ocr_heat.setSingleStep(0.05)
-        self.spin_ocr_heat.setValue(float(self.cfg.get("mask_ocr_heat_threshold", 0.3)))
+        self.spin_ocr_heat.setValue(float(self.cfg.get("mask_ocr_heat_threshold", 0.2)))
         self.spin_ocr_heat.setToolTip(self.tr("setting_ocr_heat_tip"))
         form3.addRow(self.tr("setting_ocr_heat"), self.spin_ocr_heat)
 
         self.spin_ocr_box = QDoubleSpinBox()
         self.spin_ocr_box.setRange(0.01, 1.0)
         self.spin_ocr_box.setSingleStep(0.05)
-        self.spin_ocr_box.setValue(float(self.cfg.get("mask_ocr_box_threshold", 0.7)))
+        self.spin_ocr_box.setValue(float(self.cfg.get("mask_ocr_box_threshold", 0.6)))
         self.spin_ocr_box.setToolTip(self.tr("setting_ocr_box_tip"))
         form3.addRow(self.tr("setting_ocr_box"), self.spin_ocr_box)
 
         self.spin_ocr_unclip = QDoubleSpinBox()
         self.spin_ocr_unclip.setRange(1.0, 5.0)
         self.spin_ocr_unclip.setSingleStep(0.1)
-        self.spin_ocr_unclip.setValue(float(self.cfg.get("mask_ocr_unclip_ratio", 2.0)))
+        self.spin_ocr_unclip.setValue(float(self.cfg.get("mask_ocr_unclip_ratio", 2.3)))
         self.spin_ocr_unclip.setToolTip(self.tr("setting_ocr_unclip_tip"))
         form3.addRow(self.tr("setting_ocr_unclip"), self.spin_ocr_unclip)
 
