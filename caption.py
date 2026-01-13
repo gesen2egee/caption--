@@ -452,9 +452,9 @@ DEFAULT_APP_SETTINGS = {
     "char_tag_whitelist_words": ["holding", "hand", "sitting", "covering", "playing", "background", "looking"],
 
     # Mask / batch mask text
-    "mask_default_alpha": 0,  # 0-255, 0 = fully transparent
+    "mask_default_alpha": 1,  # 0-255, 0 = fully transparent
     "mask_default_format": "webp",  # webp | png
-    "mask_batch_only_if_has_background_tag": False,
+    "mask_batch_only_if_has_background_tag": True,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
     
