@@ -169,7 +169,7 @@ LOCALIZATION = {
         "btn_batch_unmask": "Batch 去背景",
         "btn_mask_text": "單圖去文字",
         "btn_batch_mask_text": "Batch 去文字",
-        "btn_restore_original": "放回原檔",
+        "btn_restore_original": "放回原圖",
         "btn_stroke_eraser": "手繪橡皮擦",
         "btn_cancel_batch": "中止",
         "menu_tools": "工具",
@@ -225,6 +225,12 @@ LOCALIZATION = {
         "setting_tagger_char_mcut": "特徵標籤 MCut",
         "setting_tagger_drop_overlap": "移除重疊標籤",
         "setting_mask_ocr_hint": "OCR 需要 imgutils，未安裝則略過。",
+        "setting_ocr_heat": "熱圖閾值 (Heat Threshold):",
+        "setting_ocr_box": "文字框信心 (Box Threshold):",
+        "setting_ocr_unclip": "擴張比例 (Unclip Ratio):",
+        "setting_ocr_heat_tip": "調低可偵測模糊文字但易誤判；調高只偵測清晰文字。",
+        "setting_ocr_box_tip": "過濾低信心的文字框。若漏字可調低。",
+        "setting_ocr_unclip_tip": "決定文字框擴張程度。若缺字頭字尾可調大；若框到隔壁行可調小。",
     },
     "en": {
         "app_title": "Caption Tool",
@@ -316,6 +322,12 @@ LOCALIZATION = {
         "setting_tagger_char_mcut": "Character MCut Enabled",
         "setting_tagger_drop_overlap": "Drop Overlap",
         "setting_mask_ocr_hint": "OCR relies on imgutils.ocr.detect_text_with_ocr; skips if not installed.",
+        "setting_ocr_heat": "Heat Threshold:",
+        "setting_ocr_box": "Box Threshold:",
+        "setting_ocr_unclip": "Unclip Ratio:",
+        "setting_ocr_heat_tip": "Lower: detects faint text (more noise); Higher: strict check.",
+        "setting_ocr_box_tip": "Confidence threshold. Lower if text is missed.",
+        "setting_ocr_unclip_tip": "Expansion ratio. Increase if edges are cut; decrease if merging lines.",
     }
 }
 
@@ -437,6 +449,11 @@ DEFAULT_APP_SETTINGS = {
     "mask_batch_only_if_has_background_tag": False,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
+    
+    # Advanced OCR Settings
+    "mask_ocr_heat_threshold": 0.3,
+    "mask_ocr_box_threshold": 0.7,
+    "mask_ocr_unclip_ratio": 2.0,
 
     # UI / Theme
     "ui_language": "zh_tw",   # zh_tw | en
@@ -1063,7 +1080,16 @@ class BatchMaskTextWorker(QThread):
         if not bool(self.cfg.get("mask_batch_detect_text_enabled", True)):
             return []
         try:
-            results = detect_text_with_ocr(image_path)
+            heat = float(self.cfg.get("mask_ocr_heat_threshold", 0.3))
+            box = float(self.cfg.get("mask_ocr_box_threshold", 0.7))
+            unclip = float(self.cfg.get("mask_ocr_unclip_ratio", 2.0))
+            
+            results = detect_text_with_ocr(
+                image_path,
+                heat_threshold=heat,
+                box_threshold=box,
+                unclip_ratio=unclip
+            )
             boxes = []
             for item in results or []:
                 if not item:
@@ -1846,23 +1872,43 @@ class SettingsDialog(QDialog):
         form3.addRow(self.tr("setting_mask_alpha"), self.ed_mask_alpha)
         form3.addRow(self.tr("setting_mask_format"), self.ed_mask_format)
 
-        self.chk_only_bg = QCheckBox(self.tr("setting_mask_only_bg"))
-        self.chk_only_bg.setChecked(bool(self.cfg.get("mask_batch_only_if_has_background_tag", False)))
+        self.chk_mask_bg_only = QCheckBox(self.tr("setting_mask_only_bg"))
+        self.chk_mask_bg_only.setChecked(bool(self.cfg.get("mask_batch_only_if_has_background_tag", False)))
+        form3.addRow(self.tr("setting_mask_only_bg"), self.chk_mask_bg_only)
 
-        self.chk_detect_text = QCheckBox(self.tr("setting_mask_ocr"))
-        self.chk_detect_text.setChecked(bool(self.cfg.get("mask_batch_detect_text_enabled", True)))
+        self.chk_mask_ocr = QCheckBox(self.tr("setting_mask_ocr"))
+        self.chk_mask_ocr.setChecked(bool(self.cfg.get("mask_batch_detect_text_enabled", True)))
+        form3.addRow(self.tr("setting_mask_ocr"), self.chk_mask_ocr)
+        self.chk_mask_ocr.setToolTip(self.tr("setting_mask_ocr_hint"))
+
+        # OCR Advanced
+        self.spin_ocr_heat = QDoubleSpinBox()
+        self.spin_ocr_heat.setRange(0.01, 1.0)
+        self.spin_ocr_heat.setSingleStep(0.05)
+        self.spin_ocr_heat.setValue(float(self.cfg.get("mask_ocr_heat_threshold", 0.3)))
+        self.spin_ocr_heat.setToolTip(self.tr("setting_ocr_heat_tip"))
+        form3.addRow(self.tr("setting_ocr_heat"), self.spin_ocr_heat)
+
+        self.spin_ocr_box = QDoubleSpinBox()
+        self.spin_ocr_box.setRange(0.01, 1.0)
+        self.spin_ocr_box.setSingleStep(0.05)
+        self.spin_ocr_box.setValue(float(self.cfg.get("mask_ocr_box_threshold", 0.7)))
+        self.spin_ocr_box.setToolTip(self.tr("setting_ocr_box_tip"))
+        form3.addRow(self.tr("setting_ocr_box"), self.spin_ocr_box)
+
+        self.spin_ocr_unclip = QDoubleSpinBox()
+        self.spin_ocr_unclip.setRange(1.0, 5.0)
+        self.spin_ocr_unclip.setSingleStep(0.1)
+        self.spin_ocr_unclip.setValue(float(self.cfg.get("mask_ocr_unclip_ratio", 2.0)))
+        self.spin_ocr_unclip.setToolTip(self.tr("setting_ocr_unclip_tip"))
+        form3.addRow(self.tr("setting_ocr_unclip"), self.spin_ocr_unclip)
+
+        self.chk_mask_del_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
+        self.chk_mask_del_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
+        form3.addRow(self.tr("setting_mask_delete_npz"), self.chk_mask_del_npz)
 
         mask_layout.addLayout(form3)
-        mask_layout.addWidget(self.chk_only_bg)
-        mask_layout.addWidget(self.chk_detect_text)
-
-        self.chk_delete_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
-        self.chk_delete_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
-        mask_layout.addWidget(self.chk_delete_npz)
-
-        hint = QLabel(self.tr("setting_mask_ocr_hint"))
-        hint.setStyleSheet("color:#666;")
-        mask_layout.addWidget(hint)
+        # The original hint label is removed as the tooltip is now on chk_mask_ocr
         mask_layout.addStretch(1)
         self.tabs.addTab(tab_mask, self.tr("setting_tab_mask"))
 
@@ -1944,9 +1990,12 @@ class SettingsDialog(QDialog):
 
         cfg["mask_default_alpha"] = a
         cfg["mask_default_format"] = fmt
-        cfg["mask_batch_only_if_has_background_tag"] = self.chk_only_bg.isChecked()
-        cfg["mask_batch_detect_text_enabled"] = self.chk_detect_text.isChecked()
-        cfg["mask_delete_npz_on_move"] = self.chk_delete_npz.isChecked()
+        cfg["mask_batch_only_if_has_background_tag"] = self.chk_mask_bg_only.isChecked()
+        cfg["mask_batch_detect_text_enabled"] = self.chk_mask_ocr.isChecked()
+        cfg["mask_ocr_heat_threshold"] = float(f"{self.spin_ocr_heat.value():.2f}")
+        cfg["mask_ocr_box_threshold"] = float(f"{self.spin_ocr_box.value():.2f}")
+        cfg["mask_ocr_unclip_ratio"] = float(f"{self.spin_ocr_unclip.value():.2f}")
+        cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = [x.strip() for x in self.ed_bl_words.text().split(",") if x.strip()]
