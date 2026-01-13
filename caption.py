@@ -160,6 +160,7 @@ LOCALIZATION = {
         "app_title": "Caption 神器",
         "menu_file": "檔案",
         "menu_open_dir": "開啟目錄",
+        "menu_refresh": "重新整理列表 (F5)",
         "btn_settings": "設定",
         "menu_exit": "結束",
         "tab_tags": "TAGS",
@@ -241,7 +242,9 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "預設提示詞模板:",
         "setting_llm_cust_prompt": "自訂提示詞模板:",
         "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
+        "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
         "setting_llm_max_dim": "LLM 圖片最大邊長 (Max Dimension):",
+        "setting_llm_skip_nsfw": "Batch LLM: 若含 rating:explicit/questionable 則跳過",
         "setting_tagger_gen_thresh": "一般標籤閾值:",
         "setting_tagger_char_thresh": "特徵標籤閾值:",
         "setting_tagger_gen_mcut": "一般標籤 MCut",
@@ -259,6 +262,7 @@ LOCALIZATION = {
         "app_title": "Caption Tool",
         "menu_file": "File",
         "menu_open_dir": "Open Directory",
+        "menu_refresh": "Refresh List (F5)",
         "btn_settings": "Settings",
         "menu_exit": "Exit",
         "tab_tags": "TAGS",
@@ -340,7 +344,9 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "Default Prompt Template:",
         "setting_llm_cust_prompt": "Custom Prompt Template:",
         "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
+        "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
         "setting_llm_max_dim": "LLM Max Image Dimension:",
+        "setting_llm_skip_nsfw": "Batch LLM: Skip if tag contains rating:explicit/questionable",
         "setting_tagger_gen_thresh": "General Threshold:",
         "setting_tagger_char_thresh": "Character Threshold:",
         "setting_tagger_gen_mcut": "General MCut Enabled",
@@ -444,7 +450,9 @@ DEFAULT_APP_SETTINGS = {
     "llm_system_prompt": DEFAULT_SYSTEM_PROMPT,
     "llm_user_prompt_template": DEFAULT_USER_PROMPT_TEMPLATE,
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
+    "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
+    "llm_skip_nsfw_on_batch": False,
 
     # Tagger (WD14)
     "tagger_model": "EVA02_Large",
@@ -1008,7 +1016,7 @@ class BatchLLMWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024, skip_nsfw=False):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -1018,6 +1026,7 @@ class BatchLLMWorker(QThread):
         self.image_paths = list(image_paths)
         self.tags_context_getter = tags_context_getter
         self.max_dim = max_dim
+        self.skip_nsfw = skip_nsfw
         self._stop = False
 
     def stop(self):
@@ -1038,6 +1047,14 @@ class BatchLLMWorker(QThread):
 
                 try:
                     tags_context = self.tags_context_getter(p)
+
+                    # Check NSFW skip
+                    if self.skip_nsfw:
+                        t_lower = tags_context.lower()
+                        if "explicit" in t_lower or "questionable" in t_lower:
+                            # Skip this image
+                            self.per_image.emit(p, "")
+                            continue
 
                     img = Image.open(p)
                     if img.mode != 'RGB':
@@ -1856,8 +1873,13 @@ class SettingsDialog(QDialog):
         self.spin_llm_dim.setRange(256, 4096)
         self.spin_llm_dim.setSingleStep(128)
         self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
+        self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
         form.addRow(self.tr("setting_llm_max_dim"), self.spin_llm_dim)
         
+        self.chk_llm_skip_nsfw = QCheckBox(self.tr("setting_llm_skip_nsfw"))
+        self.chk_llm_skip_nsfw.setChecked(bool(self.cfg.get("llm_skip_nsfw_on_batch", False)))
+        form.addRow("", self.chk_llm_skip_nsfw)
+
         llm_layout.addLayout(form)
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
@@ -2074,6 +2096,7 @@ class SettingsDialog(QDialog):
         cfg["llm_user_prompt_template"] = self.ed_user_template.toPlainText()
         cfg["llm_custom_prompt_template"] = self.ed_custom_template.toPlainText()
         cfg["llm_max_image_dimension"] = self.spin_llm_dim.value()
+        cfg["llm_skip_nsfw_on_batch"] = self.chk_llm_skip_nsfw.isChecked()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
@@ -2451,6 +2474,67 @@ class MainWindow(QMainWindow):
     # ==========================
     # Logic: Storage & Init
     # ==========================
+    def refresh_file_list(self):
+        if not self.root_dir_path or not os.path.exists(self.root_dir_path):
+            return
+        
+        dir_path = self.root_dir_path
+        # Keep track of current file to restore selection
+        current_path = self.current_image_path
+        
+        self.image_files = []
+        valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
+        ignore_dirs = {"no_used", "unmask"}
+
+        # Copied logic from open_directory scan
+        try:
+            for entry in os.scandir(dir_path):
+                if entry.is_file() and entry.name.lower().endswith(valid_exts):
+                    if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
+                        continue
+                    self.image_files.append(entry.path)
+        except Exception:
+            pass
+
+        try:
+            for entry in os.scandir(dir_path):
+                if entry.is_dir():
+                    if entry.name.lower() in ignore_dirs:
+                        continue
+                    try:
+                        for sub in os.scandir(entry.path):
+                            if sub.is_file() and sub.name.lower().endswith(valid_exts):
+                                if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
+                                    continue
+                                self.image_files.append(sub.path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        self.image_files = natsorted(self.image_files)
+
+        if not self.image_files:
+            self.image_label.clear()
+            self.txt_edit.clear()
+            self.img_info_label.setText("No Images Found")
+            self.current_index = -1
+            self.current_image_path = None
+            return
+
+        # Restore index
+        if current_path and current_path in self.image_files:
+            self.current_index = self.image_files.index(current_path)
+        else:
+            # If current file gone, try to stay at same index or 0
+            if self.current_index >= len(self.image_files):
+                self.current_index = len(self.image_files) - 1
+            if self.current_index < 0:
+                self.current_index = 0
+        
+        self.load_image()
+        self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
+
     def open_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"))
         if dir_path:
@@ -3093,6 +3177,18 @@ class MainWindow(QMainWindow):
         self.btn_run_llm.setEnabled(False)
         self.btn_run_llm.setText("Running LLM...")
 
+        # Check empty tags logic
+        if "{tags}" in user_prompt and not tags_text.strip():
+            reply = QMessageBox.question(
+                self, "Warning", 
+                "Prompt 包含 {tags} 但目前沒有標籤資料。\n確定要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self.btn_run_llm.setEnabled(True)
+                self.btn_batch_llm.setEnabled(True)
+                return
+
         self.llm_thread = LLMWorker(
             self.llm_base_url,
             self.api_key,
@@ -3603,7 +3699,8 @@ class MainWindow(QMainWindow):
                 user_prompt,
                 files_to_process,  # List of missing paths
                 self.build_llm_tags_context_for_image,
-                max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+                max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+                skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False))
             )
             self.batch_llm_thread.progress.connect(self.show_progress)
             self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
@@ -3776,7 +3873,8 @@ class MainWindow(QMainWindow):
             user_prompt,
             self.image_files,
             self.build_llm_tags_context_for_image,
-            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+            skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False))
         )
         self.batch_llm_thread.progress.connect(self.show_progress)
         self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
@@ -4007,6 +4105,11 @@ class MainWindow(QMainWindow):
         open_action = QAction(self.tr("menu_open_dir"), self)
         open_action.triggered.connect(self.open_directory)
         file_menu.addAction(open_action)
+
+        refresh_action = QAction(self.tr("menu_refresh"), self)
+        refresh_action.setShortcut(QKeySequence("F5"))
+        refresh_action.triggered.connect(self.refresh_file_list)
+        file_menu.addAction(refresh_action)
         settings_action = QAction(self.tr("btn_settings"), self)
         settings_action.triggered.connect(self.open_settings)
         file_menu.addAction(settings_action)
