@@ -2,29 +2,22 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 32-97]    Imports & 外部依賴
-# [Ln 98-300]   Configuration, I18n Resource & Globals
-# [Ln 302-380]  Settings Helpers (load/save/coerce 函式)
-# [Ln 382-530]  Utils: delete_matching_npz、JSON sidecar、checkerboard
-# [Ln 532-700]  Utils / Parsing / Tag Logic (含 is_basic_character_tag)
-# [Ln 702-1000] Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 1002-1160] BatchMaskTextWorker (OCR 批次遮罩)
-# [Ln 1162-1260] BatchUnmaskWorker (批次去背)
-# [Ln 1262-1360] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1362-1590] UI Components (TagButton 多主題適配、TagFlowWidget、Advanced Find/Replace)
-# [Ln 1592-1880] SettingsDialog (UI 分頁新增語言/主題、I18n 覆蓋)
-# [Ln 1882-1940] MainWindow.__init__ (主視窗初始化、tr 輔助函式)
-# [Ln 1942-2190] MainWindow.init_ui (UI 佈局、分頁、按鈕)
-# [Ln 2192-2260] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 2262-2430] MainWindow 檔案讀取 & on_text_changed
-# [Ln 2432-2500] MainWindow Token 計數
-# [Ln 2502-2680] MainWindow TAGS/NL (JSON sidecar 整合)
-# [Ln 2682-2770] MainWindow NL Paging
-# [Ln 2772-2920] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2922-3060] MainWindow LLM 生成
-# [Ln 3062-3150] MainWindow Tools: Unmask / Stroke Eraser
-# [Ln 3152-3290] MainWindow Batch Tagger / LLM to txt (含寫入與過濾邏輯)
-# [Ln 3292-3560] MainWindow Settings 儲存、retranslate_ui & main 入口
+# [Ln 31-114]    Imports & 外部依賴
+# [Ln 115-450]   Configuration, I18n Resource & Globals
+# [Ln 460-570]   Settings Helpers (load/save/coerce 函式)
+# [Ln 570-750]   Utils: delete_matching_npz、JSON sidecar、Tag Parsing
+# [Ln 750-930]   Utils: Danbooru-style Query Filter (篩選器)
+# [Ln 930-1380]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 1380-1530] BatchMaskTextWorker (OCR) & BatchUnmaskWorker
+# [Ln 1530-1630] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1630-1840] UI Components (TagButton, TagFlowWidget)
+# [Ln 1840-2130] SettingsDialog
+# [Ln 2130-2270] AdvancedFindReplaceDialog
+# [Ln 2410-2520] MainWindow.__init__ & init_ui
+# [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
+# [Ln 3000-3400] MainWindow: LLM / Tagger / Tools Logic
+# [Ln 3400-4400] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
+# [Ln 4400+]     MainWindow: Settings / Main Entry
 #
 # ============================================================
 
@@ -196,6 +189,9 @@ LOCALIZATION = {
         "btn_stroke_eraser": "手繪橡皮擦",
         "btn_cancel_batch": "中止",
         "menu_tools": "工具",
+        "filter_placeholder": "Danbooru 篩選語法... (blonde_hair blue_eyes)",
+        "filter_by_tags": "Tags",
+        "filter_by_text": "Text",
         "msg_delete_confirm": "確定要將此圖片移動到 no_used？",
         "msg_batch_delete_char_tags": "是否自動刪除特徵標籤 (Character Tags)？",
         "msg_batch_delete_info": "將根據設定中的黑白名單過濾標籤或句子。",
@@ -298,6 +294,9 @@ LOCALIZATION = {
         "btn_stroke_eraser": "Stroke Eraser",
         "btn_cancel_batch": "Cancel",
         "menu_tools": "Tools",
+        "filter_placeholder": "Danbooru filter... (blonde_hair blue_eyes)",
+        "filter_by_tags": "Tags",
+        "filter_by_text": "Text",
         "msg_delete_confirm": "Move this image to no_used?",
         "msg_batch_delete_char_tags": "Delete Character Tags automatically?",
         "msg_batch_delete_info": "Tags will be filtered based on your blacklist/whitelist.",
@@ -453,6 +452,7 @@ DEFAULT_APP_SETTINGS = {
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
     "llm_skip_nsfw_on_batch": False,
+    "last_open_dir": "",
 
     # Tagger (WD14)
     "tagger_model": "EVA02_Large",
@@ -752,6 +752,266 @@ def parse_boorutag_meta(meta_path):
     return tags_meta, hint_info
 
 
+# ==========================================
+#  Danbooru-style Query Filter
+# ==========================================
+import fnmatch
+
+class DanbooruQueryFilter:
+    """
+    Danbooru-style query parser and matcher.
+    Supports: AND (space), OR, NOT (-), grouping (()), wildcards (*), rating shortcuts, order.
+    """
+
+    def __init__(self, query: str):
+        self.query = query.strip()
+        self.order_mode = None  # 'landscape' or 'portrait'
+        self._parse_order()
+
+    def _parse_order(self):
+        """Extract order: directive from query."""
+        import re
+        match = re.search(r'\border:(landscape|portrait)\b', self.query, re.IGNORECASE)
+        if match:
+            self.order_mode = match.group(1).lower()
+            self.query = re.sub(r'\border:(landscape|portrait)\b', '', self.query, flags=re.IGNORECASE).strip()
+
+    def _normalize(self, text: str) -> str:
+        """Normalize text: lowercase, underscores to spaces."""
+        return text.lower().replace("_", " ").strip()
+
+    def _expand_rating(self, term: str) -> str:
+        """Expand rating shortcuts like rating:e -> rating:explicit."""
+        rating_map = {
+            "rating:e": "rating:explicit",
+            "rating:q": "rating:questionable",
+            "rating:s": "rating:sensitive",
+            "rating:g": "rating:general",
+        }
+        lower = term.lower()
+        return rating_map.get(lower, term)
+
+    def _term_matches(self, term: str, content: str) -> bool:
+        """Check if a single term matches the content."""
+        term = self._expand_rating(term)
+        term_norm = self._normalize(term)
+        content_norm = self._normalize(content)
+
+        # Handle wildcards
+        if "*" in term_norm:
+            # fnmatch style: * matches any characters
+            pattern = term_norm.replace(" ", "*")  # Allow flexible spacing
+            # Check each word in content
+            words = content_norm.split()
+            for word in words:
+                if fnmatch.fnmatch(word, pattern):
+                    return True
+            # Also check whole content
+            if fnmatch.fnmatch(content_norm, f"*{pattern}*"):
+                return True
+            return False
+
+        # Handle rating:q,s format (multiple ratings)
+        if term_norm.startswith("rating:") and "," in term_norm:
+            ratings = term_norm.replace("rating:", "").split(",")
+            for r in ratings:
+                r = r.strip()
+                expanded = self._expand_rating(f"rating:{r}")
+                if self._normalize(expanded) in content_norm:
+                    return True
+            return False
+
+        # Simple substring match for normalized content
+        return term_norm in content_norm
+
+    def _tokenize(self, query: str) -> list:
+        """Tokenize the query into terms and operators."""
+        import re
+        # Tokens: (, ), or, ~term, -term, -(, term
+        tokens = []
+        i = 0
+        query = query.strip()
+        
+        while i < len(query):
+            if query[i].isspace():
+                i += 1
+                continue
+            
+            # Grouping
+            if query[i] == '(':
+                tokens.append('(')
+                i += 1
+            elif query[i] == ')':
+                tokens.append(')')
+                i += 1
+            # Negation with group
+            elif query[i:i+2] == '-(':
+                tokens.append('-')
+                tokens.append('(')
+                i += 2
+            # Negation prefix
+            elif query[i] == '-':
+                # Find the term after -
+                i += 1
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term:
+                    tokens.append(('-', term))
+            # Legacy OR prefix
+            elif query[i] == '~':
+                i += 1
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term:
+                    tokens.append(('~', term))
+            # OR keyword
+            elif query[i:i+2].lower() == 'or' and (i+2 >= len(query) or query[i+2].isspace()):
+                tokens.append('or')
+                i += 2
+            # Regular term
+            else:
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term and term.lower() != 'or':
+                    tokens.append(term)
+        
+        return tokens
+
+    def _evaluate(self, tokens: list, content: str) -> bool:
+        """Evaluate tokenized query against content."""
+        if not tokens:
+            return True
+
+        # Handle legacy OR (~term ~term)
+        tilde_terms = [t[1] for t in tokens if isinstance(t, tuple) and t[0] == '~']
+        if tilde_terms:
+            # Any of the tilde terms must match
+            other_tokens = [t for t in tokens if not (isinstance(t, tuple) and t[0] == '~')]
+            tilde_result = any(self._term_matches(term, content) for term in tilde_terms)
+            if other_tokens:
+                return tilde_result and self._evaluate(other_tokens, content)
+            return tilde_result
+
+        # Split by OR
+        or_groups = []
+        current_group = []
+        paren_depth = 0
+        
+        for token in tokens:
+            if token == '(':
+                paren_depth += 1
+                current_group.append(token)
+            elif token == ')':
+                paren_depth -= 1
+                current_group.append(token)
+            elif token == 'or' and paren_depth == 0:
+                if current_group:
+                    or_groups.append(current_group)
+                current_group = []
+            else:
+                current_group.append(token)
+        
+        if current_group:
+            or_groups.append(current_group)
+
+        # If we have OR groups, any must match
+        if len(or_groups) > 1:
+            return any(self._evaluate_and_group(group, content) for group in or_groups)
+        
+        return self._evaluate_and_group(tokens, content)
+
+    def _evaluate_and_group(self, tokens: list, content: str) -> bool:
+        """Evaluate an AND group (all must match, except negations)."""
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            
+            if token == '(':
+                # Find matching )
+                paren_depth = 1
+                j = i + 1
+                while j < len(tokens) and paren_depth > 0:
+                    if tokens[j] == '(':
+                        paren_depth += 1
+                    elif tokens[j] == ')':
+                        paren_depth -= 1
+                    j += 1
+                sub_tokens = tokens[i+1:j-1]
+                if not self._evaluate(sub_tokens, content):
+                    return False
+                i = j
+            elif token == ')':
+                i += 1
+            elif token == '-':
+                # Next token is negated
+                i += 1
+                if i < len(tokens):
+                    next_token = tokens[i]
+                    if next_token == '(':
+                        # Negated group
+                        paren_depth = 1
+                        j = i + 1
+                        while j < len(tokens) and paren_depth > 0:
+                            if tokens[j] == '(':
+                                paren_depth += 1
+                            elif tokens[j] == ')':
+                                paren_depth -= 1
+                            j += 1
+                        sub_tokens = tokens[i+1:j-1]
+                        if self._evaluate(sub_tokens, content):
+                            return False
+                        i = j
+                    else:
+                        i += 1
+            elif isinstance(token, tuple):
+                op, term = token
+                if op == '-':
+                    if self._term_matches(term, content):
+                        return False
+                elif op == '~':
+                    pass  # Handled above
+                i += 1
+            elif isinstance(token, str) and token not in ('(', ')', 'or'):
+                if not self._term_matches(token, content):
+                    return False
+                i += 1
+            else:
+                i += 1
+        
+        return True
+
+    def matches(self, content: str) -> bool:
+        """Check if content matches the query."""
+        if not self.query:
+            return True
+        tokens = self._tokenize(self.query)
+        return self._evaluate(tokens, content)
+
+    def sort_images(self, image_paths: list) -> list:
+        """Sort images by order mode (landscape/portrait)."""
+        if not self.order_mode:
+            return image_paths
+        
+        def get_aspect(path):
+            try:
+                img = Image.open(path)
+                return img.width / img.height
+            except Exception:
+                return 1.0
+        
+        if self.order_mode == 'landscape':
+            return sorted(image_paths, key=lambda p: -get_aspect(p))
+        elif self.order_mode == 'portrait':
+            return sorted(image_paths, key=lambda p: get_aspect(p))
+        return image_paths
+
+
 def extract_bracket_content(text):
     return re.findall(r'\{(.*?)\}', text)
 
@@ -1016,7 +1276,7 @@ class BatchLLMWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024, skip_nsfw=False):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024, skip_nsfw=False, settings=None):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -1027,6 +1287,7 @@ class BatchLLMWorker(QThread):
         self.tags_context_getter = tags_context_getter
         self.max_dim = max_dim
         self.skip_nsfw = skip_nsfw
+        self.settings = settings or {}
         self._stop = False
 
     def stop(self):
@@ -2173,6 +2434,11 @@ class MainWindow(QMainWindow):
         self.tagger_tags = []
 
         self.root_dir_path = ""
+        
+        # Filter state
+        self.filter_active = False
+        self.filtered_image_files = []
+        self.all_image_files = []  # Original unfiltered list
 
         self.nl_pages = []
         self.nl_page_index = 0
@@ -2187,6 +2453,12 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         self.setup_shortcuts()
         self._hf_tokenizer = None
+
+        # Auto-load last directory
+        last_dir = self.settings.get("last_open_dir", "")
+        if last_dir and os.path.exists(last_dir):
+            self.root_dir_path = last_dir
+            self.refresh_file_list()
 
     def tr(self, key: str) -> str:
         lang = self.settings.get("ui_language", "zh_tw")
@@ -2217,6 +2489,31 @@ class MainWindow(QMainWindow):
         self.img_info_label = QLabel("No Image Loaded")
         self.img_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         left_layout.addWidget(self.img_info_label)
+
+        # === Filter Bar ===
+        filter_bar = QHBoxLayout()
+        filter_bar.setContentsMargins(0, 0, 0, 0)
+        
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
+        self.filter_input.returnPressed.connect(self.apply_filter)
+        filter_bar.addWidget(self.filter_input, 1)
+        
+        self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
+        self.chk_filter_tags.setChecked(True)
+        filter_bar.addWidget(self.chk_filter_tags)
+        
+        self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
+        self.chk_filter_text.setChecked(False)
+        filter_bar.addWidget(self.chk_filter_text)
+        
+        self.btn_clear_filter = QPushButton("✕")
+        self.btn_clear_filter.setFixedWidth(30)
+        self.btn_clear_filter.setToolTip("Clear Filter")
+        self.btn_clear_filter.clicked.connect(self.clear_filter)
+        filter_bar.addWidget(self.btn_clear_filter)
+        
+        left_layout.addLayout(filter_bar)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2536,55 +2833,37 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
 
     def open_directory(self):
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"))
+        default_dir = self.settings.get("last_open_dir", "")
+        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"), default_dir)
         if dir_path:
             self.root_dir_path = dir_path
-            self.image_files = []
-            valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-            ignore_dirs = {"no_used", "unmask"}
+            self.settings["last_open_dir"] = dir_path
+            save_app_settings(self.settings)
 
-            # ✅ 根目錄檔案
-            try:
-                for entry in os.scandir(dir_path):
-                    if entry.is_file() and entry.name.lower().endswith(valid_exts):
-                        if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
-                            continue
-                        self.image_files.append(entry.path)
-            except Exception:
-                pass
+            # Reset filter state
+            self.filter_active = False
+            self.filter_input.clear()
+            self.all_image_files = []
+            self.filtered_image_files = []
 
-            # ✅ 第一級子資料夾（不往下遞迴）
-            try:
-                for entry in os.scandir(dir_path):
-                    if entry.is_dir():
-                        if entry.name.lower() in ignore_dirs:
-                            continue
-                        try:
-                            for sub in os.scandir(entry.path):
-                                if sub.is_file() and sub.name.lower().endswith(valid_exts):
-                                    if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
-                                        continue
-                                    self.image_files.append(sub.path)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            self.image_files = natsorted(self.image_files)
-            if self.image_files:
-                self.current_index = 0
-                self.load_image()
-            else:
-                QMessageBox.information(self, "Info", self.tr("msg_no_images"))
+            self.refresh_file_list()
 
     def load_image(self):
         if 0 <= self.current_index < len(self.image_files):
             self.current_image_path = self.image_files[self.current_index]
             self.current_folder_path = str(Path(self.current_image_path).parent)
 
-            self.img_info_label.setText(
-                f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
-            )
+            # Update info label with filter state
+            if self.filter_active:
+                # Show filtered count in red
+                filtered_idx = self.filtered_image_files.index(self.current_image_path) + 1 if self.current_image_path in self.filtered_image_files else self.current_index + 1
+                self.img_info_label.setText(
+                    f"<span style='color:red;'>({filtered_idx} / {len(self.filtered_image_files)})</span> : {os.path.basename(self.current_image_path)}"
+                )
+            else:
+                self.img_info_label.setText(
+                    f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
+                )
 
             pixmap = QPixmap(self.current_image_path)
             if not pixmap.isNull():
@@ -2623,6 +2902,91 @@ class MainWindow(QMainWindow):
             self.update_nl_page_controls()
 
             self.on_text_changed()
+
+    # ==========================
+    # Filter Logic
+    # ==========================
+    def _get_image_content_for_filter(self, image_path: str) -> str:
+        """Get combined content (tags + text) for filtering."""
+        content_parts = []
+        
+        if self.chk_filter_tags.isChecked():
+            # Get tags from sidecar
+            sidecar = load_image_sidecar(image_path)
+            tags = sidecar.get("tagger_tags", "")
+            content_parts.append(tags)
+        
+        if self.chk_filter_text.isChecked():
+            # Get text from .txt file
+            txt_path = os.path.splitext(image_path)[0] + ".txt"
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, 'r', encoding='utf-8') as f:
+                        content_parts.append(f.read())
+                except Exception:
+                    pass
+        
+        return " ".join(content_parts)
+
+    def apply_filter(self):
+        """Apply Danbooru-style filter to image list."""
+        query = self.filter_input.text().strip()
+        
+        if not query:
+            self.clear_filter()
+            return
+        
+        if not self.image_files and not self.all_image_files:
+            return
+        
+        # Store original list if not already stored
+        if not self.all_image_files:
+            self.all_image_files = list(self.image_files)
+        
+        # Create filter
+        qf = DanbooruQueryFilter(query)
+        
+        # Filter images
+        matched = []
+        for img_path in self.all_image_files:
+            content = self._get_image_content_for_filter(img_path)
+            if qf.matches(content):
+                matched.append(img_path)
+        
+        # Apply ordering
+        matched = qf.sort_images(matched)
+        
+        if not matched:
+            self.statusBar().showMessage("篩選結果為空", 3000)
+            return
+        
+        self.filtered_image_files = matched
+        self.image_files = matched
+        self.filter_active = True
+        self.current_index = 0
+        self.load_image()
+        self.statusBar().showMessage(f"篩選結果: {len(matched)} 張圖片", 3000)
+
+    def clear_filter(self):
+        """Clear filter and restore original image list."""
+        self.filter_input.clear()
+        
+        if self.all_image_files:
+            current_path = self.current_image_path
+            self.image_files = list(self.all_image_files)
+            self.all_image_files = []
+            self.filtered_image_files = []
+            self.filter_active = False
+            
+            # Try to keep current image selected
+            if current_path and current_path in self.image_files:
+                self.current_index = self.image_files.index(current_path)
+            else:
+                self.current_index = 0
+            
+            if self.image_files:
+                self.load_image()
+            self.statusBar().showMessage("已清除篩選", 2000)
 
     def next_image(self):
         if self.current_index < len(self.image_files) - 1:
@@ -3865,6 +4229,18 @@ class MainWindow(QMainWindow):
 
         user_prompt = self.prompt_edit.toPlainText()
 
+        # Check for unreplaced placeholder {角色名}
+        if "{角色名}" in user_prompt:
+            reply = QMessageBox.question(
+                self, "Warning", 
+                "Prompt 包含未替換的 '{角色名}'。\n這可能會導致生成結果不正確。\n請手動輸入角色名或調整提示。\n\n確定要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self.btn_batch_llm.setEnabled(True)
+                self.btn_run_llm.setEnabled(True)
+                return
+
         self.batch_llm_thread = BatchLLMWorker(
             self.llm_base_url,
             self.api_key,
@@ -3874,7 +4250,8 @@ class MainWindow(QMainWindow):
             self.image_files,
             self.build_llm_tags_context_for_image,
             max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
-            skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False))
+            skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False)),
+            settings=self.settings
         )
         self.batch_llm_thread.progress.connect(self.show_progress)
         self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
