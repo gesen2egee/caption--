@@ -118,7 +118,7 @@ your_dataset/
 
 ## 截圖
 
-> (待補充)
+![App Screenshot](uploaded_image_1768285101362.png)
 
 ---
 
@@ -142,6 +142,8 @@ MIT License
 
 ---
 
-## 作者
+## 特別感謝
+
+- **[deepghs](https://github.com/deepghs)** / **[narugo1992](https://github.com/narugo1992)** / **[imgutils](https://github.com/deepghs/imgutils)**：提供強大的底層圖片處理工具。
 
 Made with ❤️ for AI image training.
