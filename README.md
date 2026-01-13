@@ -64,6 +64,7 @@ pip install transformers -i https://pypi.org/simple        # Token 計數 (選�
 
 ### 3. 執行
 ```bash
+venv\Scripts\activate
 python caption.py
 ```
 
