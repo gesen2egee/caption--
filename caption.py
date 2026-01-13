@@ -41,8 +41,26 @@ import inspect
 import gc  # 新增垃圾回收支援
 
 # silence some noisy third-party warnings
+os.environ["ORT_LOGGING_LEVEL"] = "3"
 warnings.filterwarnings("ignore", message="`torch.cuda.amp.custom_fwd")
 warnings.filterwarnings("ignore", message="Failed to import flet")
+
+# [GPU Fix] 嘗試載入 pip 安裝的 NVIDIA dll
+if os.name == 'nt':
+    try:
+        import nvidia.cudnn
+        import nvidia.cublas
+        libs = [
+            os.path.dirname(nvidia.cudnn.__file__),
+            os.path.join(os.path.dirname(nvidia.cudnn.__file__), "bin"),
+            os.path.dirname(nvidia.cublas.__file__),
+            os.path.join(os.path.dirname(nvidia.cublas.__file__), "bin"),
+        ]
+        for lib in libs:
+            if os.path.exists(lib):
+                os.add_dll_directory(lib)
+    except Exception:
+        pass
 
 from pathlib import Path
 from io import BytesIO
@@ -91,6 +109,8 @@ try:
     from imgutils.ocr import detect_text_with_ocr
 except Exception:
     detect_text_with_ocr = None
+
+os.environ['ONNX_MODE'] = 'gpu'
 
 # ==========================================
 #  Configuration & Globals
