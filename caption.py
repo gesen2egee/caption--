@@ -16,8 +16,8 @@
 # [Ln 2410-2520] MainWindow.__init__ & init_ui
 # [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
 # [Ln 3000-3450] MainWindow: LLM / Tagger / Tools Logic
-# [Ln 3450-4450] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
-# [Ln 4450+]     MainWindow: Settings / Main Entry
+# [Ln 3450-4500] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
+# [Ln 4500+]     MainWindow: Settings / Main Entry
 #
 # ============================================================
 
@@ -498,6 +498,10 @@ DEFAULT_APP_SETTINGS = {
     "mask_padding": 1,        # Mask 內縮像素 (0=不內縮)
     "mask_blur_radius": 3,    # Mask 高斯模糊半徑 (0=不模糊)
     
+    # Batch Mask Logic
+    "mask_batch_min_foreground_ratio": 0.1,  # 最低主體佔比
+    "mask_batch_max_foreground_ratio": 0.8,  # 最高主體佔比
+
     # Advanced OCR Settings
     "mask_ocr_heat_threshold": 0.2,
     "mask_ocr_box_threshold": 0.6,
@@ -1621,11 +1625,12 @@ class BatchUnmaskWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None):
+    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None, is_batch=True):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
         self.background_tag_checker = background_tag_checker
+        self.is_batch = is_batch
         self._stop = False
 
     def stop(self):
@@ -1643,7 +1648,7 @@ class BatchUnmaskWorker(QThread):
         return path
 
     @staticmethod
-    def remove_background_to_webp(image_path: str, remover, cfg: dict = None) -> str:
+    def remove_background_to_webp(image_path: str, remover, cfg: dict = None, is_batch=False) -> str:
         if not image_path:
             return ""
 
@@ -1710,6 +1715,20 @@ class BatchUnmaskWorker(QThread):
             # Combine with Original Alpha
             # Combined Alpha = min(Remover Mask, Original Alpha)
             combined_alpha = np.minimum(mask_arr_remover, alpha_channel_input)
+
+            # --- Logic: Foreground Ratio Check (Batch Only) ---
+            if is_batch:
+                min_r = float(cfg.get("mask_batch_min_foreground_ratio", 0.1))
+                max_r = float(cfg.get("mask_batch_max_foreground_ratio", 0.8))
+                
+                # Count alpha == 255 (foreground)
+                # User said "mask 後 alpha=255 的像素 佔 總像素"
+                fg_count = np.sum(combined_alpha == 255)
+                ratio = fg_count / combined_alpha.size
+                
+                if ratio < min_r or ratio > max_r:
+                    # Skip applying mask
+                    return None, None
 
             # --- Logic: Padding -> Blur -> Clamp ---
             # Now we process this Combined Mask
@@ -1781,7 +1800,8 @@ class BatchUnmaskWorker(QThread):
                     new_path, old_path = BatchUnmaskWorker.remove_background_to_webp(
                         p, 
                         remover, 
-                        cfg=self.cfg
+                        cfg=self.cfg,
+                        is_batch=self.is_batch
                     )
                     if new_path:
                         # 刪除對應 npz
@@ -2556,6 +2576,26 @@ class SettingsDialog(QDialog):
         form3.addRow(self.tr("setting_mask_delete_npz"), self.chk_mask_del_npz)
 
         mask_layout.addLayout(form3)
+
+        # Batch Ratio Limits
+        ratio_box = QGroupBox("Batch Mask Foreground Ratio Limits (佔比限制)")
+        ratio_lay = QFormLayout()
+        
+        self.spin_mask_min_ratio = QDoubleSpinBox()
+        self.spin_mask_min_ratio.setRange(0.0, 1.0)
+        self.spin_mask_min_ratio.setSingleStep(0.05)
+        self.spin_mask_min_ratio.setValue(float(self.cfg.get("mask_batch_min_foreground_ratio", 0.1)))
+        ratio_lay.addRow("Min Ratio (下限):", self.spin_mask_min_ratio)
+
+        self.spin_mask_max_ratio = QDoubleSpinBox()
+        self.spin_mask_max_ratio.setRange(0.0, 1.0)
+        self.spin_mask_max_ratio.setSingleStep(0.05)
+        self.spin_mask_max_ratio.setValue(float(self.cfg.get("mask_batch_max_foreground_ratio", 0.8)))
+        ratio_lay.addRow("Max Ratio (上限):", self.spin_mask_max_ratio)
+        
+        ratio_box.setLayout(ratio_lay)
+        mask_layout.addWidget(ratio_box)
+
         # The original hint label is removed as the tooltip is now on chk_mask_ocr
         mask_layout.addStretch(1)
         self.tabs.addTab(tab_mask, self.tr("setting_tab_mask"))
@@ -2659,7 +2699,8 @@ class SettingsDialog(QDialog):
         cfg["mask_ocr_heat_threshold"] = float(f"{self.spin_ocr_heat.value():.2f}")
         cfg["mask_ocr_box_threshold"] = float(f"{self.spin_ocr_box.value():.2f}")
         cfg["mask_ocr_unclip_ratio"] = float(f"{self.spin_ocr_unclip.value():.2f}")
-        cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
+        cfg["mask_batch_min_foreground_ratio"] = float(f"{self.spin_mask_min_ratio.value():.2f}")
+        cfg["mask_batch_max_foreground_ratio"] = float(f"{self.spin_mask_max_ratio.value():.2f}")
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
@@ -4024,7 +4065,8 @@ class MainWindow(QMainWindow):
         self.btn_batch_unmask_thread = BatchUnmaskWorker(
             [self.current_image_path], 
             self.settings,
-            background_tag_checker=None  # Force process for single image
+            background_tag_checker=None,  # Force process for single image
+            is_batch=False
         )
         self.btn_batch_unmask_thread.progress.connect(self.show_progress)
         self.btn_batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
