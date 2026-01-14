@@ -1189,8 +1189,23 @@ class LLMWorker(QThread):
             )
 
             img = Image.open(self.image_path)
-            if img.mode != 'RGB':
+            
+            # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
+            sidecar = load_image_sidecar(self.image_path)
+            is_masked_in_app = sidecar.get("masked_text", False) or sidecar.get("masked_background", False)
+            
+            has_alpha = False
+            if img.mode == 'RGBA':
+                has_alpha = True
+                # 以灰色 (136, 136, 136) 取代透明部分，與 UI 顯示一致
+                canvas = Image.new("RGB", img.size, (136, 136, 136))
+                canvas.paste(img, mask=img.getchannel('A'))
+                img = canvas
+            elif img.mode != 'RGB':
                 img = img.convert('RGB')
+
+            # 只要有透明度，或是 sidecar 標記為處理過，就加上 Prompt 提示
+            should_warn = has_alpha or is_masked_in_app
 
             # Use self.max_dim for resizing
             target_size = self.max_dim
@@ -1204,7 +1219,8 @@ class LLMWorker(QThread):
             img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
             img_url = f"data:image/jpeg;base64,{img_str}"
 
-            final_user_content = self.user_prompt.replace("{LLM處理結果}", self.tags_context)
+            prompt_prefix = "這是一張經過去背處理的圖像 請無視灰色部分 \n" if should_warn else ""
+            final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", self.tags_context)
             final_user_content = final_user_content.replace("{tags}", self.tags_context)
 
             messages = [
@@ -1318,8 +1334,23 @@ class BatchLLMWorker(QThread):
                             continue
 
                     img = Image.open(p)
-                    if img.mode != 'RGB':
+                    
+                    # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
+                    sidecar = load_image_sidecar(p)
+                    is_masked_in_app = sidecar.get("masked_text", False) or sidecar.get("masked_background", False)
+                    
+                    has_alpha = False
+                    if img.mode == 'RGBA':
+                        has_alpha = True
+                        # 以灰色 (136, 136, 136) 取代透明部分
+                        canvas = Image.new("RGB", img.size, (136, 136, 136))
+                        canvas.paste(img, mask=img.getchannel('A'))
+                        img = canvas
+                    elif img.mode != 'RGB':
                         img = img.convert('RGB')
+                    
+                    # 只要有透明度，或是 sidecar 標記為處理過，就加上 Prompt 提示
+                    should_warn = has_alpha or is_masked_in_app
                     
                     target_size = self.max_dim
                     ratio = min(target_size / img.width, target_size / img.height)
@@ -1332,7 +1363,8 @@ class BatchLLMWorker(QThread):
                     img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                     img_url = f"data:image/jpeg;base64,{img_str}"
 
-                    final_user_content = self.user_prompt.replace("{LLM處理結果}", tags_context)
+                    prompt_prefix = "這是一張經過去背處理的圖像 請無視灰色部分 \n" if should_warn else ""
+                    final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", tags_context)
                     final_user_content = final_user_content.replace("{tags}", tags_context)
 
                     messages = [
@@ -1524,10 +1556,11 @@ class BatchUnmaskWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths, cfg: dict = None):
+    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
+        self.background_tag_checker = background_tag_checker
         self._stop = False
 
     def stop(self):
@@ -1589,7 +1622,9 @@ class BatchUnmaskWorker(QThread):
                 self.error.emit("transparent_background.Remover not available")
                 return
 
-            remover = Remover()
+            import torch
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            remover = Remover(device=device)
 
             total = len(self.image_paths)
             for i, p in enumerate(self.image_paths, start=1):
@@ -1601,6 +1636,12 @@ class BatchUnmaskWorker(QThread):
                 sidecar = load_image_sidecar(p)
                 if sidecar.get("masked_background", False):
                     continue
+
+                # ✅ 遵循設定：僅處理包含 background 標籤的圖片
+                only_bg = bool(self.cfg.get("mask_batch_only_if_has_background_tag", False))
+                if only_bg and self.background_tag_checker:
+                    if not self.background_tag_checker(p):
+                        continue
 
                 try:
                     result = self.remove_background_to_webp(p, remover)
@@ -2459,6 +2500,19 @@ class MainWindow(QMainWindow):
         if last_dir and os.path.exists(last_dir):
             self.root_dir_path = last_dir
             self.refresh_file_list()
+
+        # Check CUDA availability
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                # Use singleShot to show message after UI is fully loaded
+                QTimer.singleShot(1000, lambda: QMessageBox.warning(
+                    self, 
+                    "CUDA Warning", 
+                    "偵測不到 NVIDIA GPU (CUDA)。\n\n這可能是因為 venv 中的 PyTorch 版本錯誤。\n請執行根目錄下的 'fix_torch_gpu.bat' 來修復。\n\n目前將使用 CPU 執行，速度會非常慢。"
+                ))
+        except ImportError:
+            pass
 
     def tr(self, key: str) -> str:
         lang = self.settings.get("ui_language", "zh_tw")
@@ -3666,29 +3720,23 @@ class MainWindow(QMainWindow):
         if Remover is None:
             QMessageBox.warning(self, "Unmask", "transparent_background.Remover not available")
             return
-        try:
-            remover = Remover()
-            old_path = self.current_image_path
-            result = BatchUnmaskWorker.remove_background_to_webp(old_path, remover)
-            if not result:
-                return
-            new_path, _ = result
-            # 刪除對應 npz
-            if self.settings.get("mask_delete_npz_on_move", True):
-                delete_matching_npz(old_path)
-            # 記錄 masked_background 到 JSON sidecar
-            sidecar = load_image_sidecar(new_path)
-            sidecar["masked_background"] = True
-            save_image_sidecar(new_path, sidecar)
-            self._replace_image_path_in_list(old_path, new_path)
-            self.load_image()
-            self.statusBar().showMessage("Unmask 完成", 5000)
-        except Exception as e:
-            QMessageBox.warning(self, "Unmask", f"失敗: {e}")
-        finally:
-            if 'remover' in locals():
-                del remover
-            unload_all_models()
+            
+        # Use BatchWorker for single image to support progress bar & async
+        self.btn_batch_unmask_thread = BatchUnmaskWorker(
+            [self.current_image_path], 
+            self.settings,
+            background_tag_checker=None  # Force process for single image
+        )
+        self.btn_batch_unmask_thread.progress.connect(self.show_progress)
+        self.btn_batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
+        self.btn_batch_unmask_thread.done.connect(self.on_unmask_single_done)
+        self.btn_batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
+        self.btn_batch_unmask_thread.start()
+
+    def on_unmask_single_done(self):
+        self.hide_progress()
+        self.load_image()
+        self.statusBar().showMessage("Unmask 完成", 5000)
 
     def mask_text_current_image(self):
         if not self.current_image_path:
@@ -3805,12 +3853,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Batch Unmask", "transparent_background.Remover not available")
             return
 
-        targets = [p for p in self.image_files if self._tagger_has_background(p)]
-        if not targets:
-            QMessageBox.information(self, "Batch Unmask", "找不到 tagger 含 background 的圖片")
-            return
+        # ✅ 修正：根據設定決定是否過濾
+        only_bg = bool(self.settings.get("mask_batch_only_if_has_background_tag", False))
+        if only_bg:
+            targets = [p for p in self.image_files if self._image_has_background_tag(p)]
+            if not targets:
+                QMessageBox.information(self, "Batch Unmask", "找不到含有 'background' 標籤的圖片")
+                return
+        else:
+            targets = self.image_files
 
-        self.batch_unmask_thread = BatchUnmaskWorker(targets, self.settings)
+        if hasattr(self, 'action_batch_unmask'):
+            self.action_batch_unmask.setEnabled(False)
+            
+        self.batch_unmask_thread = BatchUnmaskWorker(
+            targets, 
+            self.settings,
+            background_tag_checker=self._image_has_background_tag
+        )
         self.batch_unmask_thread.progress.connect(self.show_progress)
         self.batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
         self.batch_unmask_thread.done.connect(self.on_batch_unmask_done)
@@ -3821,6 +3881,8 @@ class MainWindow(QMainWindow):
         self._replace_image_path_in_list(old_path, new_path)
 
     def on_batch_unmask_done(self):
+        if hasattr(self, 'action_batch_unmask'):
+            self.action_batch_unmask.setEnabled(True)
         self.hide_progress()
         self.load_image()
         self.statusBar().showMessage("Batch Unmask 完成", 5000)
@@ -4108,7 +4170,22 @@ class MainWindow(QMainWindow):
                 raw_list = [t for t in raw_list if not is_basic_character_tag(t, cfg)]
             items = raw_list
         else:
-            sentences = [s.strip() for s in content.replace("\n", ". ").split(". ") if s.strip()]
+            # nl_content from LLMworker has \n, possibly translation lines in ()
+            raw_lines = content.splitlines()
+            sentences = []
+            for line in raw_lines:
+                line = line.strip()
+                if not line: continue
+                # Skip lines that are entirely in parentheses (translations)
+                if (line.startswith("(") and line.endswith(")")) or (line.startswith("（") and line.endswith("）")):
+                    continue
+                # Remove any remaining content in parentheses/brackets just in case
+                line = re.sub(r"[\(（].*?[\)）]", "", line).strip()
+                # Remove trailing period and normalize
+                line = line.rstrip(".").strip()
+                if line:
+                    sentences.append(line)
+            
             if delete_chars:
                 sentences = [s for s in sentences if not is_basic_character_tag(s, cfg)]
             items = sentences
@@ -4164,11 +4241,13 @@ class MainWindow(QMainWindow):
             else:
                 final = cleanup_csv_like_text(new_part, force_lower)
         else:
-            new_part = ". ".join(items)
-            if items and not new_part.endswith("."): 
-                new_part += "."
+            # For LLM results, now joining with comma and no trailing period
+            new_part = ", ".join(items)
             if mode == "append" and existing_content:
-                sep = " " if not existing_content.endswith(".") else " "
+                # Use comma or space-comma as separator
+                sep = ", "
+                if existing_content.endswith(",") or existing_content.endswith("."):
+                    sep = " "
                 final = existing_content + sep + new_part
             else:
                 final = new_part
@@ -4365,7 +4444,19 @@ class MainWindow(QMainWindow):
     # Tools: Batch Mask Text (OCR)
     # ==========================
     def _image_has_background_tag(self, image_path: str) -> bool:
+        """
+        判斷是否為「背景圖」。
+        檢查 .txt 分類以及 sidecar JSON 標籤。
+        """
         try:
+            # 1. 優先檢查 Sidecar JSON (如果有 Tagger 結果就抓得到)
+            sidecar = load_image_sidecar(image_path)
+            # 檢查 tagger_tags (標籤器結果) 或 tags_context (原本的標籤)
+            tags_all = (sidecar.get("tagger_tags", "") + " " + sidecar.get("tags_context", "")).lower()
+            if "background" in tags_all:
+                return True
+
+            # 2. 檢查 .txt 檔案 (後備方案)
             txt_path = os.path.splitext(image_path)[0] + ".txt"
             if os.path.exists(txt_path):
                 with open(txt_path, "r", encoding="utf-8") as f:
@@ -4400,11 +4491,10 @@ class MainWindow(QMainWindow):
 
     def cancel_batch(self):
         self.statusBar().showMessage("正在中止...", 2000)
-        if hasattr(self, 'batch_unmask_thread') and self.batch_unmask_thread.isRunning():
-            self.batch_unmask_thread.stop()
-        if hasattr(self, 'batch_mask_text_thread') and self.batch_mask_text_thread.isRunning():
-            self.batch_mask_text_thread.stop()
-        # Add logic for other batch threads if needed
+        for attr in ['batch_unmask_thread', 'batch_mask_text_thread', 'batch_tagger_thread', 'batch_llm_thread']:
+            thread = getattr(self, attr, None)
+            if thread is not None and thread.isRunning():
+                thread.stop()
 
 
     # ==========================
@@ -4503,13 +4593,13 @@ class MainWindow(QMainWindow):
 
         tools_menu.addSeparator()
         
-        batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
-        batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
-        tools_menu.addAction(batch_unmask_action)
+        self.action_batch_unmask = QAction(self.tr("btn_batch_unmask"), self)
+        self.action_batch_unmask.triggered.connect(self.run_batch_unmask_background)
+        tools_menu.addAction(self.action_batch_unmask)
 
-        batch_mask_text_action = QAction(self.tr("btn_batch_mask_text"), self)
-        batch_mask_text_action.triggered.connect(self.run_batch_mask_text)
-        tools_menu.addAction(batch_mask_text_action)
+        self.action_batch_mask_text = QAction(self.tr("btn_batch_mask_text"), self)
+        self.action_batch_mask_text.triggered.connect(self.run_batch_mask_text)
+        tools_menu.addAction(self.action_batch_mask_text)
 
         tools_menu.addSeparator()
 

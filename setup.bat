@@ -13,6 +13,10 @@ if not exist venv (
 )
 call venv\Scripts\activate
 
+echo [1.5/6] 優先安裝 GPU 版 PyTorch (CUDA 12.1)...
+echo 這一步驟非常重要，請耐心等待下載...
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
 echo [2/6] 安裝基礎套件 (PyQt6, Pillow, OpenAI)...
 pip install "numpy<2" PyQt6 Pillow natsort openai -i https://pypi.tuna.tsinghua.edu.cn/simple
 
