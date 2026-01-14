@@ -14,8 +14,8 @@ call venv\Scripts\activate
 echo 移除現有的 torch torchvision torchaudio...
 pip uninstall -y torch torchvision torchaudio
 
-echo 正在安裝支援 CUDA 12.1 的 PyTorch...
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+echo 正在安裝支援 CUDA 11.8 的 PyTorch...
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 echo.
 echo 安裝完成。請重新啟動程式並觀察輸出。

@@ -37,6 +37,7 @@ import gc  # 新增垃圾回收支援
 os.environ["ORT_LOGGING_LEVEL"] = "3"
 warnings.filterwarnings("ignore", message="`torch.cuda.amp.custom_fwd")
 warnings.filterwarnings("ignore", message="Failed to import flet")
+warnings.filterwarnings("ignore", message="Token indices sequence length")
 
 # [GPU Fix] 嘗試載入 pip 安裝的 NVIDIA dll
 if os.name == 'nt':
@@ -70,7 +71,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QRect, QPoint, 
-    QBuffer, QIODevice, QByteArray
+    QBuffer, QIODevice, QByteArray, QTimer
 )
 from PyQt6.QtGui import (
     QPixmap, QKeySequence, QAction, QShortcut, QFont,
@@ -91,7 +92,9 @@ except ImportError:
 # optional: transparent background remover
 try:
     from transparent_background import Remover
-except Exception:
+except Exception as e:
+    print(f"Failed to import transparent_background: {e}")
+    traceback.print_exc()
     Remover = None
 
 from openai import OpenAI
