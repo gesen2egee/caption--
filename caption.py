@@ -495,6 +495,9 @@ DEFAULT_APP_SETTINGS = {
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
     
+    "mask_padding": 3,        # Mask 內縮像素
+    "mask_blur_radius": 10,   # Mask 高斯模糊半徑
+    
     # Advanced OCR Settings
     "mask_ocr_heat_threshold": 0.2,
     "mask_ocr_box_threshold": 0.6,
@@ -1640,9 +1643,16 @@ class BatchUnmaskWorker(QThread):
         return path
 
     @staticmethod
-    def remove_background_to_webp(image_path: str, remover, alpha_threshold=0) -> str:
+    def remove_background_to_webp(image_path: str, remover, cfg: dict = None) -> str:
         if not image_path:
             return ""
+
+        cfg = cfg or {}
+        
+        # Settings
+        alpha_threshold = int(cfg.get("mask_default_alpha", 0))
+        padding = int(cfg.get("mask_padding", 3))
+        blur_radius = int(cfg.get("mask_blur_radius", 10))
 
         src_dir = os.path.dirname(image_path)
         unmask_dir = os.path.join(src_dir, "unmask")
@@ -1666,54 +1676,72 @@ class BatchUnmaskWorker(QThread):
         else:
             src_for_processing = image_path
 
+        import numpy as np
+        from PIL import ImageFilter
+
         with Image.open(src_for_processing) as img:
-            img = img.convert('RGB')
-            img_rm = remover.process(img, type='rgba')
+            # (1) Handle Input Alpha: If original alpha is 0, make RGB white.
+            # This must happen BEFORE processing to ensure the remover sees white logic?
+            # Or just for final output? User said: "進來0的地方設純白 因為原本可能已經丟失了"
+            # User previously said: "原圖有alpha通道 保留原圖alpha通道 但是alpha=0，所在像素下面改純白"
             
-            # Apply alpha threshold logic (set transparent pixels to specified alpha)
-            # Actually, the user likely wants to set the alpha of the REMOVED background.
-            # transparent-background returns RGBA where background is 0 alpha.
-            # If user sets mask_default_alpha > 0, we should set those 0 alpha pixels to mask_default_alpha.
+            # Convert to RGBA
+            img_rgba_input = img.convert('RGBA')
+            input_arr = np.array(img_rgba_input)
+            
+            # Logic: If input alpha == 0, set RGB to (255, 255, 255)
+            # This restores "lost color" to white for fully transparent pixels.
+            alpha_channel_input = input_arr[:, :, 3]
+            zero_indices_input = alpha_channel_input == 0
+            
+            input_arr[zero_indices_input, 0] = 255 # R
+            input_arr[zero_indices_input, 1] = 255 # G
+            input_arr[zero_indices_input, 2] = 255 # B
+            
+            # We use this corrected array for processing
+            img_corrected = Image.fromarray(input_arr, 'RGBA')
+            
+            # Generate Mask (Foreground extraction)
+            # remover.process returns RGBA (Foreground) where Alpha is the predicted mask
+            img_rm = remover.process(img_corrected.convert('RGB'), type='rgba')
+            rm_arr = np.array(img_rm) # (H,W,4)
+            mask_arr_remover = rm_arr[:, :, 3] 
+
+            # Combine with Original Alpha
+            # Combined Alpha = min(Remover Mask, Original Alpha)
+            combined_alpha = np.minimum(mask_arr_remover, alpha_channel_input)
+
+            # --- Logic: Padding -> Blur -> Clamp ---
+            # Now we process this Combined Mask
+            mask_img = Image.fromarray(combined_alpha)
+            
+            # 1. Padding (Erosion of mask)
+            if padding > 0:
+                mask_img = mask_img.filter(ImageFilter.MinFilter(padding * 2 + 1)) 
+            
+            # 2. Blur (Gaussian)
+            if blur_radius > 0:
+                mask_img = mask_img.filter(ImageFilter.GaussianBlur(blur_radius))
+            
+            # 3. Clamp Min Alpha (Unify Strength)
+            processed_alpha_float = np.array(mask_img).astype(np.float32)
             
             if alpha_threshold > 0:
-                import numpy as np
-                arr = np.array(img_rm)
-                # arr is (H, W, 4)
-                # Check where alpha is 0 (fully transparent background)
-                # Or maybe user means where alpha < 255? Usually background removal makes it 0.
-                
-                # Logic: If pixel is transparent (A=0), set A = alpha_threshold
-                # Be careful: translucent pixels exist on edges.
-                # Simple approach: If A < 255, modify A? No, that ruins anti-aliasing.
-                # Approach: The user likely wants "Mask Transparency" setting in settings dialog.
-                # "setting_mask_alpha": "預設透明度 (0-255):"
-                # If this is 0, background is invisible. If 255, background is solid black/white?
-                # Usually this setting in this app context (from BatchMaskTextWorker) meant:
-                # "What alpha value to paint over the text box". 
-                # For background removal, "Mask" usually means the background.
-                # If the user wants the background to be partially visible instead of fully transparent:
-                # We need to mix the original image with the result? 
-                # transparent-background tool returns the foreground.
-                
-                # Let's assume the user wants the "transparent area" to have `alpha_threshold` opacity.
-                # But what color? Black? White? Gray?
-                # In BatchMaskTextWorker, it sets alpha channel to `alpha_val` directly.
-                # Let's do the same here for the background pixels.
-                
-                # Since remover returns foreground with A=255 and background with A=0 (mostly),
-                # If we just enforce A=alpha for background, we need to know what is background.
-                # Simple logic: max(existing_alpha, alpha_threshold)?
-                # If background is 0, it becomes alpha_threshold.
-                # If foreground is 255, it stays 255.
-                
-                # HOWEVER, `transparent-background` output might just be the foreground.
-                # If we change A from 0 to 128, the RGB channels might be 0,0,0 (Black).
-                # So it becomes semi-transparent black. This seems standard for "masking".
-                
-                arr[:, :, 3] = np.maximum(arr[:, :, 3], alpha_threshold)
-                img_rm = Image.fromarray(arr)
+                # Clamp: result = max(processed, threshold)
+                processed_alpha_float = np.maximum(processed_alpha_float, alpha_threshold)
             
-            img_rm.save(target_file, 'WEBP')
+            processed_alpha = np.clip(processed_alpha_float, 0, 255).astype(np.uint8)
+            
+            # Re-assemble
+            final_r = rm_arr[:, :, 0]
+            final_g = rm_arr[:, :, 1]
+            final_b = rm_arr[:, :, 2]
+            
+            final_img_arr = np.dstack((final_r, final_g, final_b, processed_alpha))
+            final_img = Image.fromarray(final_img_arr, 'RGBA')
+            
+            # Save as WEBP quality 100
+            final_img.save(target_file, 'WEBP', quality=100)
 
         # move original (non-webp) after success
         if ext != ".webp":
@@ -1753,7 +1781,7 @@ class BatchUnmaskWorker(QThread):
                     new_path, old_path = BatchUnmaskWorker.remove_background_to_webp(
                         p, 
                         remover, 
-                        alpha_threshold=int(self.cfg.get("mask_default_alpha", 0))
+                        cfg=self.cfg
                     )
                     if new_path:
                         # 刪除對應 npz
@@ -2472,8 +2500,24 @@ class SettingsDialog(QDialog):
         form3 = QFormLayout()
 
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
+        # Validator 1-254 or 0? User asked for 1-254 for slider/strength. But logic uses 0 as special case?
+        # Re-read: "mask 強度預設 25 拉條改成 只能 1-254"
+        # Let's use a slider or spinbox for better control, but QLineEdit is existing.
+        # Just ensure range in get_cfg.
         self.ed_mask_format = QLineEdit(str(self.cfg.get("mask_default_format", "webp")))
         form3.addRow(self.tr("setting_mask_alpha"), self.ed_mask_alpha)
+        
+        # New Settings
+        self.spin_mask_padding = QSpinBox()
+        self.spin_mask_padding.setRange(0, 50)
+        self.spin_mask_padding.setValue(int(self.cfg.get("mask_padding", 3)))
+        form3.addRow("Mask Padding (px):", self.spin_mask_padding)
+
+        self.spin_mask_blur = QSpinBox()
+        self.spin_mask_blur.setRange(0, 50)
+        self.spin_mask_blur.setValue(int(self.cfg.get("mask_blur_radius", 10)))
+        form3.addRow("Mask Blur (px):", self.spin_mask_blur)
+
         form3.addRow(self.tr("setting_mask_format"), self.ed_mask_format)
 
         self.chk_mask_bg_only = QCheckBox(self.tr("setting_mask_only_bg"))
@@ -2598,15 +2642,20 @@ class SettingsDialog(QDialog):
         cfg["batch_to_txt_folder_trigger"] = self.chk_folder_trigger.isChecked()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
-        a = max(0, min(255, a))
+        # Rule: 1-254 (USER request: "1-254 才對 (以防RGB丟失)")
+        a = max(1, min(254, a))
+        
         fmt = (self.ed_mask_format.text().strip().lower() or DEFAULT_APP_SETTINGS["mask_default_format"]).strip(".")
         if fmt not in ("webp", "png"):
             fmt = DEFAULT_APP_SETTINGS["mask_default_format"]
 
         cfg["mask_default_alpha"] = a
         cfg["mask_default_format"] = fmt
+        cfg["mask_padding"] = self.spin_mask_padding.value()
+        cfg["mask_blur_radius"] = self.spin_mask_blur.value()
         cfg["mask_batch_only_if_has_background_tag"] = self.chk_mask_bg_only.isChecked()
         cfg["mask_batch_detect_text_enabled"] = self.chk_mask_ocr.isChecked()
+        cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
         cfg["mask_ocr_heat_threshold"] = float(f"{self.spin_ocr_heat.value():.2f}")
         cfg["mask_ocr_box_threshold"] = float(f"{self.spin_ocr_box.value():.2f}")
         cfg["mask_ocr_unclip_ratio"] = float(f"{self.spin_ocr_unclip.value():.2f}")
