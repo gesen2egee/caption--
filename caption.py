@@ -2,29 +2,22 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 32-97]    Imports & 外部依賴
-# [Ln 98-300]   Configuration, I18n Resource & Globals
-# [Ln 302-380]  Settings Helpers (load/save/coerce 函式)
-# [Ln 382-530]  Utils: delete_matching_npz、JSON sidecar、checkerboard
-# [Ln 532-700]  Utils / Parsing / Tag Logic (含 is_basic_character_tag)
-# [Ln 702-1000] Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 1002-1160] BatchMaskTextWorker (OCR 批次遮罩)
-# [Ln 1162-1260] BatchUnmaskWorker (批次去背)
-# [Ln 1262-1360] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1362-1590] UI Components (TagButton 多主題適配、TagFlowWidget、Advanced Find/Replace)
-# [Ln 1592-1880] SettingsDialog (UI 分頁新增語言/主題、I18n 覆蓋)
-# [Ln 1882-1940] MainWindow.__init__ (主視窗初始化、tr 輔助函式)
-# [Ln 1942-2190] MainWindow.init_ui (UI 佈局、分頁、按鈕)
-# [Ln 2192-2260] MainWindow 快捷鍵 & 滾輪事件
-# [Ln 2262-2430] MainWindow 檔案讀取 & on_text_changed
-# [Ln 2432-2500] MainWindow Token 計數
-# [Ln 2502-2680] MainWindow TAGS/NL (JSON sidecar 整合)
-# [Ln 2682-2770] MainWindow NL Paging
-# [Ln 2772-2920] MainWindow Tag 插入/移除 & Tagger
-# [Ln 2922-3060] MainWindow LLM 生成
-# [Ln 3062-3150] MainWindow Tools: Unmask / Stroke Eraser
-# [Ln 3152-3290] MainWindow Batch Tagger / LLM to txt (含寫入與過濾邏輯)
-# [Ln 3292-3560] MainWindow Settings 儲存、retranslate_ui & main 入口
+# [Ln 31-114]    Imports & 外部依賴
+# [Ln 115-450]   Configuration, I18n Resource & Globals
+# [Ln 460-570]   Settings Helpers (load/save/coerce 函式)
+# [Ln 570-750]   Utils: delete_matching_npz、JSON sidecar、Tag Parsing
+# [Ln 750-930]   Utils: Danbooru-style Query Filter (篩選器)
+# [Ln 930-1380]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
+# [Ln 1380-1760] Workers (Tagger/LLM/Mask/Restore)
+# [Ln 1760-1860] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1860-2070] UI Components (TagButton, TagFlowWidget)
+# [Ln 2070-2200] SettingsDialog
+# [Ln 2130-2270] AdvancedFindReplaceDialog
+# [Ln 2410-2520] MainWindow.__init__ & init_ui
+# [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
+# [Ln 3000-3400] MainWindow: LLM / Tagger / Tools Logic
+# [Ln 3400-4400] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
+# [Ln 4400+]     MainWindow: Settings / Main Entry
 #
 # ============================================================
 
@@ -44,6 +37,7 @@ import gc  # 新增垃圾回收支援
 os.environ["ORT_LOGGING_LEVEL"] = "3"
 warnings.filterwarnings("ignore", message="`torch.cuda.amp.custom_fwd")
 warnings.filterwarnings("ignore", message="Failed to import flet")
+warnings.filterwarnings("ignore", message="Token indices sequence length")
 
 # [GPU Fix] 嘗試載入 pip 安裝的 NVIDIA dll
 if os.name == 'nt':
@@ -77,7 +71,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QRect, QPoint, 
-    QBuffer, QIODevice, QByteArray
+    QBuffer, QIODevice, QByteArray, QTimer
 )
 from PyQt6.QtGui import (
     QPixmap, QKeySequence, QAction, QShortcut, QFont,
@@ -98,7 +92,9 @@ except ImportError:
 # optional: transparent background remover
 try:
     from transparent_background import Remover
-except Exception:
+except Exception as e:
+    print(f"Failed to import transparent_background: {e}")
+    traceback.print_exc()
     Remover = None
 
 from openai import OpenAI
@@ -160,6 +156,7 @@ LOCALIZATION = {
         "app_title": "Caption 神器",
         "menu_file": "檔案",
         "menu_open_dir": "開啟目錄",
+        "menu_refresh": "重新整理列表 (F5)",
         "btn_settings": "設定",
         "menu_exit": "結束",
         "tab_tags": "TAGS",
@@ -184,6 +181,7 @@ LOCALIZATION = {
         "label_txt_content": "實際內容 (.txt)",
         "label_tokens": "詞元數: ",
         "label_page": "頁數",
+        "setting_llm_use_gray_mask": "LLM 使用灰底 Mask (排除透明部分)",
         "btn_find_replace": "尋找/取代",
         "btn_undo": "復原文字",
         "btn_redo": "重做文字",
@@ -192,9 +190,13 @@ LOCALIZATION = {
         "btn_mask_text": "單圖去文字",
         "btn_batch_mask_text": "Batch 去文字",
         "btn_restore_original": "放回原圖",
+        "btn_batch_restore": "Batch 放回原圖",
         "btn_stroke_eraser": "手繪橡皮擦",
         "btn_cancel_batch": "中止",
         "menu_tools": "工具",
+        "filter_placeholder": "Danbooru 篩選語法... (blonde_hair blue_eyes)",
+        "filter_by_tags": "Tags",
+        "filter_by_text": "Text",
         "msg_delete_confirm": "確定要將此圖片移動到 no_used？",
         "msg_batch_delete_char_tags": "是否自動刪除特徵標籤 (Character Tags)？",
         "msg_batch_delete_info": "將根據設定中的黑白名單過濾標籤或句子。",
@@ -241,7 +243,9 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "預設提示詞模板:",
         "setting_llm_cust_prompt": "自訂提示詞模板:",
         "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
+        "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
         "setting_llm_max_dim": "LLM 圖片最大邊長 (Max Dimension):",
+        "setting_llm_skip_nsfw": "Batch LLM: 若含 rating:explicit/questionable 則跳過",
         "setting_tagger_gen_thresh": "一般標籤閾值:",
         "setting_tagger_char_thresh": "特徵標籤閾值:",
         "setting_tagger_gen_mcut": "一般標籤 MCut",
@@ -259,6 +263,7 @@ LOCALIZATION = {
         "app_title": "Caption Tool",
         "menu_file": "File",
         "menu_open_dir": "Open Directory",
+        "menu_refresh": "Refresh List (F5)",
         "btn_settings": "Settings",
         "menu_exit": "Exit",
         "tab_tags": "TAGS",
@@ -283,6 +288,7 @@ LOCALIZATION = {
         "label_txt_content": "Actual Content (.txt)",
         "label_tokens": "Tokens: ",
         "label_page": "Page",
+        "setting_llm_use_gray_mask": "LLM Use Gray Mask (Exclude Transparent Parts)",
         "btn_find_replace": "Find/Replace",
         "btn_undo": "Undo Txt",
         "btn_redo": "Redo Txt",
@@ -290,10 +296,15 @@ LOCALIZATION = {
         "btn_batch_unmask": "Batch Unmask Background",
         "btn_mask_text": "Unmask Text",
         "btn_batch_mask_text": "Batch Unmask Text",
+        "btn_batch_mask_text": "Batch Unmask Text",
         "btn_restore_original": "Restore Original",
+        "btn_batch_restore": "Batch Restore Original",
         "btn_stroke_eraser": "Stroke Eraser",
         "btn_cancel_batch": "Cancel",
         "menu_tools": "Tools",
+        "filter_placeholder": "Danbooru filter... (blonde_hair blue_eyes)",
+        "filter_by_tags": "Tags",
+        "filter_by_text": "Text",
         "msg_delete_confirm": "Move this image to no_used?",
         "msg_batch_delete_char_tags": "Delete Character Tags automatically?",
         "msg_batch_delete_info": "Tags will be filtered based on your blacklist/whitelist.",
@@ -340,7 +351,9 @@ LOCALIZATION = {
         "setting_llm_def_prompt": "Default Prompt Template:",
         "setting_llm_cust_prompt": "Custom Prompt Template:",
         "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
+        "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
         "setting_llm_max_dim": "LLM Max Image Dimension:",
+        "setting_llm_skip_nsfw": "Batch LLM: Skip if tag contains rating:explicit/questionable",
         "setting_tagger_gen_thresh": "General Threshold:",
         "setting_tagger_char_thresh": "Character Threshold:",
         "setting_tagger_gen_mcut": "General MCut Enabled",
@@ -444,7 +457,11 @@ DEFAULT_APP_SETTINGS = {
     "llm_system_prompt": DEFAULT_SYSTEM_PROMPT,
     "llm_user_prompt_template": DEFAULT_USER_PROMPT_TEMPLATE,
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
+    "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
+    "llm_skip_nsfw_on_batch": False,
+    "llm_use_gray_mask": True,
+    "last_open_dir": "",
 
     # Tagger (WD14)
     "tagger_model": "EVA02_Large",
@@ -744,6 +761,266 @@ def parse_boorutag_meta(meta_path):
     return tags_meta, hint_info
 
 
+# ==========================================
+#  Danbooru-style Query Filter
+# ==========================================
+import fnmatch
+
+class DanbooruQueryFilter:
+    """
+    Danbooru-style query parser and matcher.
+    Supports: AND (space), OR, NOT (-), grouping (()), wildcards (*), rating shortcuts, order.
+    """
+
+    def __init__(self, query: str):
+        self.query = query.strip()
+        self.order_mode = None  # 'landscape' or 'portrait'
+        self._parse_order()
+
+    def _parse_order(self):
+        """Extract order: directive from query."""
+        import re
+        match = re.search(r'\border:(landscape|portrait)\b', self.query, re.IGNORECASE)
+        if match:
+            self.order_mode = match.group(1).lower()
+            self.query = re.sub(r'\border:(landscape|portrait)\b', '', self.query, flags=re.IGNORECASE).strip()
+
+    def _normalize(self, text: str) -> str:
+        """Normalize text: lowercase, underscores to spaces."""
+        return text.lower().replace("_", " ").strip()
+
+    def _expand_rating(self, term: str) -> str:
+        """Expand rating shortcuts like rating:e -> rating:explicit."""
+        rating_map = {
+            "rating:e": "rating:explicit",
+            "rating:q": "rating:questionable",
+            "rating:s": "rating:sensitive",
+            "rating:g": "rating:general",
+        }
+        lower = term.lower()
+        return rating_map.get(lower, term)
+
+    def _term_matches(self, term: str, content: str) -> bool:
+        """Check if a single term matches the content."""
+        term = self._expand_rating(term)
+        term_norm = self._normalize(term)
+        content_norm = self._normalize(content)
+
+        # Handle wildcards
+        if "*" in term_norm:
+            # fnmatch style: * matches any characters
+            pattern = term_norm.replace(" ", "*")  # Allow flexible spacing
+            # Check each word in content
+            words = content_norm.split()
+            for word in words:
+                if fnmatch.fnmatch(word, pattern):
+                    return True
+            # Also check whole content
+            if fnmatch.fnmatch(content_norm, f"*{pattern}*"):
+                return True
+            return False
+
+        # Handle rating:q,s format (multiple ratings)
+        if term_norm.startswith("rating:") and "," in term_norm:
+            ratings = term_norm.replace("rating:", "").split(",")
+            for r in ratings:
+                r = r.strip()
+                expanded = self._expand_rating(f"rating:{r}")
+                if self._normalize(expanded) in content_norm:
+                    return True
+            return False
+
+        # Simple substring match for normalized content
+        return term_norm in content_norm
+
+    def _tokenize(self, query: str) -> list:
+        """Tokenize the query into terms and operators."""
+        import re
+        # Tokens: (, ), or, ~term, -term, -(, term
+        tokens = []
+        i = 0
+        query = query.strip()
+        
+        while i < len(query):
+            if query[i].isspace():
+                i += 1
+                continue
+            
+            # Grouping
+            if query[i] == '(':
+                tokens.append('(')
+                i += 1
+            elif query[i] == ')':
+                tokens.append(')')
+                i += 1
+            # Negation with group
+            elif query[i:i+2] == '-(':
+                tokens.append('-')
+                tokens.append('(')
+                i += 2
+            # Negation prefix
+            elif query[i] == '-':
+                # Find the term after -
+                i += 1
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term:
+                    tokens.append(('-', term))
+            # Legacy OR prefix
+            elif query[i] == '~':
+                i += 1
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term:
+                    tokens.append(('~', term))
+            # OR keyword
+            elif query[i:i+2].lower() == 'or' and (i+2 >= len(query) or query[i+2].isspace()):
+                tokens.append('or')
+                i += 2
+            # Regular term
+            else:
+                term_start = i
+                while i < len(query) and not query[i].isspace() and query[i] not in '()':
+                    i += 1
+                term = query[term_start:i]
+                if term and term.lower() != 'or':
+                    tokens.append(term)
+        
+        return tokens
+
+    def _evaluate(self, tokens: list, content: str) -> bool:
+        """Evaluate tokenized query against content."""
+        if not tokens:
+            return True
+
+        # Handle legacy OR (~term ~term)
+        tilde_terms = [t[1] for t in tokens if isinstance(t, tuple) and t[0] == '~']
+        if tilde_terms:
+            # Any of the tilde terms must match
+            other_tokens = [t for t in tokens if not (isinstance(t, tuple) and t[0] == '~')]
+            tilde_result = any(self._term_matches(term, content) for term in tilde_terms)
+            if other_tokens:
+                return tilde_result and self._evaluate(other_tokens, content)
+            return tilde_result
+
+        # Split by OR
+        or_groups = []
+        current_group = []
+        paren_depth = 0
+        
+        for token in tokens:
+            if token == '(':
+                paren_depth += 1
+                current_group.append(token)
+            elif token == ')':
+                paren_depth -= 1
+                current_group.append(token)
+            elif token == 'or' and paren_depth == 0:
+                if current_group:
+                    or_groups.append(current_group)
+                current_group = []
+            else:
+                current_group.append(token)
+        
+        if current_group:
+            or_groups.append(current_group)
+
+        # If we have OR groups, any must match
+        if len(or_groups) > 1:
+            return any(self._evaluate_and_group(group, content) for group in or_groups)
+        
+        return self._evaluate_and_group(tokens, content)
+
+    def _evaluate_and_group(self, tokens: list, content: str) -> bool:
+        """Evaluate an AND group (all must match, except negations)."""
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            
+            if token == '(':
+                # Find matching )
+                paren_depth = 1
+                j = i + 1
+                while j < len(tokens) and paren_depth > 0:
+                    if tokens[j] == '(':
+                        paren_depth += 1
+                    elif tokens[j] == ')':
+                        paren_depth -= 1
+                    j += 1
+                sub_tokens = tokens[i+1:j-1]
+                if not self._evaluate(sub_tokens, content):
+                    return False
+                i = j
+            elif token == ')':
+                i += 1
+            elif token == '-':
+                # Next token is negated
+                i += 1
+                if i < len(tokens):
+                    next_token = tokens[i]
+                    if next_token == '(':
+                        # Negated group
+                        paren_depth = 1
+                        j = i + 1
+                        while j < len(tokens) and paren_depth > 0:
+                            if tokens[j] == '(':
+                                paren_depth += 1
+                            elif tokens[j] == ')':
+                                paren_depth -= 1
+                            j += 1
+                        sub_tokens = tokens[i+1:j-1]
+                        if self._evaluate(sub_tokens, content):
+                            return False
+                        i = j
+                    else:
+                        i += 1
+            elif isinstance(token, tuple):
+                op, term = token
+                if op == '-':
+                    if self._term_matches(term, content):
+                        return False
+                elif op == '~':
+                    pass  # Handled above
+                i += 1
+            elif isinstance(token, str) and token not in ('(', ')', 'or'):
+                if not self._term_matches(token, content):
+                    return False
+                i += 1
+            else:
+                i += 1
+        
+        return True
+
+    def matches(self, content: str) -> bool:
+        """Check if content matches the query."""
+        if not self.query:
+            return True
+        tokens = self._tokenize(self.query)
+        return self._evaluate(tokens, content)
+
+    def sort_images(self, image_paths: list) -> list:
+        """Sort images by order mode (landscape/portrait)."""
+        if not self.order_mode:
+            return image_paths
+        
+        def get_aspect(path):
+            try:
+                img = Image.open(path)
+                return img.width / img.height
+            except Exception:
+                return 1.0
+        
+        if self.order_mode == 'landscape':
+            return sorted(image_paths, key=lambda p: -get_aspect(p))
+        elif self.order_mode == 'portrait':
+            return sorted(image_paths, key=lambda p: get_aspect(p))
+        return image_paths
+
+
 def extract_bracket_content(text):
     return re.findall(r'\{(.*?)\}', text)
 
@@ -902,7 +1179,7 @@ class LLMWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context, max_dim=1024):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context, max_dim=1024, settings=None):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -912,6 +1189,7 @@ class LLMWorker(QThread):
         self.image_path = image_path
         self.tags_context = tags_context
         self.max_dim = max_dim
+        self.settings = settings or {}
 
     def run(self):
         try:
@@ -920,9 +1198,45 @@ class LLMWorker(QThread):
                 api_key=self.api_key,
             )
 
-            img = Image.open(self.image_path)
-            if img.mode != 'RGB':
+            # --- 指定使用原圖或灰底 ---
+            use_gray = self.settings.get("llm_use_gray_mask", True)
+            img_path_to_open = self.image_path
+            
+            if not use_gray:
+                # 嘗試尋找 unmask 裡的原檔
+                src_dir = os.path.dirname(self.image_path)
+                stem = os.path.splitext(os.path.basename(self.image_path))[0]
+                unmask_dir = os.path.join(src_dir, "unmask")
+                if os.path.exists(unmask_dir):
+                    for f in os.listdir(unmask_dir):
+                        if os.path.splitext(f)[0] == stem:
+                            img_path_to_open = os.path.join(unmask_dir, f)
+                            break
+            
+            img = Image.open(img_path_to_open)
+            
+            # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
+            sidecar = load_image_sidecar(self.image_path)
+            is_masked_in_app = sidecar.get("masked_text", False) or sidecar.get("masked_background", False)
+            
+            has_alpha = False
+            if img.mode == 'RGBA':
+                has_alpha = True
+                if use_gray:
+                    # 強制變全灰 (無論 alpha 多少，只要有透明度就變灰)
+                    canvas = Image.new("RGB", img.size, (136, 136, 136))
+                    alpha = img.getchannel('A')
+                    # Binary: alpha < 255 -> 0 (use gray), alpha == 255 -> 255 (use pixel)
+                    mask = alpha.point(lambda p: 255 if p == 255 else 0)
+                    canvas.paste(img, mask=mask)
+                    img = canvas
+                else:
+                    img = img.convert('RGB')
+            elif img.mode != 'RGB':
                 img = img.convert('RGB')
+            
+            # 移除不再需要的 legacy 變數
+            should_warn = False 
 
             # Use self.max_dim for resizing
             target_size = self.max_dim
@@ -936,7 +1250,13 @@ class LLMWorker(QThread):
             img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
             img_url = f"data:image/jpeg;base64,{img_str}"
 
-            final_user_content = self.user_prompt.replace("{LLM處理結果}", self.tags_context)
+            # 決定提示詞前綴
+            prompt_prefix = ""
+            if use_gray:
+                if has_alpha or is_masked_in_app:
+                    prompt_prefix = "這是一張經過去背處理的圖像，背景已填滿灰色，請忽視灰色區域並針對主體進行描述。\n"
+            
+            final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", self.tags_context)
             final_user_content = final_user_content.replace("{tags}", self.tags_context)
 
             messages = [
@@ -1008,7 +1328,7 @@ class BatchLLMWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_paths, tags_context_getter, max_dim=1024, skip_nsfw=False, settings=None):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -1018,6 +1338,8 @@ class BatchLLMWorker(QThread):
         self.image_paths = list(image_paths)
         self.tags_context_getter = tags_context_getter
         self.max_dim = max_dim
+        self.skip_nsfw = skip_nsfw
+        self.settings = settings or {}
         self._stop = False
 
     def stop(self):
@@ -1039,9 +1361,53 @@ class BatchLLMWorker(QThread):
                 try:
                     tags_context = self.tags_context_getter(p)
 
-                    img = Image.open(p)
-                    if img.mode != 'RGB':
+                    # Check NSFW skip
+                    if self.skip_nsfw:
+                        t_lower = tags_context.lower()
+                        if "explicit" in t_lower or "questionable" in t_lower:
+                            # Skip this image
+                            self.per_image.emit(p, "")
+                            continue
+
+                    # --- 指定使用原圖或灰底 ---
+                    use_gray = self.settings.get("llm_use_gray_mask", True)
+                    img_path_to_open = p
+                    
+                    if not use_gray:
+                        # 嘗試尋找 unmask 裡的原檔
+                        src_dir = os.path.dirname(p)
+                        stem = os.path.splitext(os.path.basename(p))[0]
+                        unmask_dir = os.path.join(src_dir, "unmask")
+                        if os.path.exists(unmask_dir):
+                            for f in os.listdir(unmask_dir):
+                                if os.path.splitext(f)[0] == stem:
+                                    img_path_to_open = os.path.join(unmask_dir, f)
+                                    break
+                    
+                    img = Image.open(img_path_to_open)
+                    
+                    # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
+                    sidecar = load_image_sidecar(p)
+                    is_masked_in_app = sidecar.get("masked_text", False) or sidecar.get("masked_background", False)
+                    
+                    has_alpha = False
+                    if img.mode == 'RGBA':
+                        has_alpha = True
+                        if use_gray:
+                            # 強制變全灰
+                            canvas = Image.new("RGB", img.size, (136, 136, 136))
+                            alpha = img.getchannel('A')
+                            # Binary: alpha < 255 -> 0, alpha == 255 -> 255
+                            mask = alpha.point(lambda p: 255 if p == 255 else 0)
+                            canvas.paste(img, mask=mask)
+                            img = canvas
+                        else:
+                            img = img.convert('RGB')
+                    elif img.mode != 'RGB':
                         img = img.convert('RGB')
+                    
+                    # 移除不再需要的 legacy 變數
+                    should_warn = False
                     
                     target_size = self.max_dim
                     ratio = min(target_size / img.width, target_size / img.height)
@@ -1054,7 +1420,13 @@ class BatchLLMWorker(QThread):
                     img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                     img_url = f"data:image/jpeg;base64,{img_str}"
 
-                    final_user_content = self.user_prompt.replace("{LLM處理結果}", tags_context)
+                    # 決定提示詞前綴
+                    prompt_prefix = ""
+                    if use_gray:
+                        if has_alpha or is_masked_in_app:
+                            prompt_prefix = "這是一張經過去背處理的圖像，背景已填滿灰色，請忽視灰色區域並針對主體進行描述。\n"
+                    
+                    final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", tags_context)
                     final_user_content = final_user_content.replace("{tags}", tags_context)
 
                     messages = [
@@ -1246,10 +1618,11 @@ class BatchUnmaskWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths, cfg: dict = None):
+    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
+        self.background_tag_checker = background_tag_checker
         self._stop = False
 
     def stop(self):
@@ -1311,7 +1684,9 @@ class BatchUnmaskWorker(QThread):
                 self.error.emit("transparent_background.Remover not available")
                 return
 
-            remover = Remover()
+            import torch
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            remover = Remover(device=device)
 
             total = len(self.image_paths)
             for i, p in enumerate(self.image_paths, start=1):
@@ -1323,6 +1698,12 @@ class BatchUnmaskWorker(QThread):
                 sidecar = load_image_sidecar(p)
                 if sidecar.get("masked_background", False):
                     continue
+
+                # ✅ 遵循設定：僅處理包含 background 標籤的圖片
+                only_bg = bool(self.cfg.get("mask_batch_only_if_has_background_tag", False))
+                if only_bg and self.background_tag_checker:
+                    if not self.background_tag_checker(p):
+                        continue
 
                 try:
                     result = self.remove_background_to_webp(p, remover)
@@ -1346,6 +1727,74 @@ class BatchUnmaskWorker(QThread):
             if 'remover' in locals():
                 del remover
             unload_all_models()
+
+
+
+class BatchRestoreWorker(QThread):
+    progress = pyqtSignal(int, int, str)
+    per_image = pyqtSignal(str, str)
+    done = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, image_paths):
+        super().__init__()
+        self.image_paths = list(image_paths)
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
+
+    def run(self):
+        try:
+            total = len(self.image_paths)
+            for i, pth in enumerate(self.image_paths, start=1):
+                if self._stop:
+                    break
+                
+                self.progress.emit(i, total, os.path.basename(pth))
+
+                src_dir = os.path.dirname(pth)
+                base_name = os.path.basename(pth)
+                stem = os.path.splitext(base_name)[0]
+                unmask_dir = os.path.join(src_dir, "unmask")
+
+                candidate = None
+                if os.path.exists(unmask_dir):
+                    # Find any file with same stem in unmask dir
+                    for f in os.listdir(unmask_dir):
+                        if os.path.splitext(f)[0] == stem:
+                            candidate = os.path.join(unmask_dir, f)
+                            break
+                
+                if not candidate:
+                    continue
+
+                try:
+                    dest_path = os.path.join(src_dir, os.path.basename(candidate))
+                    
+                    # Move back from unmask/xxx to ./xxx
+                    shutil.move(candidate, dest_path)
+                    
+                    # Clean up Sidecar
+                    sidecar = load_image_sidecar(dest_path)
+                    if "masked_background" in sidecar: del sidecar["masked_background"]
+                    if "masked_text" in sidecar: del sidecar["masked_text"]
+                    save_image_sidecar(dest_path, sidecar)
+                    
+                    # Remove the generated file if different from restored
+                    if os.path.abspath(dest_path) != os.path.abspath(pth):
+                        try:
+                            os.remove(pth)
+                        except Exception:
+                            pass
+
+                    self.per_image.emit(pth, dest_path)
+                except Exception as e:
+                    print(f"[BatchRestore] Failed {pth}: {e}")
+
+            self.done.emit()
+        except Exception:
+            self.error.emit(traceback.format_exc())
 
 
 class StrokeCanvas(QLabel):
@@ -1856,8 +2305,17 @@ class SettingsDialog(QDialog):
         self.spin_llm_dim.setRange(256, 4096)
         self.spin_llm_dim.setSingleStep(128)
         self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
+        self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
         form.addRow(self.tr("setting_llm_max_dim"), self.spin_llm_dim)
         
+        self.chk_llm_skip_nsfw = QCheckBox(self.tr("setting_llm_skip_nsfw"))
+        self.chk_llm_skip_nsfw.setChecked(bool(self.cfg.get("llm_skip_nsfw_on_batch", False)))
+        form.addRow("", self.chk_llm_skip_nsfw)
+        
+        self.chk_llm_use_gray_mask = QCheckBox(self.tr("setting_llm_use_gray_mask"))
+        self.chk_llm_use_gray_mask.setChecked(bool(self.cfg.get("llm_use_gray_mask", True)))
+        form.addRow("", self.chk_llm_use_gray_mask)
+
         llm_layout.addLayout(form)
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
@@ -2074,6 +2532,8 @@ class SettingsDialog(QDialog):
         cfg["llm_user_prompt_template"] = self.ed_user_template.toPlainText()
         cfg["llm_custom_prompt_template"] = self.ed_custom_template.toPlainText()
         cfg["llm_max_image_dimension"] = self.spin_llm_dim.value()
+        cfg["llm_skip_nsfw_on_batch"] = self.chk_llm_skip_nsfw.isChecked()
+        cfg["llm_use_gray_mask"] = self.chk_llm_use_gray_mask.isChecked()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
@@ -2150,6 +2610,11 @@ class MainWindow(QMainWindow):
         self.tagger_tags = []
 
         self.root_dir_path = ""
+        
+        # Filter state
+        self.filter_active = False
+        self.filtered_image_files = []
+        self.all_image_files = []  # Original unfiltered list
 
         self.nl_pages = []
         self.nl_page_index = 0
@@ -2164,6 +2629,25 @@ class MainWindow(QMainWindow):
         self.apply_theme()
         self.setup_shortcuts()
         self._hf_tokenizer = None
+
+        # Auto-load last directory
+        last_dir = self.settings.get("last_open_dir", "")
+        if last_dir and os.path.exists(last_dir):
+            self.root_dir_path = last_dir
+            self.refresh_file_list()
+
+        # Check CUDA availability
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                # Use singleShot to show message after UI is fully loaded
+                QTimer.singleShot(1000, lambda: QMessageBox.warning(
+                    self, 
+                    "CUDA Warning", 
+                    "偵測不到 NVIDIA GPU (CUDA)。\n\n這可能是因為 venv 中的 PyTorch 版本錯誤。\n請執行根目錄下的 'fix_torch_gpu.bat' 來修復。\n\n目前將使用 CPU 執行，速度會非常慢。"
+                ))
+        except ImportError:
+            pass
 
     def tr(self, key: str) -> str:
         lang = self.settings.get("ui_language", "zh_tw")
@@ -2194,6 +2678,31 @@ class MainWindow(QMainWindow):
         self.img_info_label = QLabel("No Image Loaded")
         self.img_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         left_layout.addWidget(self.img_info_label)
+
+        # === Filter Bar ===
+        filter_bar = QHBoxLayout()
+        filter_bar.setContentsMargins(0, 0, 0, 0)
+        
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
+        self.filter_input.returnPressed.connect(self.apply_filter)
+        filter_bar.addWidget(self.filter_input, 1)
+        
+        self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
+        self.chk_filter_tags.setChecked(True)
+        filter_bar.addWidget(self.chk_filter_tags)
+        
+        self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
+        self.chk_filter_text.setChecked(False)
+        filter_bar.addWidget(self.chk_filter_text)
+        
+        self.btn_clear_filter = QPushButton("✕")
+        self.btn_clear_filter.setFixedWidth(30)
+        self.btn_clear_filter.setToolTip("Clear Filter")
+        self.btn_clear_filter.clicked.connect(self.clear_filter)
+        filter_bar.addWidget(self.btn_clear_filter)
+        
+        left_layout.addLayout(filter_bar)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2451,56 +2960,99 @@ class MainWindow(QMainWindow):
     # ==========================
     # Logic: Storage & Init
     # ==========================
+    def refresh_file_list(self):
+        if not self.root_dir_path or not os.path.exists(self.root_dir_path):
+            return
+        
+        dir_path = self.root_dir_path
+        # Keep track of current file to restore selection
+        current_path = self.current_image_path
+        
+        self.image_files = []
+        valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
+        ignore_dirs = {"no_used", "unmask"}
+
+        # Copied logic from open_directory scan
+        try:
+            for entry in os.scandir(dir_path):
+                if entry.is_file() and entry.name.lower().endswith(valid_exts):
+                    if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
+                        continue
+                    self.image_files.append(entry.path)
+        except Exception:
+            pass
+
+        try:
+            for entry in os.scandir(dir_path):
+                if entry.is_dir():
+                    if entry.name.lower() in ignore_dirs:
+                        continue
+                    try:
+                        for sub in os.scandir(entry.path):
+                            if sub.is_file() and sub.name.lower().endswith(valid_exts):
+                                if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
+                                    continue
+                                self.image_files.append(sub.path)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        self.image_files = natsorted(self.image_files)
+
+        if not self.image_files:
+            self.image_label.clear()
+            self.txt_edit.clear()
+            self.img_info_label.setText("No Images Found")
+            self.current_index = -1
+            self.current_image_path = None
+            return
+
+        # Restore index
+        if current_path and current_path in self.image_files:
+            self.current_index = self.image_files.index(current_path)
+        else:
+            # If current file gone, try to stay at same index or 0
+            if self.current_index >= len(self.image_files):
+                self.current_index = len(self.image_files) - 1
+            if self.current_index < 0:
+                self.current_index = 0
+        
+        self.load_image()
+        self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
+
     def open_directory(self):
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"))
+        default_dir = self.settings.get("last_open_dir", "")
+        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"), default_dir)
         if dir_path:
             self.root_dir_path = dir_path
-            self.image_files = []
-            valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-            ignore_dirs = {"no_used", "unmask"}
+            self.settings["last_open_dir"] = dir_path
+            save_app_settings(self.settings)
 
-            # ✅ 根目錄檔案
-            try:
-                for entry in os.scandir(dir_path):
-                    if entry.is_file() and entry.name.lower().endswith(valid_exts):
-                        if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
-                            continue
-                        self.image_files.append(entry.path)
-            except Exception:
-                pass
+            # Reset filter state
+            self.filter_active = False
+            self.filter_input.clear()
+            self.all_image_files = []
+            self.filtered_image_files = []
 
-            # ✅ 第一級子資料夾（不往下遞迴）
-            try:
-                for entry in os.scandir(dir_path):
-                    if entry.is_dir():
-                        if entry.name.lower() in ignore_dirs:
-                            continue
-                        try:
-                            for sub in os.scandir(entry.path):
-                                if sub.is_file() and sub.name.lower().endswith(valid_exts):
-                                    if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
-                                        continue
-                                    self.image_files.append(sub.path)
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            self.image_files = natsorted(self.image_files)
-            if self.image_files:
-                self.current_index = 0
-                self.load_image()
-            else:
-                QMessageBox.information(self, "Info", self.tr("msg_no_images"))
+            self.refresh_file_list()
 
     def load_image(self):
         if 0 <= self.current_index < len(self.image_files):
             self.current_image_path = self.image_files[self.current_index]
             self.current_folder_path = str(Path(self.current_image_path).parent)
 
-            self.img_info_label.setText(
-                f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
-            )
+            # Update info label with filter state
+            if self.filter_active:
+                # Show filtered count in red
+                filtered_idx = self.filtered_image_files.index(self.current_image_path) + 1 if self.current_image_path in self.filtered_image_files else self.current_index + 1
+                self.img_info_label.setText(
+                    f"<span style='color:red;'>({filtered_idx} / {len(self.filtered_image_files)})</span> : {os.path.basename(self.current_image_path)}"
+                )
+            else:
+                self.img_info_label.setText(
+                    f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
+                )
 
             pixmap = QPixmap(self.current_image_path)
             if not pixmap.isNull():
@@ -2539,6 +3091,91 @@ class MainWindow(QMainWindow):
             self.update_nl_page_controls()
 
             self.on_text_changed()
+
+    # ==========================
+    # Filter Logic
+    # ==========================
+    def _get_image_content_for_filter(self, image_path: str) -> str:
+        """Get combined content (tags + text) for filtering."""
+        content_parts = []
+        
+        if self.chk_filter_tags.isChecked():
+            # Get tags from sidecar
+            sidecar = load_image_sidecar(image_path)
+            tags = sidecar.get("tagger_tags", "")
+            content_parts.append(tags)
+        
+        if self.chk_filter_text.isChecked():
+            # Get text from .txt file
+            txt_path = os.path.splitext(image_path)[0] + ".txt"
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, 'r', encoding='utf-8') as f:
+                        content_parts.append(f.read())
+                except Exception:
+                    pass
+        
+        return " ".join(content_parts)
+
+    def apply_filter(self):
+        """Apply Danbooru-style filter to image list."""
+        query = self.filter_input.text().strip()
+        
+        if not query:
+            self.clear_filter()
+            return
+        
+        if not self.image_files and not self.all_image_files:
+            return
+        
+        # Store original list if not already stored
+        if not self.all_image_files:
+            self.all_image_files = list(self.image_files)
+        
+        # Create filter
+        qf = DanbooruQueryFilter(query)
+        
+        # Filter images
+        matched = []
+        for img_path in self.all_image_files:
+            content = self._get_image_content_for_filter(img_path)
+            if qf.matches(content):
+                matched.append(img_path)
+        
+        # Apply ordering
+        matched = qf.sort_images(matched)
+        
+        if not matched:
+            self.statusBar().showMessage("篩選結果為空", 3000)
+            return
+        
+        self.filtered_image_files = matched
+        self.image_files = matched
+        self.filter_active = True
+        self.current_index = 0
+        self.load_image()
+        self.statusBar().showMessage(f"篩選結果: {len(matched)} 張圖片", 3000)
+
+    def clear_filter(self):
+        """Clear filter and restore original image list."""
+        self.filter_input.clear()
+        
+        if self.all_image_files:
+            current_path = self.current_image_path
+            self.image_files = list(self.all_image_files)
+            self.all_image_files = []
+            self.filtered_image_files = []
+            self.filter_active = False
+            
+            # Try to keep current image selected
+            if current_path and current_path in self.image_files:
+                self.current_index = self.image_files.index(current_path)
+            else:
+                self.current_index = 0
+            
+            if self.image_files:
+                self.load_image()
+            self.statusBar().showMessage("已清除篩選", 2000)
 
     def next_image(self):
         if self.current_index < len(self.image_files) - 1:
@@ -3093,6 +3730,18 @@ class MainWindow(QMainWindow):
         self.btn_run_llm.setEnabled(False)
         self.btn_run_llm.setText("Running LLM...")
 
+        # Check empty tags logic
+        if "{tags}" in user_prompt and not tags_text.strip():
+            reply = QMessageBox.question(
+                self, "Warning", 
+                "Prompt 包含 {tags} 但目前沒有標籤資料。\n確定要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self.btn_run_llm.setEnabled(True)
+                self.btn_batch_llm.setEnabled(True)
+                return
+
         self.llm_thread = LLMWorker(
             self.llm_base_url,
             self.api_key,
@@ -3101,7 +3750,8 @@ class MainWindow(QMainWindow):
             user_prompt,
             self.current_image_path,
             tags_text,
-            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+            settings=self.settings
         )
         self.llm_thread.finished.connect(self.on_llm_finished_latest_only)
         self.llm_thread.error.connect(self.on_llm_error_no_popup)
@@ -3206,29 +3856,23 @@ class MainWindow(QMainWindow):
         if Remover is None:
             QMessageBox.warning(self, "Unmask", "transparent_background.Remover not available")
             return
-        try:
-            remover = Remover()
-            old_path = self.current_image_path
-            result = BatchUnmaskWorker.remove_background_to_webp(old_path, remover)
-            if not result:
-                return
-            new_path, _ = result
-            # 刪除對應 npz
-            if self.settings.get("mask_delete_npz_on_move", True):
-                delete_matching_npz(old_path)
-            # 記錄 masked_background 到 JSON sidecar
-            sidecar = load_image_sidecar(new_path)
-            sidecar["masked_background"] = True
-            save_image_sidecar(new_path, sidecar)
-            self._replace_image_path_in_list(old_path, new_path)
-            self.load_image()
-            self.statusBar().showMessage("Unmask 完成", 5000)
-        except Exception as e:
-            QMessageBox.warning(self, "Unmask", f"失敗: {e}")
-        finally:
-            if 'remover' in locals():
-                del remover
-            unload_all_models()
+            
+        # Use BatchWorker for single image to support progress bar & async
+        self.btn_batch_unmask_thread = BatchUnmaskWorker(
+            [self.current_image_path], 
+            self.settings,
+            background_tag_checker=None  # Force process for single image
+        )
+        self.btn_batch_unmask_thread.progress.connect(self.show_progress)
+        self.btn_batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
+        self.btn_batch_unmask_thread.done.connect(self.on_unmask_single_done)
+        self.btn_batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
+        self.btn_batch_unmask_thread.start()
+
+    def on_unmask_single_done(self):
+        self.hide_progress()
+        self.load_image()
+        self.statusBar().showMessage("Unmask 完成", 5000)
 
     def mask_text_current_image(self):
         if not self.current_image_path:
@@ -3345,12 +3989,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Batch Unmask", "transparent_background.Remover not available")
             return
 
-        targets = [p for p in self.image_files if self._tagger_has_background(p)]
-        if not targets:
-            QMessageBox.information(self, "Batch Unmask", "找不到 tagger 含 background 的圖片")
-            return
+        # ✅ 修正：根據設定決定是否過濾
+        only_bg = bool(self.settings.get("mask_batch_only_if_has_background_tag", False))
+        if only_bg:
+            targets = [p for p in self.image_files if self._image_has_background_tag(p)]
+            if not targets:
+                QMessageBox.information(self, "Batch Unmask", "找不到含有 'background' 標籤的圖片")
+                return
+        else:
+            targets = self.image_files
 
-        self.batch_unmask_thread = BatchUnmaskWorker(targets, self.settings)
+        if hasattr(self, 'action_batch_unmask'):
+            self.action_batch_unmask.setEnabled(False)
+            
+        self.batch_unmask_thread = BatchUnmaskWorker(
+            targets, 
+            self.settings,
+            background_tag_checker=self._image_has_background_tag
+        )
         self.batch_unmask_thread.progress.connect(self.show_progress)
         self.batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
         self.batch_unmask_thread.done.connect(self.on_batch_unmask_done)
@@ -3361,6 +4017,8 @@ class MainWindow(QMainWindow):
         self._replace_image_path_in_list(old_path, new_path)
 
     def on_batch_unmask_done(self):
+        if hasattr(self, 'action_batch_unmask'):
+            self.action_batch_unmask.setEnabled(True)
         self.hide_progress()
         self.load_image()
         self.statusBar().showMessage("Batch Unmask 完成", 5000)
@@ -3603,7 +4261,8 @@ class MainWindow(QMainWindow):
                 user_prompt,
                 files_to_process,  # List of missing paths
                 self.build_llm_tags_context_for_image,
-                max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+                max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+                skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False))
             )
             self.batch_llm_thread.progress.connect(self.show_progress)
             self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
@@ -3647,7 +4306,22 @@ class MainWindow(QMainWindow):
                 raw_list = [t for t in raw_list if not is_basic_character_tag(t, cfg)]
             items = raw_list
         else:
-            sentences = [s.strip() for s in content.replace("\n", ". ").split(". ") if s.strip()]
+            # nl_content from LLMworker has \n, possibly translation lines in ()
+            raw_lines = content.splitlines()
+            sentences = []
+            for line in raw_lines:
+                line = line.strip()
+                if not line: continue
+                # Skip lines that are entirely in parentheses (translations)
+                if (line.startswith("(") and line.endswith(")")) or (line.startswith("（") and line.endswith("）")):
+                    continue
+                # Remove any remaining content in parentheses/brackets just in case
+                line = re.sub(r"[\(（].*?[\)）]", "", line).strip()
+                # Remove trailing period and normalize
+                line = line.rstrip(".").strip()
+                if line:
+                    sentences.append(line)
+            
             if delete_chars:
                 sentences = [s for s in sentences if not is_basic_character_tag(s, cfg)]
             items = sentences
@@ -3703,11 +4377,13 @@ class MainWindow(QMainWindow):
             else:
                 final = cleanup_csv_like_text(new_part, force_lower)
         else:
-            new_part = ". ".join(items)
-            if items and not new_part.endswith("."): 
-                new_part += "."
+            # For LLM results, now joining with comma and no trailing period
+            new_part = ", ".join(items)
             if mode == "append" and existing_content:
-                sep = " " if not existing_content.endswith(".") else " "
+                # Use comma or space-comma as separator
+                sep = ", "
+                if existing_content.endswith(",") or existing_content.endswith("."):
+                    sep = " "
                 final = existing_content + sep + new_part
             else:
                 final = new_part
@@ -3768,6 +4444,18 @@ class MainWindow(QMainWindow):
 
         user_prompt = self.prompt_edit.toPlainText()
 
+        # Check for unreplaced placeholder {角色名}
+        if "{角色名}" in user_prompt:
+            reply = QMessageBox.question(
+                self, "Warning", 
+                "Prompt 包含未替換的 '{角色名}'。\n這可能會導致生成結果不正確。\n請手動輸入角色名或調整提示。\n\n確定要繼續嗎？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self.btn_batch_llm.setEnabled(True)
+                self.btn_run_llm.setEnabled(True)
+                return
+
         self.batch_llm_thread = BatchLLMWorker(
             self.llm_base_url,
             self.api_key,
@@ -3776,7 +4464,9 @@ class MainWindow(QMainWindow):
             user_prompt,
             self.image_files,
             self.build_llm_tags_context_for_image,
-            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+            skip_nsfw=bool(self.settings.get("llm_skip_nsfw_on_batch", False)),
+            settings=self.settings
         )
         self.batch_llm_thread.progress.connect(self.show_progress)
         self.batch_llm_thread.per_image.connect(self.on_batch_llm_per_image)
@@ -3890,7 +4580,19 @@ class MainWindow(QMainWindow):
     # Tools: Batch Mask Text (OCR)
     # ==========================
     def _image_has_background_tag(self, image_path: str) -> bool:
+        """
+        判斷是否為「背景圖」。
+        檢查 .txt 分類以及 sidecar JSON 標籤。
+        """
         try:
+            # 1. 優先檢查 Sidecar JSON (如果有 Tagger 結果就抓得到)
+            sidecar = load_image_sidecar(image_path)
+            # 檢查 tagger_tags (標籤器結果) 或 tags_context (原本的標籤)
+            tags_all = (sidecar.get("tagger_tags", "") + " " + sidecar.get("tags_context", "")).lower()
+            if "background" in tags_all:
+                return True
+
+            # 2. 檢查 .txt 檔案 (後備方案)
             txt_path = os.path.splitext(image_path)[0] + ".txt"
             if os.path.exists(txt_path):
                 with open(txt_path, "r", encoding="utf-8") as f:
@@ -3923,13 +4625,40 @@ class MainWindow(QMainWindow):
         self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Batch Mask Text", e))
         self.batch_mask_text_thread.start()
 
+    def on_batch_restore_per_image(self, old_path, new_path):
+        if old_path != new_path:
+            self._replace_image_path_in_list(old_path, new_path)
+            # Reload if current image is affected
+            if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
+                self.load_image()
+
+    def run_batch_restore(self):
+        if not self.image_files:
+            QMessageBox.information(self, "Info", "No images loaded.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Batch Restore",
+            "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.batch_restore_thread = BatchRestoreWorker(self.image_files)
+        # Using lambda for progress signature matching
+        self.batch_restore_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, name))
+        self.batch_restore_thread.per_image.connect(self.on_batch_restore_per_image)
+        self.batch_restore_thread.done.connect(lambda: self.on_batch_done("Batch Restore 完成"))
+        self.batch_restore_thread.error.connect(lambda e: self.on_batch_error("Batch Restore", e))
+        self.batch_restore_thread.start()
+
     def cancel_batch(self):
         self.statusBar().showMessage("正在中止...", 2000)
-        if hasattr(self, 'batch_unmask_thread') and self.batch_unmask_thread.isRunning():
-            self.batch_unmask_thread.stop()
-        if hasattr(self, 'batch_mask_text_thread') and self.batch_mask_text_thread.isRunning():
-            self.batch_mask_text_thread.stop()
-        # Add logic for other batch threads if needed
+        for attr in ['batch_unmask_thread', 'batch_mask_text_thread', 'batch_restore_thread', 'batch_tagger_thread', 'batch_llm_thread']:
+            thread = getattr(self, attr, None)
+            if thread is not None and thread.isRunning():
+                thread.stop()
 
 
     # ==========================
@@ -4007,6 +4736,11 @@ class MainWindow(QMainWindow):
         open_action = QAction(self.tr("menu_open_dir"), self)
         open_action.triggered.connect(self.open_directory)
         file_menu.addAction(open_action)
+
+        refresh_action = QAction(self.tr("menu_refresh"), self)
+        refresh_action.setShortcut(QKeySequence("F5"))
+        refresh_action.triggered.connect(self.refresh_file_list)
+        file_menu.addAction(refresh_action)
         settings_action = QAction(self.tr("btn_settings"), self)
         settings_action.triggered.connect(self.open_settings)
         file_menu.addAction(settings_action)
@@ -4021,21 +4755,29 @@ class MainWindow(QMainWindow):
         mask_text_action.triggered.connect(self.mask_text_current_image)
         tools_menu.addAction(mask_text_action)
 
-        tools_menu.addSeparator()
-        
-        batch_unmask_action = QAction(self.tr("btn_batch_unmask"), self)
-        batch_unmask_action.triggered.connect(self.run_batch_unmask_background)
-        tools_menu.addAction(batch_unmask_action)
-
-        batch_mask_text_action = QAction(self.tr("btn_batch_mask_text"), self)
-        batch_mask_text_action.triggered.connect(self.run_batch_mask_text)
-        tools_menu.addAction(batch_mask_text_action)
-
-        tools_menu.addSeparator()
-
-        restore_action = QAction(self.tr("btn_restore_original"), self) 
+        restore_action = QAction(self.tr("btn_restore_original"), self)
         restore_action.triggered.connect(self.restore_current_image)
         tools_menu.addAction(restore_action)
+
+        tools_menu.addSeparator()
+        
+        self.action_batch_unmask = QAction(self.tr("btn_batch_unmask"), self)
+        self.action_batch_unmask.triggered.connect(self.run_batch_unmask_background)
+        tools_menu.addAction(self.action_batch_unmask)
+
+        self.action_batch_mask_text = QAction(self.tr("btn_batch_mask_text"), self)
+        self.action_batch_mask_text.triggered.connect(self.run_batch_mask_text)
+        tools_menu.addAction(self.action_batch_mask_text)
+
+        tools_menu.addSeparator()
+
+        self.action_batch_restore = QAction(self.tr("btn_batch_restore"), self)
+        self.action_batch_restore.triggered.connect(self.run_batch_restore)
+        tools_menu.addAction(self.action_batch_restore)
+
+        tools_menu.addSeparator()
+
+
 
         stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
         stroke_action.triggered.connect(self.open_stroke_eraser)
