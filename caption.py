@@ -501,6 +501,7 @@ DEFAULT_APP_SETTINGS = {
     # Batch Mask Logic
     "mask_batch_min_foreground_ratio": 0.1,  # 最低主體佔比
     "mask_batch_max_foreground_ratio": 0.8,  # 最高主體佔比
+    "mask_batch_skip_if_scenery_tag": True,  # 若包含 indoors/outdoors 則跳過
 
     # Advanced OCR Settings
     "mask_ocr_heat_threshold": 0.2,
@@ -1659,6 +1660,17 @@ class BatchUnmaskWorker(QThread):
         padding = int(cfg.get("mask_padding", 3))
         blur_radius = int(cfg.get("mask_blur_radius", 10))
 
+        # Check Scenery Tags (Batch Only)
+        if is_batch and cfg.get("mask_batch_skip_if_scenery_tag", True):
+            sidecar = load_image_sidecar(image_path)
+            tags = sidecar.get("tagger_tags", "")
+            # Simple word check, case insensitive
+            # if 'indoors' or 'outdoors' in tags...
+            # Note: tags usually comma separated.
+            t_lower = tags.lower()
+            if "indoors" in t_lower or "outdoors" in t_lower:
+                return None, None
+
         src_dir = os.path.dirname(image_path)
         unmask_dir = os.path.join(src_dir, "unmask")
         os.makedirs(unmask_dir, exist_ok=True)
@@ -2593,6 +2605,10 @@ class SettingsDialog(QDialog):
         self.spin_mask_max_ratio.setValue(float(self.cfg.get("mask_batch_max_foreground_ratio", 0.8)))
         ratio_lay.addRow("Max Ratio (上限):", self.spin_mask_max_ratio)
         
+        self.chk_skip_scenery = QCheckBox("Skip if 'indoors'/'outdoors' (跳過場景圖)")
+        self.chk_skip_scenery.setChecked(bool(self.cfg.get("mask_batch_skip_if_scenery_tag", True)))
+        ratio_lay.addRow("", self.chk_skip_scenery)
+
         ratio_box.setLayout(ratio_lay)
         mask_layout.addWidget(ratio_box)
 
@@ -2701,6 +2717,7 @@ class SettingsDialog(QDialog):
         cfg["mask_ocr_unclip_ratio"] = float(f"{self.spin_ocr_unclip.value():.2f}")
         cfg["mask_batch_min_foreground_ratio"] = float(f"{self.spin_mask_min_ratio.value():.2f}")
         cfg["mask_batch_max_foreground_ratio"] = float(f"{self.spin_mask_max_ratio.value():.2f}")
+        cfg["mask_batch_skip_if_scenery_tag"] = self.chk_skip_scenery.isChecked()
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
