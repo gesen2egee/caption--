@@ -8,10 +8,10 @@
 # [Ln 570-750]   Utils: delete_matching_npz、JSON sidecar、Tag Parsing
 # [Ln 750-930]   Utils: Danbooru-style Query Filter (篩選器)
 # [Ln 930-1380]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 1380-1530] BatchMaskTextWorker (OCR) & BatchUnmaskWorker
-# [Ln 1530-1630] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1630-1840] UI Components (TagButton, TagFlowWidget)
-# [Ln 1840-2130] SettingsDialog
+# [Ln 1380-1760] Workers (Tagger/LLM/Mask/Restore)
+# [Ln 1760-1860] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
+# [Ln 1860-2070] UI Components (TagButton, TagFlowWidget)
+# [Ln 2070-2200] SettingsDialog
 # [Ln 2130-2270] AdvancedFindReplaceDialog
 # [Ln 2410-2520] MainWindow.__init__ & init_ui
 # [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
@@ -181,6 +181,7 @@ LOCALIZATION = {
         "label_txt_content": "實際內容 (.txt)",
         "label_tokens": "詞元數: ",
         "label_page": "頁數",
+        "setting_llm_use_gray_mask": "LLM 使用灰底 Mask (排除透明部分)",
         "btn_find_replace": "尋找/取代",
         "btn_undo": "復原文字",
         "btn_redo": "重做文字",
@@ -189,6 +190,7 @@ LOCALIZATION = {
         "btn_mask_text": "單圖去文字",
         "btn_batch_mask_text": "Batch 去文字",
         "btn_restore_original": "放回原圖",
+        "btn_batch_restore": "Batch 放回原圖",
         "btn_stroke_eraser": "手繪橡皮擦",
         "btn_cancel_batch": "中止",
         "menu_tools": "工具",
@@ -286,6 +288,7 @@ LOCALIZATION = {
         "label_txt_content": "Actual Content (.txt)",
         "label_tokens": "Tokens: ",
         "label_page": "Page",
+        "setting_llm_use_gray_mask": "LLM Use Gray Mask (Exclude Transparent Parts)",
         "btn_find_replace": "Find/Replace",
         "btn_undo": "Undo Txt",
         "btn_redo": "Redo Txt",
@@ -293,7 +296,9 @@ LOCALIZATION = {
         "btn_batch_unmask": "Batch Unmask Background",
         "btn_mask_text": "Unmask Text",
         "btn_batch_mask_text": "Batch Unmask Text",
+        "btn_batch_mask_text": "Batch Unmask Text",
         "btn_restore_original": "Restore Original",
+        "btn_batch_restore": "Batch Restore Original",
         "btn_stroke_eraser": "Stroke Eraser",
         "btn_cancel_batch": "Cancel",
         "menu_tools": "Tools",
@@ -455,6 +460,7 @@ DEFAULT_APP_SETTINGS = {
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
     "llm_skip_nsfw_on_batch": False,
+    "llm_use_gray_mask": True,
     "last_open_dir": "",
 
     # Tagger (WD14)
@@ -1173,7 +1179,7 @@ class LLMWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context, max_dim=1024):
+    def __init__(self, base_url, api_key, model_name, system_prompt, user_prompt, image_path, tags_context, max_dim=1024, settings=None):
         super().__init__()
         self.base_url = base_url
         self.api_key = api_key
@@ -1183,6 +1189,7 @@ class LLMWorker(QThread):
         self.image_path = image_path
         self.tags_context = tags_context
         self.max_dim = max_dim
+        self.settings = settings or {}
 
     def run(self):
         try:
@@ -1191,7 +1198,22 @@ class LLMWorker(QThread):
                 api_key=self.api_key,
             )
 
-            img = Image.open(self.image_path)
+            # --- 指定使用原圖或灰底 ---
+            use_gray = self.settings.get("llm_use_gray_mask", True)
+            img_path_to_open = self.image_path
+            
+            if not use_gray:
+                # 嘗試尋找 unmask 裡的原檔
+                src_dir = os.path.dirname(self.image_path)
+                stem = os.path.splitext(os.path.basename(self.image_path))[0]
+                unmask_dir = os.path.join(src_dir, "unmask")
+                if os.path.exists(unmask_dir):
+                    for f in os.listdir(unmask_dir):
+                        if os.path.splitext(f)[0] == stem:
+                            img_path_to_open = os.path.join(unmask_dir, f)
+                            break
+            
+            img = Image.open(img_path_to_open)
             
             # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
             sidecar = load_image_sidecar(self.image_path)
@@ -1200,15 +1222,21 @@ class LLMWorker(QThread):
             has_alpha = False
             if img.mode == 'RGBA':
                 has_alpha = True
-                # 以灰色 (136, 136, 136) 取代透明部分，與 UI 顯示一致
-                canvas = Image.new("RGB", img.size, (136, 136, 136))
-                canvas.paste(img, mask=img.getchannel('A'))
-                img = canvas
+                if use_gray:
+                    # 強制變全灰 (無論 alpha 多少，只要有透明度就變灰)
+                    canvas = Image.new("RGB", img.size, (136, 136, 136))
+                    alpha = img.getchannel('A')
+                    # Binary: alpha < 255 -> 0 (use gray), alpha == 255 -> 255 (use pixel)
+                    mask = alpha.point(lambda p: 255 if p == 255 else 0)
+                    canvas.paste(img, mask=mask)
+                    img = canvas
+                else:
+                    img = img.convert('RGB')
             elif img.mode != 'RGB':
                 img = img.convert('RGB')
-
-            # 只要有透明度，或是 sidecar 標記為處理過，就加上 Prompt 提示
-            should_warn = has_alpha or is_masked_in_app
+            
+            # 移除不再需要的 legacy 變數
+            should_warn = False 
 
             # Use self.max_dim for resizing
             target_size = self.max_dim
@@ -1222,7 +1250,12 @@ class LLMWorker(QThread):
             img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
             img_url = f"data:image/jpeg;base64,{img_str}"
 
-            prompt_prefix = "這是一張經過去背處理的圖像 請無視灰色部分 \n" if should_warn else ""
+            # 決定提示詞前綴
+            prompt_prefix = ""
+            if use_gray:
+                if has_alpha or is_masked_in_app:
+                    prompt_prefix = "這是一張經過去背處理的圖像，背景已填滿灰色，請忽視灰色區域並針對主體進行描述。\n"
+            
             final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", self.tags_context)
             final_user_content = final_user_content.replace("{tags}", self.tags_context)
 
@@ -1336,7 +1369,22 @@ class BatchLLMWorker(QThread):
                             self.per_image.emit(p, "")
                             continue
 
-                    img = Image.open(p)
+                    # --- 指定使用原圖或灰底 ---
+                    use_gray = self.settings.get("llm_use_gray_mask", True)
+                    img_path_to_open = p
+                    
+                    if not use_gray:
+                        # 嘗試尋找 unmask 裡的原檔
+                        src_dir = os.path.dirname(p)
+                        stem = os.path.splitext(os.path.basename(p))[0]
+                        unmask_dir = os.path.join(src_dir, "unmask")
+                        if os.path.exists(unmask_dir):
+                            for f in os.listdir(unmask_dir):
+                                if os.path.splitext(f)[0] == stem:
+                                    img_path_to_open = os.path.join(unmask_dir, f)
+                                    break
+                    
+                    img = Image.open(img_path_to_open)
                     
                     # 讀取 Sidecar 判斷是否曾被處理過 (去背景/去文字)
                     sidecar = load_image_sidecar(p)
@@ -1345,15 +1393,21 @@ class BatchLLMWorker(QThread):
                     has_alpha = False
                     if img.mode == 'RGBA':
                         has_alpha = True
-                        # 以灰色 (136, 136, 136) 取代透明部分
-                        canvas = Image.new("RGB", img.size, (136, 136, 136))
-                        canvas.paste(img, mask=img.getchannel('A'))
-                        img = canvas
+                        if use_gray:
+                            # 強制變全灰
+                            canvas = Image.new("RGB", img.size, (136, 136, 136))
+                            alpha = img.getchannel('A')
+                            # Binary: alpha < 255 -> 0, alpha == 255 -> 255
+                            mask = alpha.point(lambda p: 255 if p == 255 else 0)
+                            canvas.paste(img, mask=mask)
+                            img = canvas
+                        else:
+                            img = img.convert('RGB')
                     elif img.mode != 'RGB':
                         img = img.convert('RGB')
                     
-                    # 只要有透明度，或是 sidecar 標記為處理過，就加上 Prompt 提示
-                    should_warn = has_alpha or is_masked_in_app
+                    # 移除不再需要的 legacy 變數
+                    should_warn = False
                     
                     target_size = self.max_dim
                     ratio = min(target_size / img.width, target_size / img.height)
@@ -1366,7 +1420,12 @@ class BatchLLMWorker(QThread):
                     img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                     img_url = f"data:image/jpeg;base64,{img_str}"
 
-                    prompt_prefix = "這是一張經過去背處理的圖像 請無視灰色部分 \n" if should_warn else ""
+                    # 決定提示詞前綴
+                    prompt_prefix = ""
+                    if use_gray:
+                        if has_alpha or is_masked_in_app:
+                            prompt_prefix = "這是一張經過去背處理的圖像，背景已填滿灰色，請忽視灰色區域並針對主體進行描述。\n"
+                    
                     final_user_content = prompt_prefix + self.user_prompt.replace("{LLM處理結果}", tags_context)
                     final_user_content = final_user_content.replace("{tags}", tags_context)
 
@@ -1668,6 +1727,74 @@ class BatchUnmaskWorker(QThread):
             if 'remover' in locals():
                 del remover
             unload_all_models()
+
+
+
+class BatchRestoreWorker(QThread):
+    progress = pyqtSignal(int, int, str)
+    per_image = pyqtSignal(str, str)
+    done = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, image_paths):
+        super().__init__()
+        self.image_paths = list(image_paths)
+        self._stop = False
+
+    def stop(self):
+        self._stop = True
+
+    def run(self):
+        try:
+            total = len(self.image_paths)
+            for i, pth in enumerate(self.image_paths, start=1):
+                if self._stop:
+                    break
+                
+                self.progress.emit(i, total, os.path.basename(pth))
+
+                src_dir = os.path.dirname(pth)
+                base_name = os.path.basename(pth)
+                stem = os.path.splitext(base_name)[0]
+                unmask_dir = os.path.join(src_dir, "unmask")
+
+                candidate = None
+                if os.path.exists(unmask_dir):
+                    # Find any file with same stem in unmask dir
+                    for f in os.listdir(unmask_dir):
+                        if os.path.splitext(f)[0] == stem:
+                            candidate = os.path.join(unmask_dir, f)
+                            break
+                
+                if not candidate:
+                    continue
+
+                try:
+                    dest_path = os.path.join(src_dir, os.path.basename(candidate))
+                    
+                    # Move back from unmask/xxx to ./xxx
+                    shutil.move(candidate, dest_path)
+                    
+                    # Clean up Sidecar
+                    sidecar = load_image_sidecar(dest_path)
+                    if "masked_background" in sidecar: del sidecar["masked_background"]
+                    if "masked_text" in sidecar: del sidecar["masked_text"]
+                    save_image_sidecar(dest_path, sidecar)
+                    
+                    # Remove the generated file if different from restored
+                    if os.path.abspath(dest_path) != os.path.abspath(pth):
+                        try:
+                            os.remove(pth)
+                        except Exception:
+                            pass
+
+                    self.per_image.emit(pth, dest_path)
+                except Exception as e:
+                    print(f"[BatchRestore] Failed {pth}: {e}")
+
+            self.done.emit()
+        except Exception:
+            self.error.emit(traceback.format_exc())
 
 
 class StrokeCanvas(QLabel):
@@ -2184,6 +2311,10 @@ class SettingsDialog(QDialog):
         self.chk_llm_skip_nsfw = QCheckBox(self.tr("setting_llm_skip_nsfw"))
         self.chk_llm_skip_nsfw.setChecked(bool(self.cfg.get("llm_skip_nsfw_on_batch", False)))
         form.addRow("", self.chk_llm_skip_nsfw)
+        
+        self.chk_llm_use_gray_mask = QCheckBox(self.tr("setting_llm_use_gray_mask"))
+        self.chk_llm_use_gray_mask.setChecked(bool(self.cfg.get("llm_use_gray_mask", True)))
+        form.addRow("", self.chk_llm_use_gray_mask)
 
         llm_layout.addLayout(form)
 
@@ -2402,6 +2533,7 @@ class SettingsDialog(QDialog):
         cfg["llm_custom_prompt_template"] = self.ed_custom_template.toPlainText()
         cfg["llm_max_image_dimension"] = self.spin_llm_dim.value()
         cfg["llm_skip_nsfw_on_batch"] = self.chk_llm_skip_nsfw.isChecked()
+        cfg["llm_use_gray_mask"] = self.chk_llm_use_gray_mask.isChecked()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
@@ -3618,7 +3750,8 @@ class MainWindow(QMainWindow):
             user_prompt,
             self.current_image_path,
             tags_text,
-            max_dim=int(self.settings.get("llm_max_image_dimension", 1024))
+            max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
+            settings=self.settings
         )
         self.llm_thread.finished.connect(self.on_llm_finished_latest_only)
         self.llm_thread.error.connect(self.on_llm_error_no_popup)
@@ -4492,9 +4625,37 @@ class MainWindow(QMainWindow):
         self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Batch Mask Text", e))
         self.batch_mask_text_thread.start()
 
+    def on_batch_restore_per_image(self, old_path, new_path):
+        if old_path != new_path:
+            self._replace_image_path_in_list(old_path, new_path)
+            # Reload if current image is affected
+            if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
+                self.load_image()
+
+    def run_batch_restore(self):
+        if not self.image_files:
+            QMessageBox.information(self, "Info", "No images loaded.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Batch Restore",
+            "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.batch_restore_thread = BatchRestoreWorker(self.image_files)
+        # Using lambda for progress signature matching
+        self.batch_restore_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, name))
+        self.batch_restore_thread.per_image.connect(self.on_batch_restore_per_image)
+        self.batch_restore_thread.done.connect(lambda: self.on_batch_done("Batch Restore 完成"))
+        self.batch_restore_thread.error.connect(lambda e: self.on_batch_error("Batch Restore", e))
+        self.batch_restore_thread.start()
+
     def cancel_batch(self):
         self.statusBar().showMessage("正在中止...", 2000)
-        for attr in ['batch_unmask_thread', 'batch_mask_text_thread', 'batch_tagger_thread', 'batch_llm_thread']:
+        for attr in ['batch_unmask_thread', 'batch_mask_text_thread', 'batch_restore_thread', 'batch_tagger_thread', 'batch_llm_thread']:
             thread = getattr(self, attr, None)
             if thread is not None and thread.isRunning():
                 thread.stop()
@@ -4594,6 +4755,10 @@ class MainWindow(QMainWindow):
         mask_text_action.triggered.connect(self.mask_text_current_image)
         tools_menu.addAction(mask_text_action)
 
+        restore_action = QAction(self.tr("btn_restore_original"), self)
+        restore_action.triggered.connect(self.restore_current_image)
+        tools_menu.addAction(restore_action)
+
         tools_menu.addSeparator()
         
         self.action_batch_unmask = QAction(self.tr("btn_batch_unmask"), self)
@@ -4606,9 +4771,13 @@ class MainWindow(QMainWindow):
 
         tools_menu.addSeparator()
 
-        restore_action = QAction(self.tr("btn_restore_original"), self) 
-        restore_action.triggered.connect(self.restore_current_image)
-        tools_menu.addAction(restore_action)
+        self.action_batch_restore = QAction(self.tr("btn_batch_restore"), self)
+        self.action_batch_restore.triggered.connect(self.run_batch_restore)
+        tools_menu.addAction(self.action_batch_restore)
+
+        tools_menu.addSeparator()
+
+
 
         stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
         stroke_action.triggered.connect(self.open_stroke_eraser)
