@@ -15,9 +15,9 @@
 # [Ln 2130-2270] AdvancedFindReplaceDialog
 # [Ln 2410-2520] MainWindow.__init__ & init_ui
 # [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
-# [Ln 3000-3400] MainWindow: LLM / Tagger / Tools Logic
-# [Ln 3400-4400] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
-# [Ln 4400+]     MainWindow: Settings / Main Entry
+# [Ln 3000-3450] MainWindow: LLM / Tagger / Tools Logic
+# [Ln 3450-4450] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
+# [Ln 4450+]     MainWindow: Settings / Main Entry
 #
 # ============================================================
 
@@ -1640,7 +1640,7 @@ class BatchUnmaskWorker(QThread):
         return path
 
     @staticmethod
-    def remove_background_to_webp(image_path: str, remover) -> str:
+    def remove_background_to_webp(image_path: str, remover, alpha_threshold=0) -> str:
         if not image_path:
             return ""
 
@@ -1669,6 +1669,50 @@ class BatchUnmaskWorker(QThread):
         with Image.open(src_for_processing) as img:
             img = img.convert('RGB')
             img_rm = remover.process(img, type='rgba')
+            
+            # Apply alpha threshold logic (set transparent pixels to specified alpha)
+            # Actually, the user likely wants to set the alpha of the REMOVED background.
+            # transparent-background returns RGBA where background is 0 alpha.
+            # If user sets mask_default_alpha > 0, we should set those 0 alpha pixels to mask_default_alpha.
+            
+            if alpha_threshold > 0:
+                import numpy as np
+                arr = np.array(img_rm)
+                # arr is (H, W, 4)
+                # Check where alpha is 0 (fully transparent background)
+                # Or maybe user means where alpha < 255? Usually background removal makes it 0.
+                
+                # Logic: If pixel is transparent (A=0), set A = alpha_threshold
+                # Be careful: translucent pixels exist on edges.
+                # Simple approach: If A < 255, modify A? No, that ruins anti-aliasing.
+                # Approach: The user likely wants "Mask Transparency" setting in settings dialog.
+                # "setting_mask_alpha": "預設透明度 (0-255):"
+                # If this is 0, background is invisible. If 255, background is solid black/white?
+                # Usually this setting in this app context (from BatchMaskTextWorker) meant:
+                # "What alpha value to paint over the text box". 
+                # For background removal, "Mask" usually means the background.
+                # If the user wants the background to be partially visible instead of fully transparent:
+                # We need to mix the original image with the result? 
+                # transparent-background tool returns the foreground.
+                
+                # Let's assume the user wants the "transparent area" to have `alpha_threshold` opacity.
+                # But what color? Black? White? Gray?
+                # In BatchMaskTextWorker, it sets alpha channel to `alpha_val` directly.
+                # Let's do the same here for the background pixels.
+                
+                # Since remover returns foreground with A=255 and background with A=0 (mostly),
+                # If we just enforce A=alpha for background, we need to know what is background.
+                # Simple logic: max(existing_alpha, alpha_threshold)?
+                # If background is 0, it becomes alpha_threshold.
+                # If foreground is 255, it stays 255.
+                
+                # HOWEVER, `transparent-background` output might just be the foreground.
+                # If we change A from 0 to 128, the RGB channels might be 0,0,0 (Black).
+                # So it becomes semi-transparent black. This seems standard for "masking".
+                
+                arr[:, :, 3] = np.maximum(arr[:, :, 3], alpha_threshold)
+                img_rm = Image.fromarray(arr)
+            
             img_rm.save(target_file, 'WEBP')
 
         # move original (non-webp) after success
@@ -1706,9 +1750,12 @@ class BatchUnmaskWorker(QThread):
                         continue
 
                 try:
-                    result = self.remove_background_to_webp(p, remover)
-                    if result:
-                        new_path, old_path = result
+                    new_path, old_path = BatchUnmaskWorker.remove_background_to_webp(
+                        p, 
+                        remover, 
+                        alpha_threshold=int(self.cfg.get("mask_default_alpha", 0))
+                    )
+                    if new_path:
                         # 刪除對應 npz
                         if self.cfg.get("mask_delete_npz_on_move", True):
                             delete_matching_npz(old_path)
@@ -2675,9 +2722,27 @@ class MainWindow(QMainWindow):
         # === Left Side ===
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        self.img_info_label = QLabel("No Image Loaded")
-        self.img_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        left_layout.addWidget(self.img_info_label)
+        # === Info Bar (Interactive Index & Filename) ===
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(5)
+        
+        self.index_input = QLineEdit()
+        self.index_input.setFixedWidth(80)
+        self.index_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.index_input.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.index_input.returnPressed.connect(self.jump_to_index)
+        info_layout.addWidget(self.index_input)
+
+        self.total_info_label = QLabel("/ 0")
+        self.total_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        info_layout.addWidget(self.total_info_label)
+
+        self.img_file_label = QLabel(": No Image")
+        self.img_file_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.img_file_label.setWordWrap(False)
+        info_layout.addWidget(self.img_file_label, 1)
+
+        left_layout.addLayout(info_layout)
 
         # === Filter Bar ===
         filter_bar = QHBoxLayout()
@@ -2936,6 +3001,8 @@ class MainWindow(QMainWindow):
             (Qt.Key.Key_Right, self.next_image),
             (Qt.Key.Key_PageUp, self.prev_image),
             (Qt.Key.Key_PageDown, self.next_image),
+            (Qt.Key.Key_Home, self.first_image),
+            (Qt.Key.Key_End, self.last_image),
         ]:
             sc = QShortcut(QKeySequence(key), self)
             sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -3042,26 +3109,26 @@ class MainWindow(QMainWindow):
             self.current_image_path = self.image_files[self.current_index]
             self.current_folder_path = str(Path(self.current_image_path).parent)
 
-            # Update info label with filter state
+            # Update info bar
+            total_count = len(self.filtered_image_files) if self.filter_active else len(self.image_files)
+            current_num = self.filtered_image_files.index(self.current_image_path) + 1 if self.filter_active and self.current_image_path in self.filtered_image_files else self.current_index + 1
+            
+            self.index_input.blockSignals(True)
+            self.index_input.setText(str(current_num))
+            self.index_input.blockSignals(False)
+            
             if self.filter_active:
-                # Show filtered count in red
-                filtered_idx = self.filtered_image_files.index(self.current_image_path) + 1 if self.current_image_path in self.filtered_image_files else self.current_index + 1
-                self.img_info_label.setText(
-                    f"<span style='color:red;'>({filtered_idx} / {len(self.filtered_image_files)})</span> : {os.path.basename(self.current_image_path)}"
-                )
+                self.total_info_label.setText(f"<span style='color:red;'> / {total_count}</span>")
             else:
-                self.img_info_label.setText(
-                    f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
-                )
+                self.total_info_label.setText(f" / {total_count}")
+            
+            self.img_file_label.setText(f" : {os.path.basename(self.current_image_path)}")
 
-            pixmap = QPixmap(self.current_image_path)
-            if not pixmap.isNull():
-                scaled = pixmap.scaled(
-                    self.image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.image_label.setPixmap(scaled)
+            self.current_pixmap = QPixmap(self.current_image_path)
+            if not self.current_pixmap.isNull():
+                self.update_image_display()
+            else:
+                self.image_label.clear()
 
             txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
             content = ""
@@ -3186,6 +3253,53 @@ class MainWindow(QMainWindow):
         if self.current_index > 0:
             self.current_index -= 1
             self.load_image()
+
+    def first_image(self):
+        if self.image_files:
+            self.current_index = 0
+            self.load_image()
+
+    def last_image(self):
+        if self.image_files:
+            self.current_index = len(self.image_files) - 1
+            self.load_image()
+
+    def jump_to_index(self):
+        try:
+            val = int(self.index_input.text())
+            target_idx = val - 1
+            
+            if self.filter_active:
+                if 0 <= target_idx < len(self.filtered_image_files):
+                    target_path = self.filtered_image_files[target_idx]
+                    self.current_index = self.image_files.index(target_path)
+                    self.load_image()
+                else:
+                    self.load_image() # Reset to current
+            else:
+                if 0 <= target_idx < len(self.image_files):
+                    self.current_index = target_idx
+                    self.load_image()
+                else:
+                    self.load_image() # Reset to current
+        except Exception:
+            self.load_image()
+
+    def update_image_display(self):
+        """用於 Resize 或初次加載時更新圖片顯示"""
+        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
+            return
+        scaled = self.current_pixmap.scaled(
+            self.image_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        self.image_label.setPixmap(scaled)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
+        QTimer.singleShot(10, self.update_image_display)
 
     def delete_current_image(self):
         if not self.current_image_path:
