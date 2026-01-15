@@ -694,6 +694,82 @@ def save_image_sidecar(image_path: str, data: dict):
     except Exception as e:
         print(f"[Sidecar] 儲存失敗 {p}: {e}")
 
+def backup_original_image(image_path: str) -> bool:
+    """
+    修改圖片前先備份原圖 (若為首次修改)。
+    備份到同層級的 raw_image 資料夾。
+    並在 sidecar 記錄 'raw_image_rel_path'。
+    """
+    try:
+        sidecar = load_image_sidecar(image_path)
+        
+        # 若已經有備份紀錄，先檢查檔案是否存在
+        if "raw_image_rel_path" in sidecar:
+            rel_path = sidecar["raw_image_rel_path"]
+            src_dir = os.path.dirname(image_path)
+            abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
+            if os.path.exists(abs_raw_path):
+                # 已經有備份且檔案存在，不需再備份
+                return True
+            else:
+                # 紀錄還在但檔案不見了，重新備份當前檔案視為原圖?
+                # 照需求: "放回原圖去raw_image找原圖 如果已經放回 回覆處理前狀態"
+                # 若檔案不見了可能被手動刪除，這裡視為需要重新備份
+                pass
+
+        # 執行備份
+        src_dir = os.path.dirname(image_path)
+        raw_dir = os.path.join(src_dir, "raw_image")
+        os.makedirs(raw_dir, exist_ok=True)
+        
+        # 原檔名
+        fname = os.path.basename(image_path)
+        dest_path = os.path.join(raw_dir, fname)
+        
+        # 如果 raw_image 也可以有同名衝突? 需求說 "用原檔名 複製一份"
+        # 假設 raw_image 裡就是最原始的
+        if not os.path.exists(dest_path):
+            shutil.copy2(image_path, dest_path)
+        
+        # 計算相對路徑存入 JSON
+        rel_path = os.path.relpath(dest_path, src_dir)
+        sidecar["raw_image_rel_path"] = rel_path
+        
+        # 標記 masked 狀態通常由 worker 更新，但這裡是備份邏輯
+        save_image_sidecar(image_path, sidecar)
+        return True
+    except Exception as e:
+        print(f"[Backup] 備份失敗 {image_path}: {e}")
+        return False
+
+def restore_original_image(image_path: str) -> bool:
+    """
+    嘗試從 sidecar 記錄的 raw_image 還原圖片。
+    """
+    try:
+        sidecar = load_image_sidecar(image_path)
+        if "raw_image_rel_path" not in sidecar:
+            return False
+            
+        rel_path = sidecar["raw_image_rel_path"]
+        src_dir = os.path.dirname(image_path)
+        abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
+        
+        if os.path.exists(abs_raw_path):
+            # "如果已經放回 回覆處理前狀態"
+            # 覆蓋當前圖片
+            shutil.copy2(abs_raw_path, image_path)
+            # 是否要刪除 mask 標記? "如果已經放回 (設計) 回覆處理前狀態"
+            # 通常這意味著不再是 masked 狀態
+            if "masked_text" in sidecar: del sidecar["masked_text"]
+            if "masked_background" in sidecar: del sidecar["masked_background"]
+            save_image_sidecar(image_path, sidecar)
+            return True
+        return False
+    except Exception as e:
+        print(f"[Restore] 還原失敗 {image_path}: {e}")
+        return False
+
 
 def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
     if os.path.exists(csv_path):
@@ -1547,36 +1623,73 @@ class BatchMaskTextWorker(QThread):
             for i, pth in enumerate(self.image_paths, start=1):
                 if self._stop:
                     break
+                if self._stop:
+                    break
                 self.progress.emit(i, total, os.path.basename(pth))
 
+                # Batch Mode Check: Skip if already masked
+                if self.is_batch:
+                    sidecar = load_image_sidecar(pth)
+                    if sidecar.get("masked_text", False):
+                        continue
+                
                 if not self._should_process(pth):
                     continue
 
                 boxes = self._detect_text_boxes(pth)
                 if not boxes:
                     continue
+                
+                # Backup Original FIRST
+                backup_original_image(pth)
 
-                src_dir = os.path.dirname(pth)
-                out_dir = os.path.join(src_dir, "unmask")
-                os.makedirs(out_dir, exist_ok=True)
-
+                # Logic update: We are modifying 'pth' in place or creating new formatted file?
+                # The prompt implies we modify the image.
+                # Existing Logic:
+                # 1. Detect boxes
+                # 2. Move original to "unmask" (now "raw_image" per request?)
+                # Wait, prompt says: "第一次時 要用原檔名 複製一份原圖到raw_image (unmask改名raw_image)"
+                # But existing code move to "unmask". Let's change this to use `backup_original_image`
+                # And NOT move to unmask anymore? 
+                # "無論 手動、去背、文字 只要對原圖有修改的行為... 第一次時 要用原檔名 複製一份原檔到raw_image"
+                # Existing code moved original to `unmask` and generated new `webp`.
+                # If we use `backup_original_image`, we have a copy in `raw_image`.
+                # So we can overwrite `pth`? Or generate new file alongside?
+                # Existing logic generates `out_path` (possibly webp).
+                # If `out_path` != `pth` (format change), original `pth` was moved.
+                # Now we should probably:
+                # 1. Backup `pth` to `raw_image`.
+                # 2. Generate result to `out_path`.
+                # 3. If `out_path` != `pth`, we can delete `pth`? Or just leave it?
+                # The user requirement: "unmask改名raw_image". So the old "unmask" folder logic should be replaced by "raw_image" backup logic.
+                
+                # Let's adapting existing logic:
+                # src_dir = os.path.dirname(pth)
+                # out_dir = ... (OLD unmask logic removed)
+                
+                # We need to determine output format
+                # alpha_val/fmt logic...
+                
                 base_no_ext = os.path.splitext(pth)[0]
                 out_path = base_no_ext + f".{fmt}"
-                if os.path.exists(out_path) and os.path.abspath(out_path) != os.path.abspath(pth):
-                    out_path = self._unique_path(out_path)
-
-                ext = os.path.splitext(pth)[1].lower()
-                if ext == f".{fmt}":
-                    moved_original = self._unique_path(os.path.join(out_dir, os.path.basename(pth)))
-                    shutil.move(pth, moved_original)
-                    # 刪除對應 npz
-                    if self.cfg.get("mask_delete_npz_on_move", True):
-                        delete_matching_npz(pth)
-                    src_for_processing = moved_original
-                    out_path = pth
-                else:
-                    src_for_processing = pth
-
+                
+                # If changing format, ensure unique name if colliding?
+                # (Existing logic handled collision).
+                
+                # If format changes (e.g. jpg -> webp):
+                # We write new webp. Old jpg remains? 
+                # The old logic moved old jpg to unmask.
+                # Now we backup old jpg to raw_image.
+                # And we can remove old jpg? Or just leave it?
+                # Usually user wants to REPLACE the image in the list.
+                # So if format changes, likely want to remove old file to avoid duplicates in list?
+                # We will follow: Backup -> Process -> (If format change, delete old source?)
+                # Actually, `shutil.move` was acting as backup+delete.
+                # Now `backup_original_image` is Copy.
+                # So if `out_path` != `pth`, we should remove `pth` after successful save?
+                
+                src_for_processing = pth # Always process the current file
+                
                 with Image.open(src_for_processing) as img:
                     img_rgba = img.convert("RGBA")
                     a = np.array(img_rgba.getchannel("A"), dtype=np.uint8)
@@ -1586,17 +1699,30 @@ class BatchMaskTextWorker(QThread):
                         if x2 > x1 and y2 > y1:
                             a[y1:y2, x1:x2] = alpha_val
                     img_rgba.putalpha(Image.fromarray(a, mode="L"))
+                    
+                    # Save
                     if fmt == "png":
                         img_rgba.save(out_path, "PNG")
                     else:
                         img_rgba.save(out_path, "WEBP")
 
-                if ext != f".{fmt}":
-                    moved_original = self._unique_path(os.path.join(out_dir, os.path.basename(pth)))
-                    shutil.move(pth, moved_original)
-                    # 刪除對應 npz
-                    if self.cfg.get("mask_delete_npz_on_move", True):
-                        delete_matching_npz(pth)
+                # If we saved to a NEW extension, and successful, we should remove the old file?
+                # Backup is already done.
+                if os.path.abspath(out_path) != os.path.abspath(pth):
+                     try:
+                         os.remove(pth)
+                         # Also delete sidecar/npz for OLD path?
+                         # The new file `out_path` needs the sidecar.
+                         # Existing Logic managed sidecars?
+                         # Let's move sidecar to new name?
+                         old_json = image_sidecar_json_path(pth)
+                         new_json = image_sidecar_json_path(out_path)
+                         if os.path.exists(old_json) and old_json != new_json:
+                             shutil.move(old_json, new_json)
+                         
+                         if self.cfg.get("mask_delete_npz_on_move", True):
+                             delete_matching_npz(pth)
+                     except Exception: pass
 
                 # 記錄 masked_text 到 JSON sidecar
                 sidecar = load_image_sidecar(out_path)
@@ -1618,12 +1744,13 @@ class BatchUnmaskWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None):
+    def __init__(self, image_paths, cfg: dict = None, background_tag_checker=None, is_batch=True):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
         self.background_tag_checker = background_tag_checker
         self._stop = False
+        self.is_batch = is_batch # Added for batch vs single image processing distinction
 
     def stop(self):
         self._stop = True
@@ -1640,43 +1767,66 @@ class BatchUnmaskWorker(QThread):
         return path
 
     @staticmethod
-    def remove_background_to_webp(image_path: str, remover) -> str:
+    def remove_background_to_webp(image_path: str, remover, cfg: dict = None, is_batch=False) -> str:
         if not image_path:
-            return ""
+            return "", ""
 
-        src_dir = os.path.dirname(image_path)
-        unmask_dir = os.path.join(src_dir, "unmask")
-        os.makedirs(unmask_dir, exist_ok=True)
+        # Batch: check if already masked
+        if is_batch:
+            sd = load_image_sidecar(image_path)
+            if sd.get("masked_background", False):
+                return "", ""
 
+        # Backup Original
+        backup_original_image(image_path)
+        
+        cfg = cfg or {}
+        
+        # Settings
         ext = os.path.splitext(image_path)[1].lower()
         base_no_ext = os.path.splitext(image_path)[0]
 
         # target file: always WEBP
         target_file = base_no_ext + ".webp"
-        if os.path.exists(target_file) and os.path.abspath(target_file) != os.path.abspath(image_path):
-            target_file = BatchUnmaskWorker._unique_path(target_file)
-
-        # move original first if it is already WEBP (avoid overwrite)
-        moved_original = ""
-        if ext == ".webp":
-            moved_original = BatchUnmaskWorker._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
-            shutil.move(image_path, moved_original)
-            src_for_processing = moved_original
-            target_file = image_path  # write back to original path
-        else:
-            src_for_processing = image_path
+        
+        # We process current `image_path` directly, as backup is already done to `raw_image` folder.
+        src_for_processing = image_path
 
         with Image.open(src_for_processing) as img:
             img = img.convert('RGB')
             img_rm = remover.process(img, type='rgba')
-            img_rm.save(target_file, 'WEBP')
+            
+            # Convert to RGB if alpha is not needed, or save as RGBA
+            if cfg.get("mask_remove_bg_to_rgb", False):
+                final_img = Image.new("RGB", img_rm.size, (255, 255, 255)) # White background
+                final_img.paste(img_rm, mask=img_rm.split()[3]) # Use alpha channel as mask
+            else:
+                final_img = img_rm
+            
+            # Save as WEBP quality 100
+            final_img.save(target_file, 'WEBP', quality=100)
 
-        # move original (non-webp) after success
-        if ext != ".webp":
-            moved_original = BatchUnmaskWorker._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
-            shutil.move(image_path, moved_original)
+        # If format changed (e.g. jpg -> webp), remove old file
+        # Because we already backed it up.
+        if os.path.abspath(target_file) != os.path.abspath(image_path):
+            try:
+                os.remove(image_path)
+                # handle dependencies
+                old_json = image_sidecar_json_path(image_path)
+                new_json = image_sidecar_json_path(target_file)
+                if os.path.exists(old_json) and old_json != new_json:
+                    shutil.move(old_json, new_json)
+                
+                if cfg.get("mask_delete_npz_on_move", True):
+                    delete_matching_npz(image_path)
+            except Exception: pass
+            
+        # Update Sidecar
+        sidecar = load_image_sidecar(target_file)
+        sidecar["masked_background"] = True
+        save_image_sidecar(target_file, sidecar)
 
-        return target_file, image_path  # 回傳 (new_path, old_path) 以便外部處理 npz 刪除
+        return target_file, image_path
 
     def run(self):
         try:
@@ -1706,7 +1856,12 @@ class BatchUnmaskWorker(QThread):
                         continue
 
                 try:
-                    result = self.remove_background_to_webp(p, remover)
+                    result = self.remove_background_to_webp(
+                        p, 
+                        remover,
+                        cfg=self.cfg,
+                        is_batch=self.is_batch
+                    )
                     if result:
                         new_path, old_path = result
                         # 刪除對應 npz
@@ -3187,6 +3342,20 @@ class MainWindow(QMainWindow):
             self.current_index -= 1
             self.load_image()
 
+    def restore_current_image(self):
+        """還原當前圖片為原始備份"""
+        if not self.current_image_path:
+            return
+        
+        # User confirmed? Maybe too annoying. Direct action.
+        success = restore_original_image(self.current_image_path)
+        if success:
+            self.statusBar().showMessage(f"已還原: {os.path.basename(self.current_image_path)}", 3000)
+            # Reload
+            self.load_image()
+        else:
+            QMessageBox.warning(self, "Restore Failed", "無法還原：找不到備份紀錄或備份檔案已遺失。")
+
     def delete_current_image(self):
         if not self.current_image_path:
             return
@@ -3207,11 +3376,6 @@ class MainWindow(QMainWindow):
                     files_to_move.append(p)
 
             for f_path in files_to_move:
-                try:
-                    shutil.move(f_path, os.path.join(no_used_dir, os.path.basename(f_path)))
-                except Exception:
-                    pass
-
             self.image_files.pop(self.current_index)
             if self.current_index >= len(self.image_files):
                 self.current_index -= 1
@@ -3872,6 +4036,8 @@ class MainWindow(QMainWindow):
     def on_unmask_single_done(self):
         self.hide_progress()
         self.load_image()
+        # Restore logic might have changed file existence, so refresh list?
+        self.refresh_file_list(current_path=self.current_image_path)
         self.statusBar().showMessage("Unmask 完成", 5000)
 
     def mask_text_current_image(self):
