@@ -3668,6 +3668,11 @@ class MainWindow(QMainWindow):
                     files_to_move.append(p)
 
             for f_path in files_to_move:
+                try:
+                    shutil.move(f_path, os.path.join(no_used_dir, os.path.basename(f_path)))
+                except Exception:
+                    pass
+
             self.image_files.pop(self.current_index)
             if self.current_index >= len(self.image_files):
                 self.current_index -= 1
