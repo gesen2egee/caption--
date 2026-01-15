@@ -7,29 +7,30 @@
 # [Ln 457-570]    Settings Helpers (load/save/coerce 函式)
 # [Ln 571-613]    Model Unloading & Optimization (記憶體優化)
 # [Ln 615-713]    Utils: Sidecar JSON (圖片元數據)
-# [Ln 715-862]    Utils: Raw Image Backup/Restore (原圖備份還原) [NEW]
+# [Ln 715-862]    Utils: Raw Image Backup/Restore (原圖備份還原)
 # [Ln 863-930]    Utils: Tags CSV, boorutag Parsing
 # [Ln 932-1190]   Utils: Danbooru-style Query Filter (篩選器系統)
 # [Ln 1192-1315]  Utils: 標籤解析與文本正規化
 # [Ln 1318-1630]  Workers: Tagger, LLM (單圖與批量任務)
-# [Ln 1632-1965]  Workers: Masking (去背、去文字) [Updated: raw_image 備份]
-# [Ln 1967-2002]  Workers: BatchRestoreWorker (批量還原) [Updated]
+# [Ln 1632-1965]  Workers: Masking (去背、去文字)
+# [Ln 1967-2002]  Workers: BatchRestoreWorker (批量還原)
 # [Ln 2004-2156]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
 # [Ln 2158-2394]  UI Components: TagButton, TagFlowWidget
 # [Ln 2396-2443]  AdvancedFindReplaceDialog (尋找取代對話框)
 # [Ln 2445-2848]  SettingsDialog (設定面板 + ToolTip 說明)
 # [Ln 2854-2940]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 2941-3260]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 2941-3260]  MainWindow: UI 介面佈建 (init_ui)
 # [Ln 3262-3400]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3402-3490]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3492-3582]  MainWindow: 導航、跳轉與刪除功能
-# [Ln 3584-3697]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 3700-3923]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 3925-3998]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4000-4170]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4173-4400]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4402-4870]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 4872-5109]  MainWindow: 設定同步、語言切換與主程式入口
+# [Ln 3402-3580]  MainWindow: [NEW] Image Visualizer (RGB/Alpha) & Context Menu & Key Events
+# [Ln 3582-3680]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3682-3800]  MainWindow: 導航、跳轉與刪除功能
+# [Ln 3802-3920]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 3922-4140]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 4142-4210]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4212-4380]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4382-4630]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4632-5100]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 5102-5343]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
@@ -79,15 +80,18 @@ from PyQt6.QtWidgets import (
     QScrollArea, QLineEdit, QDialog, QFormLayout, QComboBox,
     QCheckBox, QMessageBox, QPlainTextEdit, QInputDialog,
     QRadioButton, QGroupBox, QSizePolicy, QTabWidget,
-    QFrame, QProgressBar, QSlider, QSpinBox, QDoubleSpinBox
+    QFrame, QProgressBar, QSlider, QSpinBox, QDoubleSpinBox,
+    QListWidget, QListWidgetItem, QMenu
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QRect, QPoint, 
-    QBuffer, QIODevice, QByteArray, QTimer
+    QBuffer, QIODevice, QByteArray, QTimer,
+    QSize, QUrl, QEvent
 )
 from PyQt6.QtGui import (
     QPixmap, QKeySequence, QAction, QShortcut, QFont,
-    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor
+    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor,
+    QIcon, QDesktopServices, QCursor, QGuiApplication, QClipboard
 )
 
 from PIL import Image
@@ -2996,6 +3000,11 @@ class MainWindow(QMainWindow):
         self.nl_page_index = 0
         self.nl_latest = ""
 
+        # Image View State
+        self.current_pil_image = None  # Store original PIL image
+        self.view_mode = 0             # 0: Original, 1: RGB, 2: Alpha
+        self.temp_view_mode = -1       # For Key Press override
+
         self.batch_tagger_thread = None
         self.batch_llm_thread = None
         self.batch_unmask_thread = None
@@ -3098,11 +3107,20 @@ class MainWindow(QMainWindow):
         self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
         self.btn_clear_filter.clicked.connect(self.clear_filter)
         filter_bar.addWidget(self.btn_clear_filter)
+
+        # ✅ View Mode Dropdown
+        self.combo_view_mode = QComboBox()
+        self.combo_view_mode.addItems(["圖片 (Original)", "RGB Only", "Alpha Channel"])
+        self.combo_view_mode.setToolTip("顯示模式切換\n(按住 N 顯示 RGB, 按住 M 顯示 Alpha)")
+        self.combo_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
+        filter_bar.addWidget(self.combo_view_mode)
         
         left_layout.addLayout(filter_bar)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.image_label.customContextMenuRequested.connect(self.show_image_context_menu)
         self.image_label.setMinimumSize(400, 400)
 
         # --- 棋盤格背景：用 Palette Brush（避免 data URI pixmap 警告） ---
@@ -3471,11 +3489,133 @@ class MainWindow(QMainWindow):
             
             self.img_file_label.setText(f" : {os.path.basename(self.current_image_path)}")
 
-            self.current_pixmap = QPixmap(self.current_image_path)
+            # ✅ Load PIL Image & Update View
+            try:
+                self.current_pil_image = Image.open(self.current_image_path)
+                self.current_pil_image = ImageOps.exif_transpose(self.current_pil_image)
+            except Exception as e:
+                print(f"Error loading image: {e}")
+                self.current_pil_image = None
+            
+            self.update_current_view_pixmap()
+
+    def update_current_view_pixmap(self):
+        """根據 View Mode 生成顯示用的 Pixmap"""
+        if self.current_pil_image is None:
+            self.image_label.clear()
+            self.current_pixmap = QPixmap()
+            return
+
+        mode = self.view_mode
+        # Key override
+        if self.temp_view_mode != -1:
+            mode = self.temp_view_mode
+        
+        try:
+            display_img = self.current_pil_image
+            
+            if mode == 1: # RGB Only
+                display_img = self.current_pil_image.convert("RGB")
+            elif mode == 2: # Alpha Channel
+                if self.current_pil_image.mode in ('RGBA', 'LA') or 'A' in self.current_pil_image.getbands():
+                    display_img = self.current_pil_image.getchannel('A')
+                else:
+                    # No alpha, show white
+                    display_img = Image.new("L", self.current_pil_image.size, 255)
+
+            # Convert to QPixmap
+            # Handle Grayscale 'L' mode -> convert to RGB for consistency in QT
+            if display_img.mode == 'L':
+                display_img = display_img.convert("RGB")
+            
+            im_qt = ImageQt.ImageQt(display_img)
+            self.current_pixmap = QPixmap.fromImage(im_qt)
+            
             if not self.current_pixmap.isNull():
                 self.update_image_display()
             else:
                 self.image_label.clear()
+        
+        except Exception as e:
+            print(f"Error updating view pixmap: {e}")
+
+    def keyPressEvent(self, event):
+        # 如果焦點在輸入框，不攔截按鍵
+        if self.focusWidget() in [self.filter_input, self.index_input, self.prompt_edit, self.txt_edit, self.ed_bl_words, self.ed_wl_words]:
+            super().keyPressEvent(event)
+            return
+
+        if event.key() == Qt.Key.Key_N:
+            if self.temp_view_mode != 1:
+                self.temp_view_mode = 1
+                self.update_current_view_pixmap()
+        elif event.key() == Qt.Key.Key_M:
+             if self.temp_view_mode != 2:
+                self.temp_view_mode = 2
+                self.update_current_view_pixmap()
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            super().keyReleaseEvent(event)
+            return
+
+        if event.key() == Qt.Key.Key_N and self.temp_view_mode == 1:
+            self.temp_view_mode = -1
+            self.update_current_view_pixmap()
+        elif event.key() == Qt.Key.Key_M and self.temp_view_mode == 2:
+            self.temp_view_mode = -1
+            self.update_current_view_pixmap()
+        else:
+            super().keyReleaseEvent(event)
+
+    def on_view_mode_changed(self, index):
+        self.view_mode = index
+        self.update_current_view_pixmap()
+
+    def show_image_context_menu(self, pos):
+        if not self.current_image_path:
+            return
+
+        menu = QMenu(self)
+        
+        action_copy_img = QAction(QIcon(), "複製圖片 (Copy Image)", self)
+        action_copy_img.triggered.connect(self.copy_image_to_clipboard)
+        menu.addAction(action_copy_img)
+
+        action_copy_path = QAction(QIcon(), "複製路徑 (Copy Path)", self)
+        action_copy_path.triggered.connect(self.copy_image_path)
+        menu.addAction(action_copy_path)
+
+        action_open_explorer = QAction(QIcon(), "打開檔案位置 (Show in Explorer)", self)
+        action_open_explorer.triggered.connect(self.open_file_explorer)
+        menu.addAction(action_open_explorer)
+
+        menu.exec(self.image_label.mapToGlobal(pos))
+
+    def copy_image_to_clipboard(self):
+        if self.current_pixmap and not self.current_pixmap.isNull():
+            QApplication.clipboard().setPixmap(self.current_pixmap)
+            self.statusBar().showMessage("圖片已複製到剪貼簿", 2000)
+
+    def copy_image_path(self):
+        if self.current_image_path:
+            QApplication.clipboard().setText(self.current_image_path)
+            self.statusBar().showMessage("路徑已複製到剪貼簿", 2000)
+
+    def open_file_explorer(self):
+        if self.current_image_path:
+            # 針對 Windows 的選取檔案功能
+            import subprocess
+            path = os.path.normpath(self.current_image_path)
+            try:
+                subprocess.Popen(f'explorer /select,"{path}"')
+            except Exception as e:
+                print(f"Open explorer failed: {e}")
+                # Fallback
+                folder = os.path.dirname(path)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
             txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
             content = ""
