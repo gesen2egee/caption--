@@ -2,22 +2,34 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 31-114]    Imports & 外部依賴
-# [Ln 115-450]   Configuration, I18n Resource & Globals
-# [Ln 460-570]   Settings Helpers (load/save/coerce 函式)
-# [Ln 570-750]   Utils: delete_matching_npz、JSON sidecar、Tag Parsing
-# [Ln 750-930]   Utils: Danbooru-style Query Filter (篩選器)
-# [Ln 930-1380]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 1380-1760] Workers (Tagger/LLM/Mask/Restore)
-# [Ln 1760-1860] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1860-2070] UI Components (TagButton, TagFlowWidget)
-# [Ln 2070-2200] SettingsDialog
-# [Ln 2130-2270] AdvancedFindReplaceDialog
-# [Ln 2410-2520] MainWindow.__init__ & init_ui
-# [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
-# [Ln 3000-3400] MainWindow: LLM / Tagger / Tools Logic
-# [Ln 3400-4400] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
-# [Ln 4400+]     MainWindow: Settings / Main Entry
+# [Ln 33-119]     Imports & 外部依賴
+# [Ln 121-454]    Configuration, I18n Resource & Globals
+# [Ln 457-570]    Settings Helpers (load/save/coerce 函式)
+# [Ln 571-613]    Model Unloading & Optimization (記憶體優化)
+# [Ln 615-713]    Utils: Sidecar JSON (圖片元數據)
+# [Ln 715-862]    Utils: Raw Image Backup/Restore (原圖備份還原) [NEW]
+# [Ln 863-930]    Utils: Tags CSV, boorutag Parsing
+# [Ln 932-1190]   Utils: Danbooru-style Query Filter (篩選器系統)
+# [Ln 1192-1315]  Utils: 標籤解析與文本正規化
+# [Ln 1318-1630]  Workers: Tagger, LLM (單圖與批量任務)
+# [Ln 1632-1965]  Workers: Masking (去背、去文字) [Updated: raw_image 備份]
+# [Ln 1967-2002]  Workers: BatchRestoreWorker (批量還原) [Updated]
+# [Ln 2004-2156]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
+# [Ln 2158-2394]  UI Components: TagButton, TagFlowWidget
+# [Ln 2396-2443]  AdvancedFindReplaceDialog (尋找取代對話框)
+# [Ln 2445-2848]  SettingsDialog (設定面板 + ToolTip 說明)
+# [Ln 2854-2940]  MainWindow: 類別定義與初始化 (__init__)
+# [Ln 2941-3260]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 3262-3400]  MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3402-3490]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3492-3582]  MainWindow: 導航、跳轉與刪除功能
+# [Ln 3584-3697]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 3700-3923]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 3925-3998]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4000-4170]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4173-4400]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4402-4870]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 4872-5109]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
@@ -489,12 +501,20 @@ DEFAULT_APP_SETTINGS = {
     "char_tag_whitelist_words": ["holding", "hand", "sitting", "covering", "playing", "background", "looking"],
 
     # Mask / batch mask text
-    "mask_default_alpha": 1,  # 0-255, 0 = fully transparent
+    "mask_default_alpha": 64, # 1-254
     "mask_default_format": "webp",  # webp | png
     "mask_batch_only_if_has_background_tag": True,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
     
+    "mask_padding": 1,        # Mask 內縮像素 (0=不內縮)
+    "mask_blur_radius": 3,    # Mask 高斯模糊半徑 (0=不模糊)
+    
+    # Batch Mask Logic
+    "mask_batch_min_foreground_ratio": 0.1,  # 最低主體佔比
+    "mask_batch_max_foreground_ratio": 0.8,  # 最高主體佔比
+    "mask_batch_skip_if_scenery_tag": True,  # 若包含 indoors/outdoors 則跳過
+
     # Advanced OCR Settings
     "mask_ocr_heat_threshold": 0.2,
     "mask_ocr_box_threshold": 0.6,
@@ -768,6 +788,154 @@ def restore_original_image(image_path: str) -> bool:
         return False
     except Exception as e:
         print(f"[Restore] 還原失敗 {image_path}: {e}")
+        return False
+
+
+# ==========================================
+#  Raw Image Backup / Restore (原圖備份還原)
+# ==========================================
+
+def get_raw_image_dir(image_path: str) -> str:
+    """取得 raw_image 備份資料夾路徑"""
+    return os.path.join(os.path.dirname(image_path), "raw_image")
+
+
+def has_raw_backup(image_path: str) -> bool:
+    """
+    檢查圖片是否已有原圖備份。
+    檢查 sidecar JSON 中的 raw_backup_path 欄位。
+    """
+    sidecar = load_image_sidecar(image_path)
+    raw_rel = sidecar.get("raw_backup_path", "")
+    if not raw_rel:
+        return False
+    
+    # 驗證備份檔案是否存在
+    src_dir = os.path.dirname(image_path)
+    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
+    return os.path.exists(raw_abs)
+
+
+def backup_raw_image(image_path: str) -> bool:
+    """
+    備份原圖到 raw_image 資料夾。
+    - 如果已有備份，不重複備份
+    - 備份後在 sidecar JSON 中記錄相對路徑
+    - 回傳 True 表示有執行備份，False 表示已存在備份
+    """
+    if not image_path or not os.path.exists(image_path):
+        return False
+    
+    # 檢查是否已有備份
+    if has_raw_backup(image_path):
+        return False
+    
+    try:
+        src_dir = os.path.dirname(image_path)
+        raw_dir = get_raw_image_dir(image_path)
+        os.makedirs(raw_dir, exist_ok=True)
+        
+        filename = os.path.basename(image_path)
+        dest_path = os.path.join(raw_dir, filename)
+        
+        # 避免檔名衝突
+        if os.path.exists(dest_path):
+            base, ext = os.path.splitext(filename)
+            for i in range(1, 9999):
+                dest_path = os.path.join(raw_dir, f"{base}_{i}{ext}")
+                if not os.path.exists(dest_path):
+                    break
+        
+        # 複製原檔 (不是移動，因為之後還要在原位置處理)
+        shutil.copy2(image_path, dest_path)
+        
+        # 計算相對路徑並儲存到 sidecar
+        rel_path = os.path.relpath(dest_path, src_dir)
+        sidecar = load_image_sidecar(image_path)
+        sidecar["raw_backup_path"] = rel_path
+        save_image_sidecar(image_path, sidecar)
+        
+        print(f"[Backup] 已備份原圖: {filename} -> {rel_path}")
+        return True
+        
+    except Exception as e:
+        print(f"[Backup] 備份失敗 {image_path}: {e}")
+        return False
+
+
+def restore_raw_image(image_path: str) -> bool:
+    """
+    從 raw_image 還原原圖。
+    - 如果沒有備份紀錄，回傳 False
+    - 還原後清除 sidecar 中的 mask 標記
+    - 回傳 True 表示還原成功
+    """
+    if not image_path:
+        return False
+    
+    sidecar = load_image_sidecar(image_path)
+    raw_rel = sidecar.get("raw_backup_path", "")
+    
+    if not raw_rel:
+        print(f"[Restore] 找不到備份紀錄: {image_path}")
+        return False
+    
+    src_dir = os.path.dirname(image_path)
+    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
+    
+    if not os.path.exists(raw_abs):
+        print(f"[Restore] 備份檔案不存在: {raw_abs}")
+        return False
+    
+    try:
+        # 複製備份回原位置 (覆蓋目前的處理版本)
+        shutil.copy2(raw_abs, image_path)
+        
+        # 清除 sidecar 中的 mask 標記，但保留備份路徑
+        sidecar["masked_background"] = False
+        sidecar["masked_text"] = False
+        save_image_sidecar(image_path, sidecar)
+        
+        print(f"[Restore] 已還原: {os.path.basename(image_path)}")
+        return True
+        
+    except Exception as e:
+        print(f"[Restore] 還原失敗 {image_path}: {e}")
+        return False
+
+
+def delete_raw_backup(image_path: str) -> bool:
+    """
+    刪除原圖備份（當使用者確認不需要還原時）。
+    - 刪除 raw_image 中的備份檔案
+    - 清除 sidecar 中的備份路徑
+    """
+    if not image_path:
+        return False
+    
+    sidecar = load_image_sidecar(image_path)
+    raw_rel = sidecar.get("raw_backup_path", "")
+    
+    if not raw_rel:
+        return False
+    
+    src_dir = os.path.dirname(image_path)
+    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
+    
+    try:
+        if os.path.exists(raw_abs):
+            os.remove(raw_abs)
+            print(f"[Backup] 已刪除備份: {raw_rel}")
+        
+        # 清除 sidecar 中的備份路徑
+        if "raw_backup_path" in sidecar:
+            del sidecar["raw_backup_path"]
+        save_image_sidecar(image_path, sidecar)
+        
+        return True
+        
+    except Exception as e:
+        print(f"[Backup] 刪除備份失敗 {image_path}: {e}")
         return False
 
 
@@ -1546,31 +1714,23 @@ class BatchMaskTextWorker(QThread):
     done = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, image_paths, cfg: dict, background_tag_checker=None):
+    def __init__(self, image_paths, cfg: dict, background_tag_checker=None, is_batch=True):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
         self.background_tag_checker = background_tag_checker
+        self.is_batch = is_batch
         self._stop = False
 
     def stop(self):
         self._stop = True
 
-    @staticmethod
-    def _unique_path(path: str) -> str:
-        if not os.path.exists(path):
-            return path
-        base, ext = os.path.splitext(path)
-        for i in range(1, 9999):
-            p2 = f"{base}_{i}{ext}"
-            if not os.path.exists(p2):
-                return p2
-        return path
-
     def _should_process(self, image_path: str) -> bool:
-        sidecar = load_image_sidecar(image_path)
-        if sidecar.get("masked_text", False):
-            return False
+        # Batch 時檢查是否已處理過去文字
+        if self.is_batch:
+            sidecar = load_image_sidecar(image_path)
+            if sidecar.get("masked_text", False):
+                return False
 
         only_bg = bool(self.cfg.get("mask_batch_only_if_has_background_tag", False))
         if not only_bg:
@@ -1620,6 +1780,7 @@ class BatchMaskTextWorker(QThread):
             fmt = str(self.cfg.get("mask_default_format", "webp")).lower().strip(".")
             if fmt not in ("webp", "png"):
                 fmt = "webp"
+            
             for i, pth in enumerate(self.image_paths, start=1):
                 if self._stop:
                     break
@@ -1643,54 +1804,14 @@ class BatchMaskTextWorker(QThread):
                 # Backup Original FIRST
                 backup_original_image(pth)
 
-                # Logic update: We are modifying 'pth' in place or creating new formatted file?
-                # The prompt implies we modify the image.
-                # Existing Logic:
-                # 1. Detect boxes
-                # 2. Move original to "unmask" (now "raw_image" per request?)
-                # Wait, prompt says: "第一次時 要用原檔名 複製一份原圖到raw_image (unmask改名raw_image)"
-                # But existing code move to "unmask". Let's change this to use `backup_original_image`
-                # And NOT move to unmask anymore? 
-                # "無論 手動、去背、文字 只要對原圖有修改的行為... 第一次時 要用原檔名 複製一份原檔到raw_image"
-                # Existing code moved original to `unmask` and generated new `webp`.
-                # If we use `backup_original_image`, we have a copy in `raw_image`.
-                # So we can overwrite `pth`? Or generate new file alongside?
-                # Existing logic generates `out_path` (possibly webp).
-                # If `out_path` != `pth` (format change), original `pth` was moved.
-                # Now we should probably:
-                # 1. Backup `pth` to `raw_image`.
-                # 2. Generate result to `out_path`.
-                # 3. If `out_path` != `pth`, we can delete `pth`? Or just leave it?
-                # The user requirement: "unmask改名raw_image". So the old "unmask" folder logic should be replaced by "raw_image" backup logic.
-                
-                # Let's adapting existing logic:
-                # src_dir = os.path.dirname(pth)
-                # out_dir = ... (OLD unmask logic removed)
-                
-                # We need to determine output format
-                # alpha_val/fmt logic...
-                
+                # ========== 新備份機制 ==========
+                backup_raw_image(pth)
+
                 base_no_ext = os.path.splitext(pth)[0]
+                ext = os.path.splitext(pth)[1].lower()
                 out_path = base_no_ext + f".{fmt}"
-                
-                # If changing format, ensure unique name if colliding?
-                # (Existing logic handled collision).
-                
-                # If format changes (e.g. jpg -> webp):
-                # We write new webp. Old jpg remains? 
-                # The old logic moved old jpg to unmask.
-                # Now we backup old jpg to raw_image.
-                # And we can remove old jpg? Or just leave it?
-                # Usually user wants to REPLACE the image in the list.
-                # So if format changes, likely want to remove old file to avoid duplicates in list?
-                # We will follow: Backup -> Process -> (If format change, delete old source?)
-                # Actually, `shutil.move` was acting as backup+delete.
-                # Now `backup_original_image` is Copy.
-                # So if `out_path` != `pth`, we should remove `pth` after successful save?
-                
-                src_for_processing = pth # Always process the current file
-                
-                with Image.open(src_for_processing) as img:
+
+                with Image.open(pth) as img:
                     img_rgba = img.convert("RGBA")
                     a = np.array(img_rgba.getchannel("A"), dtype=np.uint8)
                     for (x1, y1, x2, y2) in boxes:
@@ -1706,23 +1827,20 @@ class BatchMaskTextWorker(QThread):
                     else:
                         img_rgba.save(out_path, "WEBP")
 
-                # If we saved to a NEW extension, and successful, we should remove the old file?
-                # Backup is already done.
-                if os.path.abspath(out_path) != os.path.abspath(pth):
-                     try:
-                         os.remove(pth)
-                         # Also delete sidecar/npz for OLD path?
-                         # The new file `out_path` needs the sidecar.
-                         # Existing Logic managed sidecars?
-                         # Let's move sidecar to new name?
-                         old_json = image_sidecar_json_path(pth)
-                         new_json = image_sidecar_json_path(out_path)
-                         if os.path.exists(old_json) and old_json != new_json:
-                             shutil.move(old_json, new_json)
-                         
-                         if self.cfg.get("mask_delete_npz_on_move", True):
-                             delete_matching_npz(pth)
-                     except Exception: pass
+                # 如果格式不同，刪除原檔 (已備份)
+                if ext != f".{fmt}" and os.path.abspath(out_path) != os.path.abspath(pth):
+                    try:
+                        os.remove(pth)
+                        # 處理 sidecar JSON
+                        old_json = image_sidecar_json_path(pth)
+                        new_json = image_sidecar_json_path(out_path)
+                        if os.path.exists(old_json) and old_json != new_json:
+                            shutil.move(old_json, new_json)
+                        # 刪除對應 npz
+                        if self.cfg.get("mask_delete_npz_on_move", True):
+                            delete_matching_npz(pth)
+                    except Exception:
+                        pass
 
                 # 記錄 masked_text 到 JSON sidecar
                 sidecar = load_image_sidecar(out_path)
@@ -1749,6 +1867,7 @@ class BatchUnmaskWorker(QThread):
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
         self.background_tag_checker = background_tag_checker
+        self.is_batch = is_batch
         self._stop = False
         self.is_batch = is_batch # Added for batch vs single image processing distinction
 
@@ -1768,60 +1887,117 @@ class BatchUnmaskWorker(QThread):
 
     @staticmethod
     def remove_background_to_webp(image_path: str, remover, cfg: dict = None, is_batch=False) -> str:
+        """
+        去背處理主邏輯。
+        回傳 (new_path, old_path) 或 (None, None) 表示跳過。
+        """
         if not image_path:
-            return "", ""
+            return None, None
 
-        # Batch: check if already masked
-        if is_batch:
-            sd = load_image_sidecar(image_path)
-            if sd.get("masked_background", False):
-                return "", ""
-
-        # Backup Original
-        backup_original_image(image_path)
-        
         cfg = cfg or {}
         
         # Settings
+        alpha_threshold = int(cfg.get("mask_default_alpha", 0))
+        padding = int(cfg.get("mask_padding", 3))
+        blur_radius = int(cfg.get("mask_blur_radius", 10))
+
+        # Batch Only: Check Scenery Tags
+        if is_batch and cfg.get("mask_batch_skip_if_scenery_tag", True):
+            sidecar = load_image_sidecar(image_path)
+            tags = sidecar.get("tagger_tags", "")
+            t_lower = tags.lower()
+            if "indoors" in t_lower or "outdoors" in t_lower:
+                return None, None
+
+        # ========== 新備份機制 ==========
+        # 第一次處理時備份原圖到 raw_image
+        backup_raw_image(image_path)
+        
         ext = os.path.splitext(image_path)[1].lower()
         base_no_ext = os.path.splitext(image_path)[0]
 
-        # target file: always WEBP
+        # 輸出檔案：統一為 WEBP
         target_file = base_no_ext + ".webp"
         
-        # We process current `image_path` directly, as backup is already done to `raw_image` folder.
+        # 讀取來源 (直接從原位置讀取，因為已備份)
         src_for_processing = image_path
 
+        import numpy as np
+        from PIL import ImageFilter
+
         with Image.open(src_for_processing) as img:
-            img = img.convert('RGB')
-            img_rm = remover.process(img, type='rgba')
+            # (1) 處理輸入 Alpha：alpha=0 的像素設為白色
+            img_rgba_input = img.convert('RGBA')
+            input_arr = np.array(img_rgba_input)
             
-            # Convert to RGB if alpha is not needed, or save as RGBA
-            if cfg.get("mask_remove_bg_to_rgb", False):
-                final_img = Image.new("RGB", img_rm.size, (255, 255, 255)) # White background
-                final_img.paste(img_rm, mask=img_rm.split()[3]) # Use alpha channel as mask
-            else:
-                final_img = img_rm
+            alpha_channel_input = input_arr[:, :, 3]
+            zero_indices_input = alpha_channel_input == 0
             
-            # Save as WEBP quality 100
+            input_arr[zero_indices_input, 0] = 255
+            input_arr[zero_indices_input, 1] = 255
+            input_arr[zero_indices_input, 2] = 255
+            
+            img_corrected = Image.fromarray(input_arr, 'RGBA')
+            
+            # (2) 生成遮罩
+            img_rm = remover.process(img_corrected.convert('RGB'), type='rgba')
+            rm_arr = np.array(img_rm)
+            mask_arr_remover = rm_arr[:, :, 3]
+
+            # 結合原始 Alpha
+            combined_alpha = np.minimum(mask_arr_remover, alpha_channel_input)
+
+            # (3) Batch Only: 主體佔比檢查
+            if is_batch:
+                min_r = float(cfg.get("mask_batch_min_foreground_ratio", 0.1))
+                max_r = float(cfg.get("mask_batch_max_foreground_ratio", 0.8))
+                
+                fg_count = np.sum(combined_alpha == 255)
+                ratio = fg_count / combined_alpha.size
+                
+                if ratio < min_r or ratio > max_r:
+                    return None, None
+
+            # (4) Padding -> Blur -> Clamp
+            mask_img = Image.fromarray(combined_alpha)
+            
+            if padding > 0:
+                mask_img = mask_img.filter(ImageFilter.MinFilter(padding * 2 + 1))
+            
+            if blur_radius > 0:
+                mask_img = mask_img.filter(ImageFilter.GaussianBlur(blur_radius))
+            
+            processed_alpha_float = np.array(mask_img).astype(np.float32)
+            
+            if alpha_threshold > 0:
+                processed_alpha_float = np.maximum(processed_alpha_float, alpha_threshold)
+            
+            processed_alpha = np.clip(processed_alpha_float, 0, 255).astype(np.uint8)
+            
+            # 重組最終影像
+            final_r = rm_arr[:, :, 0]
+            final_g = rm_arr[:, :, 1]
+            final_b = rm_arr[:, :, 2]
+            
+            final_img_arr = np.dstack((final_r, final_g, final_b, processed_alpha))
+            final_img = Image.fromarray(final_img_arr, 'RGBA')
+            
+            # 儲存為 WEBP
             final_img.save(target_file, 'WEBP', quality=100)
 
-        # If format changed (e.g. jpg -> webp), remove old file
-        # Because we already backed it up.
-        if os.path.abspath(target_file) != os.path.abspath(image_path):
+        # 如果原檔不是 WEBP，刪除原檔 (已備份)
+        if ext != ".webp" and os.path.abspath(target_file) != os.path.abspath(image_path):
             try:
                 os.remove(image_path)
-                # handle dependencies
+                # 處理 sidecar JSON
                 old_json = image_sidecar_json_path(image_path)
                 new_json = image_sidecar_json_path(target_file)
                 if os.path.exists(old_json) and old_json != new_json:
                     shutil.move(old_json, new_json)
-                
-                if cfg.get("mask_delete_npz_on_move", True):
-                    delete_matching_npz(image_path)
-            except Exception: pass
-            
-        # Update Sidecar
+            except Exception:
+                pass
+
+        # 更新 Sidecar
         sidecar = load_image_sidecar(target_file)
         sidecar["masked_background"] = True
         save_image_sidecar(target_file, sidecar)
@@ -1844,33 +2020,29 @@ class BatchUnmaskWorker(QThread):
                     break
                 self.progress.emit(i, total, os.path.basename(p))
                 
-                # Check sidecar to skip
-                sidecar = load_image_sidecar(p)
-                if sidecar.get("masked_background", False):
-                    continue
+                # Batch 時檢查是否已處理過去背
+                if self.is_batch:
+                    sidecar = load_image_sidecar(p)
+                    if sidecar.get("masked_background", False):
+                        continue
 
-                # ✅ 遵循設定：僅處理包含 background 標籤的圖片
+                # 遵循設定：僅處理包含 background 標籤的圖片
                 only_bg = bool(self.cfg.get("mask_batch_only_if_has_background_tag", False))
-                if only_bg and self.background_tag_checker:
+                if self.is_batch and only_bg and self.background_tag_checker:
                     if not self.background_tag_checker(p):
                         continue
 
                 try:
-                    result = self.remove_background_to_webp(
+                    new_path, old_path = BatchUnmaskWorker.remove_background_to_webp(
                         p, 
-                        remover,
+                        remover, 
                         cfg=self.cfg,
                         is_batch=self.is_batch
                     )
-                    if result:
-                        new_path, old_path = result
+                    if new_path:
                         # 刪除對應 npz
-                        if self.cfg.get("mask_delete_npz_on_move", True):
+                        if self.cfg.get("mask_delete_npz_on_move", True) and old_path:
                             delete_matching_npz(old_path)
-                        # 記錄 masked_background 到 JSON sidecar
-                        sidecar = load_image_sidecar(new_path)
-                        sidecar["masked_background"] = True
-                        save_image_sidecar(new_path, sidecar)
                         self.per_image.emit(p, new_path)
                 except Exception as e:
                     print(f"[BatchUnmask] {p} 失敗: {e}")
@@ -1886,6 +2058,7 @@ class BatchUnmaskWorker(QThread):
 
 
 class BatchRestoreWorker(QThread):
+    """批量還原原圖 (從 raw_image 資料夾)"""
     progress = pyqtSignal(int, int, str)
     per_image = pyqtSignal(str, str)
     done = pyqtSignal()
@@ -1908,44 +2081,14 @@ class BatchRestoreWorker(QThread):
                 
                 self.progress.emit(i, total, os.path.basename(pth))
 
-                src_dir = os.path.dirname(pth)
-                base_name = os.path.basename(pth)
-                stem = os.path.splitext(base_name)[0]
-                unmask_dir = os.path.join(src_dir, "unmask")
-
-                candidate = None
-                if os.path.exists(unmask_dir):
-                    # Find any file with same stem in unmask dir
-                    for f in os.listdir(unmask_dir):
-                        if os.path.splitext(f)[0] == stem:
-                            candidate = os.path.join(unmask_dir, f)
-                            break
-                
-                if not candidate:
-                    continue
-
-                try:
-                    dest_path = os.path.join(src_dir, os.path.basename(candidate))
-                    
-                    # Move back from unmask/xxx to ./xxx
-                    shutil.move(candidate, dest_path)
-                    
-                    # Clean up Sidecar
-                    sidecar = load_image_sidecar(dest_path)
-                    if "masked_background" in sidecar: del sidecar["masked_background"]
-                    if "masked_text" in sidecar: del sidecar["masked_text"]
-                    save_image_sidecar(dest_path, sidecar)
-                    
-                    # Remove the generated file if different from restored
-                    if os.path.abspath(dest_path) != os.path.abspath(pth):
-                        try:
-                            os.remove(pth)
-                        except Exception:
-                            pass
-
-                    self.per_image.emit(pth, dest_path)
-                except Exception as e:
-                    print(f"[BatchRestore] Failed {pth}: {e}")
+                # 使用新的還原機制
+                if has_raw_backup(pth):
+                    try:
+                        success = restore_raw_image(pth)
+                        if success:
+                            self.per_image.emit(pth, pth)  # 路徑不變，只是內容還原
+                    except Exception as e:
+                        print(f"[BatchRestore] Failed {pth}: {e}")
 
             self.done.emit()
         except Exception:
@@ -2460,15 +2603,17 @@ class SettingsDialog(QDialog):
         self.spin_llm_dim.setRange(256, 4096)
         self.spin_llm_dim.setSingleStep(128)
         self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
-        self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
+        self.spin_llm_dim.setToolTip("傳給 LLM 的圖片最大邊長。\n調大：細節更多但 API 費用較高、速度較慢\n調小：處理更快且省費用，但可能遺漏細節")
         form.addRow(self.tr("setting_llm_max_dim"), self.spin_llm_dim)
         
         self.chk_llm_skip_nsfw = QCheckBox(self.tr("setting_llm_skip_nsfw"))
         self.chk_llm_skip_nsfw.setChecked(bool(self.cfg.get("llm_skip_nsfw_on_batch", False)))
+        self.chk_llm_skip_nsfw.setToolTip("勾選後，批量 LLM 會自動跳過含 explicit/questionable 標籤的圖片")
         form.addRow("", self.chk_llm_skip_nsfw)
         
         self.chk_llm_use_gray_mask = QCheckBox(self.tr("setting_llm_use_gray_mask"))
         self.chk_llm_use_gray_mask.setChecked(bool(self.cfg.get("llm_use_gray_mask", True)))
+        self.chk_llm_use_gray_mask.setToolTip("勾選後，去背後的透明區域會填灰色再傳給 LLM，\n讓 AI 專注描述主體而不是背景")
         form.addRow("", self.chk_llm_use_gray_mask)
 
         llm_layout.addLayout(form)
@@ -2509,16 +2654,25 @@ class SettingsDialog(QDialog):
         tagger_layout = QVBoxLayout(tab_tagger)
         form2 = QFormLayout()
         self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
+        self.ed_tagger_model.setToolTip("WD14 標籤模型名稱。常用: EVA02_Large (最準)、SwinV2 (較快)")
+        
         self.ed_general_threshold = QLineEdit(str(self.cfg.get("general_threshold", 0.2)))
+        self.ed_general_threshold.setToolTip("一般標籤的信心閾值 (0.0~1.0)\n調低：標籤更多但可能有誤判\n調高：標籤更精準但可能遺漏")
+        
         self.chk_general_mcut = QCheckBox(self.tr("setting_tagger_gen_mcut"))
         self.chk_general_mcut.setChecked(bool(self.cfg.get("general_mcut_enabled", False)))
+        self.chk_general_mcut.setToolTip("啟用 MCut 演算法自動決定閾值，會覆蓋上方的手動閾值設定")
 
         self.ed_character_threshold = QLineEdit(str(self.cfg.get("character_threshold", 0.85)))
+        self.ed_character_threshold.setToolTip("角色/特徵標籤的信心閾值 (0.0~1.0)\n建議設較高 (0.8+) 以避免誤判角色")
+        
         self.chk_character_mcut = QCheckBox(self.tr("setting_tagger_char_mcut"))
         self.chk_character_mcut.setChecked(bool(self.cfg.get("character_mcut_enabled", True)))
+        self.chk_character_mcut.setToolTip("啟用 MCut 演算法自動決定閾值，會覆蓋上方的手動閾值設定")
 
         self.chk_drop_overlap = QCheckBox(self.tr("setting_tagger_drop_overlap"))
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
+        self.chk_drop_overlap.setToolTip("移除重疊標籤，例如同時有 'long hair' 和 'hair' 時只保留更具體的")
 
         form2.addRow(self.tr("setting_tagger_model"), self.ed_tagger_model)
         form2.addRow(self.tr("setting_tagger_gen_thresh"), self.ed_general_threshold)
@@ -2536,18 +2690,22 @@ class SettingsDialog(QDialog):
         text_layout = QVBoxLayout(tab_text)
         self.chk_force_lower = QCheckBox(self.tr("setting_text_force_lower"))
         self.chk_force_lower.setChecked(bool(self.cfg.get("english_force_lowercase", True)))
+        self.chk_force_lower.setToolTip("勾選後，所有英文標籤和句子會自動轉為小寫，\n符合 Stable Diffusion 訓練資料的常見格式")
         text_layout.addWidget(self.chk_force_lower)
 
         self.chk_auto_remove_empty = QCheckBox(self.tr("setting_text_auto_remove_empty"))
         self.chk_auto_remove_empty.setChecked(bool(self.cfg.get("text_auto_remove_empty_lines", True)))
+        self.chk_auto_remove_empty.setToolTip("自動移除文字檔中的空白行，保持內容整潔")
         text_layout.addWidget(self.chk_auto_remove_empty)
 
         self.chk_auto_format = QCheckBox(self.tr("setting_text_auto_format"))
         self.chk_auto_format.setChecked(bool(self.cfg.get("text_auto_format", True)))
+        self.chk_auto_format.setToolTip("自動整理標籤格式：移除多餘空格、統一用 ', ' 分隔")
         text_layout.addWidget(self.chk_auto_format)
 
         self.chk_auto_save = QCheckBox(self.tr("setting_text_auto_save"))
         self.chk_auto_save.setChecked(bool(self.cfg.get("text_auto_save", True)))
+        self.chk_auto_save.setToolTip("編輯內容時自動儲存到 .txt 檔案，無需手動按儲存")
         text_layout.addWidget(self.chk_auto_save)
 
         # Batch to txt options
@@ -2555,9 +2713,12 @@ class SettingsDialog(QDialog):
         text_layout.addWidget(QLabel(f"<b>{self.tr('setting_batch_to_txt')}</b>"))
         
         mode_grp = QGroupBox(self.tr("setting_batch_mode"))
+        mode_grp.setToolTip("決定批量處理時如何寫入 .txt 檔案")
         mode_lay = QHBoxLayout()
         self.rb_batch_append = QRadioButton(self.tr("setting_batch_append"))
+        self.rb_batch_append.setToolTip("將新內容附加到現有文字的後面 (推薦)")
         self.rb_batch_overwrite = QRadioButton(self.tr("setting_batch_overwrite"))
+        self.rb_batch_overwrite.setToolTip("完全覆蓋原有文字，請謹慎使用")
         if self.cfg.get("batch_to_txt_mode", "append") == "overwrite":
             self.rb_batch_overwrite.setChecked(True)
         else:
@@ -2569,6 +2730,7 @@ class SettingsDialog(QDialog):
         
         self.chk_folder_trigger = QCheckBox(self.tr("setting_batch_trigger"))
         self.chk_folder_trigger.setChecked(bool(self.cfg.get("batch_to_txt_folder_trigger", False)))
+        self.chk_folder_trigger.setToolTip("勾選後，會把資料夾名稱當作觸發詞加到句子最前面\n例如資料夾 '1girl_miku' 會在開頭加上 'miku'")
         text_layout.addWidget(self.chk_folder_trigger)
 
         text_layout.addStretch(1)
@@ -2580,18 +2742,35 @@ class SettingsDialog(QDialog):
         form3 = QFormLayout()
 
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
+        self.ed_mask_alpha.setToolTip("去除部分的殘留透明度 (1-254)\n調低：去得更乾淨 (接近全透明)\n調高：保留更多半透明效果")
         self.ed_mask_format = QLineEdit(str(self.cfg.get("mask_default_format", "webp")))
+        self.ed_mask_format.setToolTip("輸出格式：webp (檔案小) 或 png (相容性好)")
         form3.addRow(self.tr("setting_mask_alpha"), self.ed_mask_alpha)
+        
+        # New Settings
+        self.spin_mask_padding = QSpinBox()
+        self.spin_mask_padding.setRange(0, 50)
+        self.spin_mask_padding.setValue(int(self.cfg.get("mask_padding", 3)))
+        self.spin_mask_padding.setToolTip("主體邊緣內縮的像素數\n調大：邊緣更乾淨，但可能切到主體\n調小：保留更多邊緣細節")
+        form3.addRow("Mask Padding (內縮像素):", self.spin_mask_padding)
+
+        self.spin_mask_blur = QSpinBox()
+        self.spin_mask_blur.setRange(0, 50)
+        self.spin_mask_blur.setValue(int(self.cfg.get("mask_blur_radius", 10)))
+        self.spin_mask_blur.setToolTip("邊緣模糊半徑 (高斯模糊)\n調大：邊緣更柔和自然\n調小：邊緣更銳利")
+        form3.addRow("Mask Blur (模糊半徑):", self.spin_mask_blur)
+
         form3.addRow(self.tr("setting_mask_format"), self.ed_mask_format)
 
         self.chk_mask_bg_only = QCheckBox(self.tr("setting_mask_only_bg"))
         self.chk_mask_bg_only.setChecked(bool(self.cfg.get("mask_batch_only_if_has_background_tag", False)))
-        form3.addRow(self.tr("setting_mask_only_bg"), self.chk_mask_bg_only)
+        self.chk_mask_bg_only.setToolTip("勾選後，批量去背只處理標籤含 'background' 的圖片\n避免誤處理不需要去背的圖")
+        form3.addRow("", self.chk_mask_bg_only)
 
         self.chk_mask_ocr = QCheckBox(self.tr("setting_mask_ocr"))
         self.chk_mask_ocr.setChecked(bool(self.cfg.get("mask_batch_detect_text_enabled", True)))
-        form3.addRow(self.tr("setting_mask_ocr"), self.chk_mask_ocr)
-        self.chk_mask_ocr.setToolTip(self.tr("setting_mask_ocr_hint"))
+        self.chk_mask_ocr.setToolTip("啟用 OCR 自動偵測並遮蔽圖片中的文字區域")
+        form3.addRow("", self.chk_mask_ocr)
 
         # OCR Advanced
         self.spin_ocr_heat = QDoubleSpinBox()
@@ -2617,9 +2796,38 @@ class SettingsDialog(QDialog):
 
         self.chk_mask_del_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
         self.chk_mask_del_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
-        form3.addRow(self.tr("setting_mask_delete_npz"), self.chk_mask_del_npz)
+        self.chk_mask_del_npz.setToolTip("移動原圖時自動刪除對應的 .npz 快取檔案 (SD 訓練用)")
+        form3.addRow("", self.chk_mask_del_npz)
 
         mask_layout.addLayout(form3)
+
+        # Batch Ratio Limits
+        ratio_box = QGroupBox("Batch Mask 主體佔比限制")
+        ratio_box.setToolTip("根據去背後主體佔畫面的比例來決定是否套用去背")
+        ratio_lay = QFormLayout()
+        
+        self.spin_mask_min_ratio = QDoubleSpinBox()
+        self.spin_mask_min_ratio.setRange(0.0, 1.0)
+        self.spin_mask_min_ratio.setSingleStep(0.05)
+        self.spin_mask_min_ratio.setValue(float(self.cfg.get("mask_batch_min_foreground_ratio", 0.1)))
+        self.spin_mask_min_ratio.setToolTip("主體佔比下限。若主體太小 (佔比低於此值)，可能是誤判，跳過不處理")
+        ratio_lay.addRow("Min Ratio (主體過小跳過):", self.spin_mask_min_ratio)
+
+        self.spin_mask_max_ratio = QDoubleSpinBox()
+        self.spin_mask_max_ratio.setRange(0.0, 1.0)
+        self.spin_mask_max_ratio.setSingleStep(0.05)
+        self.spin_mask_max_ratio.setValue(float(self.cfg.get("mask_batch_max_foreground_ratio", 0.8)))
+        self.spin_mask_max_ratio.setToolTip("主體佔比上限。若主體佔滿畫面 (無背景可去)，跳過不處理")
+        ratio_lay.addRow("Max Ratio (主體過大跳過):", self.spin_mask_max_ratio)
+        
+        self.chk_skip_scenery = QCheckBox("跳過場景圖 (含 indoors/outdoors 標籤)")
+        self.chk_skip_scenery.setChecked(bool(self.cfg.get("mask_batch_skip_if_scenery_tag", True)))
+        self.chk_skip_scenery.setToolTip("勾選後，若標籤含 indoors 或 outdoors (場景圖)，則跳過去背")
+        ratio_lay.addRow("", self.chk_skip_scenery)
+
+        ratio_box.setLayout(ratio_lay)
+        mask_layout.addWidget(ratio_box)
+
         # The original hint label is removed as the tooltip is now on chk_mask_ocr
         mask_layout.addStretch(1)
         self.tabs.addTab(tab_mask, self.tr("setting_tab_mask"))
@@ -2632,16 +2840,22 @@ class SettingsDialog(QDialog):
         
         # f_form = QFormLayout()  <-- Remove FormLayout to stacking
         
-        filter_layout.addWidget(QLabel(self.tr("setting_bl_words")))
+        bl_label = QLabel(self.tr("setting_bl_words"))
+        bl_label.setToolTip("包含這些關鍵字的標籤會被標記為『特徵標籤』(紅框)，\n批量寫入 txt 時可選擇自動刪除")
+        filter_layout.addWidget(bl_label)
         self.ed_bl_words = QPlainTextEdit()
         self.ed_bl_words.setPlainText(", ".join(self.cfg.get("char_tag_blacklist_words", [])))
         self.ed_bl_words.setMinimumHeight(120)
+        self.ed_bl_words.setToolTip("例如: hair, eyes, skin 等通用外觀描述\n這些標籤適合用於 LoRA 訓練時過濾")
         filter_layout.addWidget(self.ed_bl_words)
 
-        filter_layout.addWidget(QLabel(self.tr("setting_wl_words")))
+        wl_label = QLabel(self.tr("setting_wl_words"))
+        wl_label.setToolTip("包含這些關鍵字的標籤即使符合黑名單也不會被標記")
+        filter_layout.addWidget(wl_label)
         self.ed_wl_words = QPlainTextEdit()
         self.ed_wl_words.setPlainText(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
         self.ed_wl_words.setMinimumHeight(80)
+        self.ed_wl_words.setToolTip("例如: holding hair, background 等動作或情境描述\n這些標籤不是角色固有特徵，應該保留")
         filter_layout.addWidget(self.ed_wl_words)
         
         # filter_layout.addLayout(f_form)
@@ -2706,19 +2920,26 @@ class SettingsDialog(QDialog):
         cfg["batch_to_txt_folder_trigger"] = self.chk_folder_trigger.isChecked()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
-        a = max(0, min(255, a))
+        # Rule: 1-254 (USER request: "1-254 才對 (以防RGB丟失)")
+        a = max(1, min(254, a))
+        
         fmt = (self.ed_mask_format.text().strip().lower() or DEFAULT_APP_SETTINGS["mask_default_format"]).strip(".")
         if fmt not in ("webp", "png"):
             fmt = DEFAULT_APP_SETTINGS["mask_default_format"]
 
         cfg["mask_default_alpha"] = a
         cfg["mask_default_format"] = fmt
+        cfg["mask_padding"] = self.spin_mask_padding.value()
+        cfg["mask_blur_radius"] = self.spin_mask_blur.value()
         cfg["mask_batch_only_if_has_background_tag"] = self.chk_mask_bg_only.isChecked()
         cfg["mask_batch_detect_text_enabled"] = self.chk_mask_ocr.isChecked()
+        cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
         cfg["mask_ocr_heat_threshold"] = float(f"{self.spin_ocr_heat.value():.2f}")
         cfg["mask_ocr_box_threshold"] = float(f"{self.spin_ocr_box.value():.2f}")
         cfg["mask_ocr_unclip_ratio"] = float(f"{self.spin_ocr_unclip.value():.2f}")
-        cfg["mask_delete_npz_on_move"] = self.chk_mask_del_npz.isChecked()
+        cfg["mask_batch_min_foreground_ratio"] = float(f"{self.spin_mask_min_ratio.value():.2f}")
+        cfg["mask_batch_max_foreground_ratio"] = float(f"{self.spin_mask_max_ratio.value():.2f}")
+        cfg["mask_batch_skip_if_scenery_tag"] = self.chk_skip_scenery.isChecked()
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
@@ -2830,9 +3051,27 @@ class MainWindow(QMainWindow):
         # === Left Side ===
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
-        self.img_info_label = QLabel("No Image Loaded")
-        self.img_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        left_layout.addWidget(self.img_info_label)
+        # === Info Bar (Interactive Index & Filename) ===
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(5)
+        
+        self.index_input = QLineEdit()
+        self.index_input.setFixedWidth(80)
+        self.index_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.index_input.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.index_input.returnPressed.connect(self.jump_to_index)
+        info_layout.addWidget(self.index_input)
+
+        self.total_info_label = QLabel("/ 0")
+        self.total_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        info_layout.addWidget(self.total_info_label)
+
+        self.img_file_label = QLabel(": No Image")
+        self.img_file_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.img_file_label.setWordWrap(False)
+        info_layout.addWidget(self.img_file_label, 1)
+
+        left_layout.addLayout(info_layout)
 
         # === Filter Bar ===
         filter_bar = QHBoxLayout()
@@ -2840,20 +3079,23 @@ class MainWindow(QMainWindow):
         
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
+        self.filter_input.setToolTip("用 Danbooru 語法篩選圖片，輸入後按 Enter\n例如：blonde_hair blue_eyes (同時含)\n-rating:explicit (排除 NSFW)\norder:landscape (橫圖優先)")
         self.filter_input.returnPressed.connect(self.apply_filter)
         filter_bar.addWidget(self.filter_input, 1)
         
         self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
         self.chk_filter_tags.setChecked(True)
+        self.chk_filter_tags.setToolTip("勾選後，會搜尋圖片的標籤 (Sidecar JSON)")
         filter_bar.addWidget(self.chk_filter_tags)
         
         self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
         self.chk_filter_text.setChecked(False)
+        self.chk_filter_text.setToolTip("勾選後，會搜尋圖片的 .txt 檔案內容")
         filter_bar.addWidget(self.chk_filter_text)
         
         self.btn_clear_filter = QPushButton("✕")
         self.btn_clear_filter.setFixedWidth(30)
-        self.btn_clear_filter.setToolTip("Clear Filter")
+        self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
         self.btn_clear_filter.clicked.connect(self.clear_filter)
         filter_bar.addWidget(self.btn_clear_filter)
         
@@ -2898,18 +3140,22 @@ class MainWindow(QMainWindow):
         tags_toolbar.addWidget(tags_label)
 
         self.btn_auto_tag = QPushButton(self.tr("btn_auto_tag"))
+        self.btn_auto_tag.setToolTip("用 WD14 AI 模型自動識別當前圖片的標籤\n點選標籤可加入下方的文字框")
         self.btn_auto_tag.clicked.connect(self.run_tagger)
         tags_toolbar.addWidget(self.btn_auto_tag)
 
         self.btn_batch_tagger = QPushButton(self.tr("btn_batch_tagger"))
+        self.btn_batch_tagger.setToolTip("對資料夾內所有圖片執行自動標籤\n結果儲存在 JSON 中，不會寫入 txt")
         self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
         tags_toolbar.addWidget(self.btn_batch_tagger)
 
         self.btn_batch_tagger_to_txt = QPushButton(self.tr("btn_batch_tagger_to_txt"))
+        self.btn_batch_tagger_to_txt.setToolTip("對所有圖片執行標籤並寫入 .txt 檔案\n已有標籤記錄的圖片會直接使用快取")
         self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
         tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
 
         self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
+        self.btn_add_custom_tag.setToolTip("新增自定義標籤到當前資料夾\n這些標籤會儲存在 .custom_tags.json 中")
         self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
         tags_toolbar.addWidget(self.btn_add_custom_tag)
 
@@ -2966,31 +3212,38 @@ class MainWindow(QMainWindow):
         nl_toolbar.addWidget(self.nl_label)
 
         self.btn_run_llm = QPushButton(self.tr("btn_run_llm"))
+        self.btn_run_llm.setToolTip("用 AI 大型語言模型生成自然語言描述\n結果顯示在上方的 LLM 結果區")
         self.btn_run_llm.clicked.connect(self.run_llm_generation)
         nl_toolbar.addWidget(self.btn_run_llm)
 
         # ✅ Batch 按鍵保留在上方
         self.btn_batch_llm = QPushButton(self.tr("btn_batch_llm"))
+        self.btn_batch_llm.setToolTip("對所有圖片執行 LLM 自然語言生成\n結果儲存在 JSON 中，不會寫入 txt")
         self.btn_batch_llm.clicked.connect(self.run_batch_llm)
         nl_toolbar.addWidget(self.btn_batch_llm)
 
         self.btn_batch_llm_to_txt = QPushButton(self.tr("btn_batch_llm_to_txt"))
+        self.btn_batch_llm_to_txt.setToolTip("對所有圖片執行 LLM 並寫入 .txt 檔案\n已有 LLM 結果的圖片會直接使用快取")
         self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
         nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
 
         self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
+        self.btn_prev_nl.setToolTip("查看上一次的 LLM 生成結果\n每張圖片的所有 LLM 歷史都會保留")
         self.btn_prev_nl.clicked.connect(self.prev_nl_page)
         nl_toolbar.addWidget(self.btn_prev_nl)
 
         self.btn_next_nl = QPushButton(self.tr("btn_next"))
+        self.btn_next_nl.setToolTip("查看下一次的 LLM 生成結果")
         self.btn_next_nl.clicked.connect(self.next_nl_page)
         nl_toolbar.addWidget(self.btn_next_nl)
 
         self.btn_default_prompt = QPushButton(self.tr("btn_default_prompt"))
+        self.btn_default_prompt.setToolTip("切換到預設的 Prompt 模板\n適合生成完整的多句式描述")
         self.btn_default_prompt.clicked.connect(self.use_default_prompt)
         nl_toolbar.addWidget(self.btn_default_prompt)
 
         self.btn_custom_prompt = QPushButton(self.tr("btn_custom_prompt"))
+        self.btn_custom_prompt.setToolTip("切換到自訂的 Prompt 模板\n可在設定中修改自訂模板的內容")
         self.btn_custom_prompt.clicked.connect(self.use_custom_prompt)
         nl_toolbar.addWidget(self.btn_custom_prompt)
         self.nl_page_label = QLabel(f"{self.tr('label_page')} 0/0")
@@ -3030,15 +3283,19 @@ class MainWindow(QMainWindow):
         bot_toolbar.addWidget(self.bot_label)
         bot_toolbar.addSpacing(10)
         self.txt_token_label = QLabel(f"{self.tr('label_tokens')}0")
+        self.txt_token_label.setToolTip("CLIP Token 計數，SD 建議不超過 225\n超過後文字會變紅色警告")
         bot_toolbar.addWidget(self.txt_token_label)
         bot_toolbar.addStretch(1)
 
         self.btn_find_replace = QPushButton(self.tr("btn_find_replace"))
+        self.btn_find_replace.setToolTip("在當前圖片或所有圖片的 txt 中\n尋找並取代文字 (支援正則表達式)")
         self.btn_find_replace.clicked.connect(self.open_find_replace)
         bot_toolbar.addWidget(self.btn_find_replace)
 
         self.btn_txt_undo = QPushButton(self.tr("btn_undo"))
+        self.btn_txt_undo.setToolTip("復原上一步的文字編輯 (Ctrl+Z)")
         self.btn_txt_redo = QPushButton(self.tr("btn_redo"))
+        self.btn_txt_redo.setToolTip("重做下一步的文字編輯 (Ctrl+Y)")
         bot_toolbar.addWidget(self.btn_txt_undo)
         bot_toolbar.addWidget(self.btn_txt_redo)
 
@@ -3091,6 +3348,8 @@ class MainWindow(QMainWindow):
             (Qt.Key.Key_Right, self.next_image),
             (Qt.Key.Key_PageUp, self.prev_image),
             (Qt.Key.Key_PageDown, self.next_image),
+            (Qt.Key.Key_Home, self.first_image),
+            (Qt.Key.Key_End, self.last_image),
         ]:
             sc = QShortcut(QKeySequence(key), self)
             sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -3197,26 +3456,26 @@ class MainWindow(QMainWindow):
             self.current_image_path = self.image_files[self.current_index]
             self.current_folder_path = str(Path(self.current_image_path).parent)
 
-            # Update info label with filter state
+            # Update info bar
+            total_count = len(self.filtered_image_files) if self.filter_active else len(self.image_files)
+            current_num = self.filtered_image_files.index(self.current_image_path) + 1 if self.filter_active and self.current_image_path in self.filtered_image_files else self.current_index + 1
+            
+            self.index_input.blockSignals(True)
+            self.index_input.setText(str(current_num))
+            self.index_input.blockSignals(False)
+            
             if self.filter_active:
-                # Show filtered count in red
-                filtered_idx = self.filtered_image_files.index(self.current_image_path) + 1 if self.current_image_path in self.filtered_image_files else self.current_index + 1
-                self.img_info_label.setText(
-                    f"<span style='color:red;'>({filtered_idx} / {len(self.filtered_image_files)})</span> : {os.path.basename(self.current_image_path)}"
-                )
+                self.total_info_label.setText(f"<span style='color:red;'> / {total_count}</span>")
             else:
-                self.img_info_label.setText(
-                    f"{self.current_index + 1} / {len(self.image_files)} : {os.path.basename(self.current_image_path)}"
-                )
+                self.total_info_label.setText(f" / {total_count}")
+            
+            self.img_file_label.setText(f" : {os.path.basename(self.current_image_path)}")
 
-            pixmap = QPixmap(self.current_image_path)
-            if not pixmap.isNull():
-                scaled = pixmap.scaled(
-                    self.image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.image_label.setPixmap(scaled)
+            self.current_pixmap = QPixmap(self.current_image_path)
+            if not self.current_pixmap.isNull():
+                self.update_image_display()
+            else:
+                self.image_label.clear()
 
             txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
             content = ""
@@ -3342,19 +3601,52 @@ class MainWindow(QMainWindow):
             self.current_index -= 1
             self.load_image()
 
-    def restore_current_image(self):
-        """還原當前圖片為原始備份"""
-        if not self.current_image_path:
-            return
-        
-        # User confirmed? Maybe too annoying. Direct action.
-        success = restore_original_image(self.current_image_path)
-        if success:
-            self.statusBar().showMessage(f"已還原: {os.path.basename(self.current_image_path)}", 3000)
-            # Reload
+    def first_image(self):
+        if self.image_files:
+            self.current_index = 0
             self.load_image()
-        else:
-            QMessageBox.warning(self, "Restore Failed", "無法還原：找不到備份紀錄或備份檔案已遺失。")
+
+    def last_image(self):
+        if self.image_files:
+            self.current_index = len(self.image_files) - 1
+            self.load_image()
+
+    def jump_to_index(self):
+        try:
+            val = int(self.index_input.text())
+            target_idx = val - 1
+            
+            if self.filter_active:
+                if 0 <= target_idx < len(self.filtered_image_files):
+                    target_path = self.filtered_image_files[target_idx]
+                    self.current_index = self.image_files.index(target_path)
+                    self.load_image()
+                else:
+                    self.load_image() # Reset to current
+            else:
+                if 0 <= target_idx < len(self.image_files):
+                    self.current_index = target_idx
+                    self.load_image()
+                else:
+                    self.load_image() # Reset to current
+        except Exception:
+            self.load_image()
+
+    def update_image_display(self):
+        """用於 Resize 或初次加載時更新圖片顯示"""
+        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
+            return
+        scaled = self.current_pixmap.scaled(
+            self.image_label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        self.image_label.setPixmap(scaled)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
+        QTimer.singleShot(10, self.update_image_display)
 
     def delete_current_image(self):
         if not self.current_image_path:
@@ -4025,7 +4317,8 @@ class MainWindow(QMainWindow):
         self.btn_batch_unmask_thread = BatchUnmaskWorker(
             [self.current_image_path], 
             self.settings,
-            background_tag_checker=None  # Force process for single image
+            background_tag_checker=None,  # Force process for single image
+            is_batch=False
         )
         self.btn_batch_unmask_thread.progress.connect(self.show_progress)
         self.btn_batch_unmask_thread.per_image.connect(self.on_batch_unmask_per_image)
@@ -4062,7 +4355,8 @@ class MainWindow(QMainWindow):
         self.batch_mask_text_thread = BatchMaskTextWorker(
             [image_path], 
             self.settings, 
-            background_tag_checker=None # Force run for single image
+            background_tag_checker=None,
+            is_batch=False  # 單圖強制執行
         )
         self.batch_mask_text_thread.progress.connect(self.show_progress)
         self.batch_mask_text_thread.per_image.connect(self.on_batch_mask_text_per_image)
@@ -4071,82 +4365,23 @@ class MainWindow(QMainWindow):
         self.batch_mask_text_thread.start()
 
     def restore_current_image(self):
+        """還原當前圖片為原始備份 (從 raw_image 資料夾)"""
         if not self.current_image_path:
             return
         
-        current_path = self.current_image_path
-        # Check if original exists in "unmask" subfolder
-        src_dir = os.path.dirname(current_path)
-        unmask_dir = os.path.join(src_dir, "unmask")
-        filename = os.path.basename(current_path)
-        
-        # The worker moves original to "unmask/filename"
-        # BUT it might have been renamed with _unique_path if conflict.
-        # We try to find the best match? Or just the exact name?
-        # Usually exact name matches the original.
-        
-        original_restore_path = os.path.join(unmask_dir, filename)
-        
-        # If current file is .webp, original might be .jpg/.png
-        # We need to find if there is a file in unmask that matches base name?
-        # The worker logic:
-        # if ext == .webp: moves original (if .webp) to unmask/.
-        # if ext != .webp: moves original (if !.webp) to unmask/ AND saves .webp to current.
-        
-        # So we look for any file in unmask/ with same stem?
-        stem = os.path.splitext(filename)[0]
-        
-        candidate = None
-        if os.path.exists(unmask_dir):
-            for f in os.listdir(unmask_dir):
-                if os.path.splitext(f)[0] == stem:
-                    candidate = os.path.join(unmask_dir, f)
-                    break
-        
-        if not candidate:
-            QMessageBox.information(self, "Restore", "找不到位於 unmask/ 資料夾的原檔備份")
+        if not has_raw_backup(self.current_image_path):
+            QMessageBox.information(self, "Restore", "找不到原圖備份紀錄\n(可能尚未進行任何去背/去文字處理)")
             return
             
         try:
-            # Move candidate back to current_path or replace current_path
-            # If current_path is the webp result, we should remove it and put original back?
-            # Or just overwrite?
-            
-            # Case 1: result is .webp, original was .jpg
-            # We want to restore .jpg to current folder.
-            # And Remove .webp? Yes, usually.
-            
-            # Destination: src_dir + candidate_filename
-            dest_path = os.path.join(src_dir, os.path.basename(candidate))
-            
-            # If dest_path != current_path, we might have 2 files now.
-            # We should probably remove current_path if it was generated.
-            
-            # Move back
-            shutil.move(candidate, dest_path)
-            
-            # Update sidecar: remove masked flags
-            sidecar = load_image_sidecar(dest_path)
-            if "masked_background" in sidecar: del sidecar["masked_background"]
-            if "masked_text" in sidecar: del sidecar["masked_text"]
-            save_image_sidecar(dest_path, sidecar)
-            
-            # If we restored a file that has different name/ext than current_path,
-            # we should update list.
-            # AND if current_path was a generated webp, we should delete it?
-            if os.path.abspath(dest_path) != os.path.abspath(current_path):
-                 # Ask user or just delete?
-                 # Assuming we want to swap back.
-                 try:
-                     os.remove(current_path)
-                 except: pass
-            
-            self._replace_image_path_in_list(current_path, dest_path)
-            self.load_image()
-            self.statusBar().showMessage("已還原原檔", 3000)
-            
+            success = restore_raw_image(self.current_image_path)
+            if success:
+                self.load_image()
+                self.statusBar().showMessage("已還原原圖", 3000)
+            else:
+                QMessageBox.warning(self, "Restore", "還原失敗：備份檔案可能已遺失")
         except Exception as e:
-             QMessageBox.warning(self, "Restore", f"還原失敗: {e}")
+            QMessageBox.warning(self, "Restore", f"還原失敗: {e}")
 
     def run_batch_unmask_background(self):
         if not self.image_files:
@@ -4914,30 +5149,36 @@ class MainWindow(QMainWindow):
         tools_menu = menubar.addMenu(self.tr("menu_tools"))
         
         unmask_action = QAction(self.tr("btn_unmask"), self)
+        unmask_action.setStatusTip("用 AI 自動去除當前圖片的背景，原圖會備份到 unmask 資料夾")
         unmask_action.triggered.connect(self.unmask_current_image)
         tools_menu.addAction(unmask_action)
 
         mask_text_action = QAction(self.tr("btn_mask_text"), self)
+        mask_text_action.setStatusTip("用 OCR 自動偵測並遮蔽當前圖片中的文字區域")
         mask_text_action.triggered.connect(self.mask_text_current_image)
         tools_menu.addAction(mask_text_action)
 
         restore_action = QAction(self.tr("btn_restore_original"), self)
+        restore_action.setStatusTip("從 unmask 資料夾還原原圖，覆蓋目前的去背版本")
         restore_action.triggered.connect(self.restore_current_image)
         tools_menu.addAction(restore_action)
 
         tools_menu.addSeparator()
         
         self.action_batch_unmask = QAction(self.tr("btn_batch_unmask"), self)
+        self.action_batch_unmask.setStatusTip("對所有圖片執行批量去背，可在設定中調整過濾條件")
         self.action_batch_unmask.triggered.connect(self.run_batch_unmask_background)
         tools_menu.addAction(self.action_batch_unmask)
 
         self.action_batch_mask_text = QAction(self.tr("btn_batch_mask_text"), self)
+        self.action_batch_mask_text.setStatusTip("對所有圖片執行批量 OCR 去文字")
         self.action_batch_mask_text.triggered.connect(self.run_batch_mask_text)
         tools_menu.addAction(self.action_batch_mask_text)
 
         tools_menu.addSeparator()
 
         self.action_batch_restore = QAction(self.tr("btn_batch_restore"), self)
+        self.action_batch_restore.setStatusTip("批量還原所有圖片的原圖 (從 unmask 資料夾)")
         self.action_batch_restore.triggered.connect(self.run_batch_restore)
         tools_menu.addAction(self.action_batch_restore)
 
@@ -4946,6 +5187,7 @@ class MainWindow(QMainWindow):
 
 
         stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
+        stroke_action.setStatusTip("手動用滑鼠繪製要擦除的區域，適合精細去除")
         stroke_action.triggered.connect(self.open_stroke_eraser)
         tools_menu.addAction(stroke_action)
 

@@ -5,3 +5,5 @@ openai
 dghs-imgutils
 transformers
 transparent-background
+numpy
+torch
