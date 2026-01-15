@@ -18,18 +18,18 @@
 # [Ln 2255-2488]  UI Components: TagButton, TagFlowWidget
 # [Ln 2490-2537]  AdvancedFindReplaceDialog (尋找取代對話框)
 # [Ln 2539-2952]  SettingsDialog (設定面板 + ToolTip 說明)
-# [Ln 2958-3037]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 3039-3336]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
-# [Ln 3338-3508]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3512-3593]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3595-3684]  MainWindow: 導航、跳轉與刪除功能
-# [Ln 3686-3800]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 3804-4025]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 4029-4100]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4104-4273]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4278-4514]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4518-5069]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 5073-5204]  MainWindow: 設定同步、語言切換與主程式入口
+# [Ln 2958-3040]  MainWindow: 類別定義與初始化 (__init__)
+# [Ln 3042-3347]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 3349-3519]  MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3523-3604]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3606-3810]  MainWindow: 預覽顯示、ViewMode(RGB/Alpha)、Context Menu、跳轉與刪除
+# [Ln 3812-3926]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 3928-4149]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 4153-4224]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4228-4397]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4402-4638]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4642-5193]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 5197-5328]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
@@ -87,7 +87,12 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QPixmap, QKeySequence, QAction, QShortcut, QFont,
-    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor
+    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor,
+    QCursor, QDesktopServices, QIcon
+)
+from PyQt6.QtCore import (
+    Qt, QThread, pyqtSignal, QRect, QPoint, 
+    QBuffer, QIODevice, QByteArray, QTimer, QUrl
 )
 
 from PIL import Image
@@ -2974,6 +2979,9 @@ class MainWindow(QMainWindow):
         self.default_custom_tags_global = list(self.settings.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
         self.english_force_lowercase = bool(self.settings.get("english_force_lowercase", True))
 
+        self.current_view_mode = 0  # 0=Original, 1=RGB, 2=Alpha
+        self.temp_view_mode = None  # For N/M keys override
+        
         self.translations_csv = load_translations()
 
         self.image_files = []
@@ -3093,17 +3101,26 @@ class MainWindow(QMainWindow):
         self.chk_filter_text.setToolTip("勾選後，會搜尋圖片的 .txt 檔案內容")
         filter_bar.addWidget(self.chk_filter_text)
         
-        self.btn_clear_filter = QPushButton("✕")
-        self.btn_clear_filter.setFixedWidth(30)
-        self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
         self.btn_clear_filter.clicked.connect(self.clear_filter)
         filter_bar.addWidget(self.btn_clear_filter)
+
+        # === View Mode Selector (RGB/Alpha) ===
+        self.cb_view_mode = QComboBox()
+        self.cb_view_mode.addItems(["預覽: 原圖", "預覽: RGB 色版 (N)", "預覽: Alpha 色版 (M)"])
+        self.cb_view_mode.setToolTip("切換圖片預覽模式\n- 原圖: 顯示原始圖片\n- RGB: 強制不透明顯示顏色\n- Alpha: 顯示透明度遮罩 (黑透白不透)\n\n快速鍵: 按住 N (RGB) / 按住 M (Alpha)")
+        self.cb_view_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus) # 避免搶走焦點影響快速鍵
+        self.cb_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
+        filter_bar.addWidget(self.cb_view_mode)
         
         left_layout.addLayout(filter_bar)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumSize(400, 400)
+        
+        # Context Menu
+        self.image_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.image_label.customContextMenuRequested.connect(self.show_image_context_menu)
 
         # --- 棋盤格背景：用 Palette Brush（避免 data URI pixmap 警告） ---
         png_bytes = create_checkerboard_png_bytes()
@@ -3636,12 +3653,126 @@ class MainWindow(QMainWindow):
         """用於 Resize 或初次加載時更新圖片顯示"""
         if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
             return
-        scaled = self.current_pixmap.scaled(
+        scaled = self._get_processed_pixmap().scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
         self.image_label.setPixmap(scaled)
+
+    def _get_processed_pixmap(self) -> QPixmap:
+        """
+        根據目前的檢視模式 (Original/RGB/Alpha) 回傳對應的 QPixmap。
+        優先順序: 
+        1. 暫時按鍵 (temp_view_mode: N/M)
+        2. 下拉選單 (current_view_mode)
+        """
+        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
+            return QPixmap()
+
+        # 決定要用的模式 (0=Orig, 1=RGB, 2=Alpha)
+        mode = self.current_view_mode
+        if self.temp_view_mode is not None:
+            mode = self.temp_view_mode
+
+        if mode == 0:
+            return self.current_pixmap
+        
+        # 轉換處理
+        img = self.current_pixmap.toImage()
+        
+        if mode == 1: # RGB Only (Force Opaque)
+            # 轉換為 RGB888 (丟棄 Alpha)
+            img = img.convertToFormat(QImage.Format.Format_RGB888)
+            return QPixmap.fromImage(img)
+            
+        elif mode == 2: # Alpha Only
+            if img.hasAlphaChannel():
+                # 提取 Alpha Channel
+                alpha = img.alphaChannel()
+                # alphaChannel 回傳的是 Grayscale 圖像，這正是我們要在 Alpha 模式顯示的
+                return QPixmap.fromImage(alpha)
+            else:
+                # 若無 Alpha，回傳全白 (255)
+                white = QPixmap(img.size())
+                white.fill(Qt.GlobalColor.white)
+                return white
+        
+        return self.current_pixmap
+
+    def on_view_mode_changed(self, index):
+        self.current_view_mode = index
+        self.update_image_display()
+
+    def keyPressEvent(self, event):
+        if event.isAutoRepeat():
+            super().keyPressEvent(event)
+            return
+
+        key = event.key()
+        if key == Qt.Key.Key_N:
+            self.temp_view_mode = 1 # RGB
+            self.update_image_display()
+        elif key == Qt.Key.Key_M:
+            self.temp_view_mode = 2 # Alpha
+            self.update_image_display()
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            super().keyReleaseEvent(event)
+            return
+            
+        key = event.key()
+        if key == Qt.Key.Key_N or key == Qt.Key.Key_M:
+            # 放開時檢查是否還有其他鍵按著 (簡單起見，直接重置)
+            # 如果使用者同時按住 N 和 M，放開一個時會回到 View Mode
+            self.temp_view_mode = None
+            self.update_image_display()
+        else:
+            super().keyReleaseEvent(event)
+
+    def show_image_context_menu(self, pos: QPoint):
+        if not self.current_image_path:
+            return
+
+        menu = QMenu(self)
+        
+        # 1. 複製圖片
+        action_copy_img = QAction("複製圖片 (Copy Image)", self)
+        action_copy_img.triggered.connect(self._ctx_copy_image)
+        menu.addAction(action_copy_img)
+        
+        # 2. 複製路徑
+        action_copy_path = QAction("複製路徑 (Copy Path)", self)
+        action_copy_path.triggered.connect(self._ctx_copy_path)
+        menu.addAction(action_copy_path)
+        
+        menu.addSeparator()
+        
+        # 3. 開啟檔案位置
+        action_open_dir = QAction("打開檔案所在目錄 (Open Folder)", self)
+        action_open_dir.triggered.connect(self._ctx_open_folder)
+        menu.addAction(action_open_dir)
+        
+        menu.exec(self.image_label.mapToGlobal(pos))
+
+    def _ctx_copy_image(self):
+        if hasattr(self, 'current_pixmap') and not self.current_pixmap.isNull():
+            QApplication.clipboard().setPixmap(self.current_pixmap)
+            self.statusBar().showMessage("圖片已複製到剪貼簿", 2000)
+
+    def _ctx_copy_path(self):
+        if self.current_image_path:
+            QApplication.clipboard().setText(os.path.abspath(self.current_image_path))
+            self.statusBar().showMessage("路徑已複製到剪貼簿", 2000)
+    
+    def _ctx_open_folder(self):
+        if self.current_image_path:
+            folder = os.path.dirname(self.current_image_path)
+            # 使用 QDesktopServices 開啟目錄
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
