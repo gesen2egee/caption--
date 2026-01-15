@@ -12,24 +12,24 @@
 # [Ln 1024-1277]  Utils: Danbooru-style Query Filter (篩選器系統)
 # [Ln 1279-1403]  Utils: 標籤解析與文本正規化
 # [Ln 1407-1718]  Workers: Tagger, LLM (單圖與批量任務)
-# [Ln 1724-2071]  Workers: Masking (去背、去文字)
-# [Ln 2073-2109]  Workers: BatchRestoreWorker (批量還原)
-# [Ln 2111-2263]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
-# [Ln 2268-2501]  UI Components: TagButton, TagFlowWidget
-# [Ln 2503-2579]  AdvancedFindReplaceDialog (尋找取代對話框)
-# [Ln 2580-3020]  SettingsDialog (設定面板 + ToolTip 說明)
-# [Ln 3021-3103]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 3105-3410]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
-# [Ln 3412-3582]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3586-3667]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3669-3873]  MainWindow: 預覽顯示、ViewMode(RGB/Alpha)、動態Mask、Context Menu、跳轉與刪除
-# [Ln 3875-3989]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 3991-4212]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 4216-4287]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4291-4460]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4465-4701]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4705-5256]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 5260-5418]  MainWindow: 設定同步、語言切換與主程式入口
+# [Ln 1724-2101]  Workers: Masking (去背、去文字)
+# [Ln 2102-2138]  Workers: BatchRestoreWorker (批量還原)
+# [Ln 2140-2292]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
+# [Ln 2297-2502]  UI Components: TagButton, TagFlowWidget
+# [Ln 2504-2580]  AdvancedFindReplaceDialog (尋找取代對話框)
+# [Ln 2581-3038]  SettingsDialog (設定面板 + ToolTip 說明)
+# [Ln 3039-3121]  MainWindow: 類別定義與初始化 (__init__)
+# [Ln 3123-3428]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 3430-3600]  MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3604-3685]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3687-3891]  MainWindow: 預覽顯示、ViewMode(RGB/Alpha)、動態Mask、Context Menu、跳轉與刪除
+# [Ln 3893-4007]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 4009-4230]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 4234-4305]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4309-4478]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4483-4723]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4727-5278]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 5282-5448]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
@@ -521,14 +521,17 @@ DEFAULT_APP_SETTINGS = {
     "mask_blur_radius": 3,    # Mask 高斯模糊半徑 (0=不模糊)
     
     # Batch Mask Logic
+    "mask_batch_skip_once_processed": True,  # 批量處理時，跳過已去背過的圖片
     "mask_batch_min_foreground_ratio": 0.3,  # 預設改 0.3
     "mask_batch_max_foreground_ratio": 0.8,  # 預設改 0.8
     "mask_batch_skip_if_scenery_tag": True,  # 若包含 indoors/outdoors 則跳過
 
     # Advanced OCR Settings
+    "mask_ocr_max_candidates": 300,          # OCR 候選區域上限 (選舉人)
     "mask_ocr_heat_threshold": 0.2,
     "mask_ocr_box_threshold": 0.6,
     "mask_ocr_unclip_ratio": 2.3,
+    "mask_text_alpha": 10,                   # 文字遮罩獨立 Alpha 值
 
     # UI / Theme
     "ui_language": "zh_tw",   # zh_tw | en
@@ -1762,13 +1765,35 @@ class BatchMaskTextWorker(QThread):
             box = float(self.cfg.get("mask_ocr_box_threshold", 0.6))
             unclip = float(self.cfg.get("mask_ocr_unclip_ratio", 2.3))
             
-            results = detect_text_with_ocr(
-                image_path,
-                max_candidates=100,
-                heat_threshold=heat,
-                box_threshold=box,
-                unclip_ratio=unclip
-            )
+            max_c = int(self.cfg.get("mask_ocr_max_candidates", 300))
+            
+            # 預處理：將影像轉為 RGB 並將透明區域填白，避免 Alpha 通道干擾 OCR 辨識
+            with Image.open(image_path) as img:
+                if img.mode == 'RGBA':
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[3]) # 3 is alpha
+                    ocr_input = background
+                else:
+                    ocr_input = img.convert("RGB")
+
+                # 呼叫 imgutils OCR
+                # 如果發生 TypeError 代表版本可能不支援 max_candidates 參數
+                try:
+                    results = detect_text_with_ocr(
+                        ocr_input,
+                        max_candidates=max_c,
+                        heat_threshold=heat,
+                        box_threshold=box,
+                        unclip_ratio=unclip
+                    )
+                except TypeError:
+                    # 備援：不傳遞 max_candidates
+                    results = detect_text_with_ocr(
+                        ocr_input,
+                        heat_threshold=heat,
+                        box_threshold=box,
+                        unclip_ratio=unclip
+                    )
             boxes = []
             for item in results or []:
                 if not item:
@@ -1785,7 +1810,7 @@ class BatchMaskTextWorker(QThread):
         try:
             import numpy as np
             total = len(self.image_paths)
-            alpha_val = int(self.cfg.get("mask_default_alpha", 0))
+            alpha_val = int(self.cfg.get("mask_text_alpha", 10))
             alpha_val = max(0, min(255, alpha_val))
             fmt = str(self.cfg.get("mask_default_format", "webp")).lower().strip(".")
             if fmt not in ("webp", "png"):
@@ -1958,26 +1983,22 @@ class BatchUnmaskWorker(QThread):
             mask_arr_ai = np.array(mask_img_ai.convert('L')) # 0-255
 
             # (3) Alpha 重新映射 (區間映射)
-            # 如果 mask 完 255 的像素比例不在 0.3~0.8 之間，調整對比/映射
+            # 使用平均不透明度 (Mean Opacity) 作為佔比，比例 = (總 Alpha 和) / (總像素數 * 255)
+            # 這樣能更好地衡量「主體分量」，且保留半透明柔邊
             min_r = float(cfg.get("mask_batch_min_foreground_ratio", 0.3))
             max_r = float(cfg.get("mask_batch_max_foreground_ratio", 0.8))
             
-            # 輔助函式：計算 255 像素比例
-            def get_fg_ratio(m):
-                return np.sum(m == 255) / m.size
+            curr_ratio = np.mean(mask_arr_ai) / 255.0
             
-            curr_ratio = get_fg_ratio(mask_arr_ai)
-            if curr_ratio < min_r or curr_ratio > max_r:
-                # 調整區間映射：我們使用 Percentile 來拉伸
-                # 如果太少，把較低的機率也拉成 255；如果太多，把較高的也拉成 0
-                if curr_ratio < min_r:
-                    # 目標是讓前 min_r% 的像素變成 255
-                    thresh = np.percentile(mask_arr_ai, (1.0 - min_r) * 100)
-                    mask_arr_ai = np.where(mask_arr_ai >= thresh, 255, 0).astype(np.uint8)
-                else:
-                    # 目標是讓前 max_r% 的像素變成 255 (即剩下 1-max_r% 變成 0)
-                    thresh = np.percentile(mask_arr_ai, (1.0 - max_r) * 100)
-                    mask_arr_ai = np.where(mask_arr_ai >= thresh, 255, 0).astype(np.uint8)
+            if curr_ratio < min_r:
+                # 擴張/增強：線性拉伸，將較低的機率往上拉
+                # 簡單做法：mask = (mask / 255) ^ gamma * 255。當 gamma < 1 時會變亮(擴張)
+                gamma = curr_ratio / min_r
+                mask_arr_ai = (np.power(mask_arr_ai / 255.0, gamma) * 255.0).astype(np.uint8)
+            elif curr_ratio > max_r:
+                # 縮減/減弱：當主體佔比太大時，提高 gamma (> 1) 讓較暗的部分更暗
+                gamma = curr_ratio / max_r
+                mask_arr_ai = (np.power(mask_arr_ai / 255.0, gamma) * 255.0).astype(np.uint8)
             
             # 結合原始 Alpha (確保原本透明的地方依然透明)
             combined_alpha = np.minimum(mask_arr_ai, alpha_orig)
@@ -2016,10 +2037,12 @@ class BatchUnmaskWorker(QThread):
                 save_image_sidecar(image_path, sidecar)
                 return image_path, image_path
             
-            # 重組最終影像 (使用原圖 RGB)
-            final_r = input_arr[:, :, 0]
-            final_g = input_arr[:, :, 1]
-            final_b = input_arr[:, :, 2]
+            # 重組最終影像 (使用已填色修正過的 RGB，解決透明預填雜訊或拉伸問題)
+            # 我們直接使用 img_to_ai 的數據，因為它已經是「原圖 RGB + 透明處填白」的狀態
+            clean_rgb_arr = np.array(img_to_ai)
+            final_r = clean_rgb_arr[:, :, 0]
+            final_g = clean_rgb_arr[:, :, 1]
+            final_b = clean_rgb_arr[:, :, 2]
             
             final_img = Image.fromarray(np.dstack((final_r, final_g, final_b, alpha_final)), 'RGBA')
             final_img.save(target_file, 'WEBP', quality=100)
@@ -2052,8 +2075,7 @@ class BatchUnmaskWorker(QThread):
             import torch
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             mode = self.cfg.get("mask_remover_mode", "base-nightly")
-            jit = self.is_batch # 批次用 JIT, 單圖不用
-            remover = Remover(device=device, mode=mode, jit=jit)
+            remover = Remover(device=device, mode=mode)
 
             total = len(self.image_paths)
             for i, p in enumerate(self.image_paths, start=1):
@@ -2062,7 +2084,7 @@ class BatchUnmaskWorker(QThread):
                 self.progress.emit(i, total, os.path.basename(p))
                 
                 # Batch 時檢查是否已處理過去背
-                if self.is_batch:
+                if self.is_batch and bool(self.cfg.get("mask_batch_skip_once_processed", True)):
                     sidecar = load_image_sidecar(p)
                     if sidecar.get("masked_background", False):
                         continue
@@ -2835,6 +2857,12 @@ class SettingsDialog(QDialog):
         self.spin_ocr_unclip.setToolTip(self.tr("setting_ocr_unclip_tip"))
         form3.addRow(self.tr("setting_ocr_unclip"), self.spin_ocr_unclip)
 
+        self.spin_mask_text_alpha = QSpinBox()
+        self.spin_mask_text_alpha.setRange(0, 255)
+        self.spin_mask_text_alpha.setValue(int(self.cfg.get("mask_text_alpha", 10)))
+        self.spin_mask_text_alpha.setToolTip("僅針對『去文字』功能使用的 Alpha 透明度 (預設 10)\n設定越低，遮得越透明/乾淨")
+        form3.addRow("Text Mask Alpha (去文字遮罩值):", self.spin_mask_text_alpha)
+
         self.chk_mask_del_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
         self.chk_mask_del_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
         self.chk_mask_del_npz.setToolTip("移動原圖時自動刪除對應的 .npz 快取檔案 (SD 訓練用)")
@@ -2857,6 +2885,10 @@ class SettingsDialog(QDialog):
         self.ed_remover_mode = QLineEdit(str(self.cfg.get("mask_remover_mode", "base-nightly")))
         self.ed_remover_mode.setToolTip("Remover 模式：base, base-nightly, fast")
         form3.addRow("Remover Mode:", self.ed_remover_mode)
+
+        self.chk_mask_batch_skip = QCheckBox("批量處理時跳過已去背過的圖片")
+        self.chk_mask_batch_skip.setChecked(bool(self.cfg.get("mask_batch_skip_once_processed", True)))
+        form3.addRow("", self.chk_mask_batch_skip)
 
         mask_layout.addLayout(form3)
 
@@ -3003,6 +3035,8 @@ class SettingsDialog(QDialog):
         cfg["mask_save_map_file"] = self.chk_save_map.isChecked()
         cfg["mask_only_output_map"] = self.chk_only_map.isChecked()
         cfg["mask_remover_mode"] = self.ed_remover_mode.text().strip()
+        cfg["mask_batch_skip_once_processed"] = self.chk_mask_batch_skip.isChecked()
+        cfg["mask_text_alpha"] = self.spin_mask_text_alpha.value()
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
@@ -3452,13 +3486,14 @@ class MainWindow(QMainWindow):
     # ==========================
     # Logic: Storage & Init
     # ==========================
-    def refresh_file_list(self):
+    def refresh_file_list(self, current_path=None): # 改回參數名以支援舊有呼叫
         if not self.root_dir_path or not os.path.exists(self.root_dir_path):
             return
         
         dir_path = self.root_dir_path
-        # Keep track of current file to restore selection
-        current_path = self.current_image_path
+        # 若無外部傳入路徑，則嘗試保留目前選取的路徑
+        if not current_path:
+            current_path = self.current_image_path
         
         self.image_files = []
         valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
