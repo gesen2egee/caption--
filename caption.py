@@ -94,7 +94,7 @@ from PyQt6.QtGui import (
     QIcon, QDesktopServices, QCursor, QGuiApplication, QClipboard
 )
 
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter, ImageQt
 
 # optional: clip_anytokenizer for token counting
 # 嘗試匯入 transformers
