@@ -2,34 +2,34 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 33-119]     Imports & 外部依賴
-# [Ln 121-454]    Configuration, I18n Resource & Globals
-# [Ln 457-570]    Settings Helpers (load/save/coerce 函式)
-# [Ln 571-613]    Model Unloading & Optimization (記憶體優化)
-# [Ln 615-713]    Utils: Sidecar JSON (圖片元數據)
-# [Ln 715-862]    Utils: Raw Image Backup/Restore (原圖備份還原) [NEW]
-# [Ln 863-930]    Utils: Tags CSV, boorutag Parsing
-# [Ln 932-1190]   Utils: Danbooru-style Query Filter (篩選器系統)
-# [Ln 1192-1315]  Utils: 標籤解析與文本正規化
-# [Ln 1318-1630]  Workers: Tagger, LLM (單圖與批量任務)
-# [Ln 1632-1965]  Workers: Masking (去背、去文字) [Updated: raw_image 備份]
-# [Ln 1967-2002]  Workers: BatchRestoreWorker (批量還原) [Updated]
-# [Ln 2004-2156]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
-# [Ln 2158-2394]  UI Components: TagButton, TagFlowWidget
-# [Ln 2396-2443]  AdvancedFindReplaceDialog (尋找取代對話框)
-# [Ln 2445-2848]  SettingsDialog (設定面板 + ToolTip 說明)
-# [Ln 2854-2940]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 2941-3260]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
-# [Ln 3262-3400]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3402-3490]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3492-3582]  MainWindow: 導航、跳轉與刪除功能
-# [Ln 3584-3697]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 3700-3923]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 3925-3998]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4000-4170]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4173-4400]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4402-4870]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 4872-5109]  MainWindow: 設定同步、語言切換與主程式入口
+# [Ln 36-121]     Imports & 外部依賴
+# [Ln 123-457]    Configuration, I18n Resource & Globals
+# [Ln 460-573]    Settings Helpers (load/save/coerce 函式)
+# [Ln 574-616]    Model Unloading & Optimization (記憶體優化)
+# [Ln 618-716]    Utils: Sidecar JSON (圖片元數據)
+# [Ln 717-940]    Utils: Raw Image Backup/Restore (原圖備份還原)
+# [Ln 942-1007]   Utils: Tags CSV, boorutag Parsing
+# [Ln 1013-1266]  Utils: Danbooru-style Query Filter (篩選器系統)
+# [Ln 1268-1392]  Utils: 標籤解析與文本正規化
+# [Ln 1396-1705]  Workers: Tagger, LLM (單圖與批量任務)
+# [Ln 1711-2058]  Workers: Masking (去背、去文字)
+# [Ln 2060-2096]  Workers: BatchRestoreWorker (批量還原)
+# [Ln 2098-2250]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
+# [Ln 2255-2488]  UI Components: TagButton, TagFlowWidget
+# [Ln 2490-2537]  AdvancedFindReplaceDialog (尋找取代對話框)
+# [Ln 2539-2952]  SettingsDialog (設定面板 + ToolTip 說明)
+# [Ln 2958-3037]  MainWindow: 類別定義與初始化 (__init__)
+# [Ln 3039-3336]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 3338-3508]  MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3512-3593]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3595-3684]  MainWindow: 導航、跳轉與刪除功能
+# [Ln 3686-3800]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 3804-4025]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 4029-4100]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4104-4273]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4278-4514]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4518-5069]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 5073-5204]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
