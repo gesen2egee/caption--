@@ -7,3 +7,10 @@ transformers
 transparent-background
 numpy
 torch
+pymatting
+opencv-python
+albumentations
+wget
+gdown
+tqdm
+packaging

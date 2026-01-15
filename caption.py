@@ -2,34 +2,34 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 33-119]     Imports & 外部依賴
-# [Ln 121-454]    Configuration, I18n Resource & Globals
-# [Ln 457-570]    Settings Helpers (load/save/coerce 函式)
-# [Ln 571-613]    Model Unloading & Optimization (記憶體優化)
-# [Ln 615-713]    Utils: Sidecar JSON (圖片元數據)
-# [Ln 715-862]    Utils: Raw Image Backup/Restore (原圖備份還原) [NEW]
-# [Ln 863-930]    Utils: Tags CSV, boorutag Parsing
-# [Ln 932-1190]   Utils: Danbooru-style Query Filter (篩選器系統)
-# [Ln 1192-1315]  Utils: 標籤解析與文本正規化
-# [Ln 1318-1630]  Workers: Tagger, LLM (單圖與批量任務)
-# [Ln 1632-1965]  Workers: Masking (去背、去文字) [Updated: raw_image 備份]
-# [Ln 1967-2002]  Workers: BatchRestoreWorker (批量還原) [Updated]
-# [Ln 2004-2156]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
-# [Ln 2158-2394]  UI Components: TagButton, TagFlowWidget
-# [Ln 2396-2443]  AdvancedFindReplaceDialog (尋找取代對話框)
-# [Ln 2445-2848]  SettingsDialog (設定面板 + ToolTip 說明)
-# [Ln 2854-2940]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 2941-3260]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
-# [Ln 3262-3400]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3402-3490]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3492-3582]  MainWindow: 導航、跳轉與刪除功能
-# [Ln 3584-3697]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 3700-3923]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 3925-3998]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4000-4170]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4173-4400]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4402-4870]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 4872-5109]  MainWindow: 設定同步、語言切換與主程式入口
+# [Ln 36-121]     Imports & 外部依賴
+# [Ln 123-469]    Configuration, I18n Resource & Globals
+# [Ln 470-583]    Settings Helpers (load/save/coerce 函式)
+# [Ln 584-627]    Model Unloading & Optimization (記憶體優化)
+# [Ln 628-828]    Utils: Sidecar JSON (圖片元數據)
+# [Ln 829-951]    Utils: Raw Image Backup/Restore (原圖備份還原)
+# [Ln 953-1018]   Utils: Tags CSV, boorutag Parsing
+# [Ln 1024-1277]  Utils: Danbooru-style Query Filter (篩選器系統)
+# [Ln 1279-1403]  Utils: 標籤解析與文本正規化
+# [Ln 1407-1718]  Workers: Tagger, LLM (單圖與批量任務)
+# [Ln 1724-2101]  Workers: Masking (去背、去文字)
+# [Ln 2102-2138]  Workers: BatchRestoreWorker (批量還原)
+# [Ln 2140-2292]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
+# [Ln 2297-2502]  UI Components: TagButton, TagFlowWidget
+# [Ln 2504-2580]  AdvancedFindReplaceDialog (尋找取代對話框)
+# [Ln 2581-3038]  SettingsDialog (設定面板 + ToolTip 說明)
+# [Ln 3039-3121]  MainWindow: 類別定義與初始化 (__init__)
+# [Ln 3123-3428]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
+# [Ln 3430-3600]  MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3604-3685]  MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3687-3891]  MainWindow: 預覽顯示、ViewMode(RGB/Alpha)、動態Mask、Context Menu、跳轉與刪除
+# [Ln 3893-4007]  MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 4009-4230]  MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 4234-4305]  MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 4309-4478]  MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4483-4723]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
+# [Ln 4727-5278]  MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 5282-5448]  MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
@@ -79,7 +79,8 @@ from PyQt6.QtWidgets import (
     QScrollArea, QLineEdit, QDialog, QFormLayout, QComboBox,
     QCheckBox, QMessageBox, QPlainTextEdit, QInputDialog,
     QRadioButton, QGroupBox, QSizePolicy, QTabWidget,
-    QFrame, QProgressBar, QSlider, QSpinBox, QDoubleSpinBox
+    QFrame, QProgressBar, QSlider, QSpinBox, QDoubleSpinBox,
+    QMenu
 )
 from PyQt6.QtCore import (
     Qt, QThread, pyqtSignal, QRect, QPoint, 
@@ -87,7 +88,12 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QPixmap, QKeySequence, QAction, QShortcut, QFont,
-    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor
+    QPalette, QBrush, QPainter, QPen, QColor, QImage, QTextCursor,
+    QCursor, QDesktopServices, QIcon
+)
+from PyQt6.QtCore import (
+    Qt, QThread, pyqtSignal, QRect, QPoint, 
+    QBuffer, QIODevice, QByteArray, QTimer, QUrl
 )
 
 from PIL import Image
@@ -501,8 +507,12 @@ DEFAULT_APP_SETTINGS = {
     "char_tag_whitelist_words": ["holding", "hand", "sitting", "covering", "playing", "background", "looking"],
 
     # Mask / batch mask text
+    "mask_remover_mode": "base-nightly",
     "mask_default_alpha": 64, # 1-254
     "mask_default_format": "webp",  # webp | png
+    "mask_reverse": False,                   # 是否反轉遮罩 (Restore logic doesn't use this, only for masking)
+    "mask_save_map_file": False,             # 是否保存 map(黑白圖) 到 .\mask\
+    "mask_only_output_map": False,           # 不修改原圖，只輸出黑白圖 (顯示時會動態疊加)
     "mask_batch_only_if_has_background_tag": True,
     "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
     "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
@@ -511,14 +521,17 @@ DEFAULT_APP_SETTINGS = {
     "mask_blur_radius": 3,    # Mask 高斯模糊半徑 (0=不模糊)
     
     # Batch Mask Logic
-    "mask_batch_min_foreground_ratio": 0.1,  # 最低主體佔比
-    "mask_batch_max_foreground_ratio": 0.8,  # 最高主體佔比
+    "mask_batch_skip_once_processed": True,  # 批量處理時，跳過已去背過的圖片
+    "mask_batch_min_foreground_ratio": 0.3,  # 預設改 0.3
+    "mask_batch_max_foreground_ratio": 0.8,  # 預設改 0.8
     "mask_batch_skip_if_scenery_tag": True,  # 若包含 indoors/outdoors 則跳過
 
     # Advanced OCR Settings
+    "mask_ocr_max_candidates": 300,          # OCR 候選區域上限 (選舉人)
     "mask_ocr_heat_threshold": 0.2,
     "mask_ocr_box_threshold": 0.6,
     "mask_ocr_unclip_ratio": 2.3,
+    "mask_text_alpha": 10,                   # 文字遮罩獨立 Alpha 值
 
     # UI / Theme
     "ui_language": "zh_tw",   # zh_tw | en
@@ -1752,13 +1765,35 @@ class BatchMaskTextWorker(QThread):
             box = float(self.cfg.get("mask_ocr_box_threshold", 0.6))
             unclip = float(self.cfg.get("mask_ocr_unclip_ratio", 2.3))
             
-            results = detect_text_with_ocr(
-                image_path,
-                max_candidates=100,
-                heat_threshold=heat,
-                box_threshold=box,
-                unclip_ratio=unclip
-            )
+            max_c = int(self.cfg.get("mask_ocr_max_candidates", 300))
+            
+            # 預處理：將影像轉為 RGB 並將透明區域填白，避免 Alpha 通道干擾 OCR 辨識
+            with Image.open(image_path) as img:
+                if img.mode == 'RGBA':
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[3]) # 3 is alpha
+                    ocr_input = background
+                else:
+                    ocr_input = img.convert("RGB")
+
+                # 呼叫 imgutils OCR
+                # 如果發生 TypeError 代表版本可能不支援 max_candidates 參數
+                try:
+                    results = detect_text_with_ocr(
+                        ocr_input,
+                        max_candidates=max_c,
+                        heat_threshold=heat,
+                        box_threshold=box,
+                        unclip_ratio=unclip
+                    )
+                except TypeError:
+                    # 備援：不傳遞 max_candidates
+                    results = detect_text_with_ocr(
+                        ocr_input,
+                        heat_threshold=heat,
+                        box_threshold=box,
+                        unclip_ratio=unclip
+                    )
             boxes = []
             for item in results or []:
                 if not item:
@@ -1775,7 +1810,7 @@ class BatchMaskTextWorker(QThread):
         try:
             import numpy as np
             total = len(self.image_paths)
-            alpha_val = int(self.cfg.get("mask_default_alpha", 0))
+            alpha_val = int(self.cfg.get("mask_text_alpha", 10))
             alpha_val = max(0, min(255, alpha_val))
             fmt = str(self.cfg.get("mask_default_format", "webp")).lower().strip(".")
             if fmt not in ("webp", "png"):
@@ -1924,65 +1959,92 @@ class BatchUnmaskWorker(QThread):
 
         import numpy as np
         from PIL import ImageFilter
+        from PIL import Image
 
         with Image.open(src_for_processing) as img:
-            # (1) 處理輸入 Alpha：alpha=0 的像素設為白色
             img_rgba_input = img.convert('RGBA')
             input_arr = np.array(img_rgba_input)
             
-            alpha_channel_input = input_arr[:, :, 3]
-            zero_indices_input = alpha_channel_input == 0
-            
-            input_arr[zero_indices_input, 0] = 255
-            input_arr[zero_indices_input, 1] = 255
-            input_arr[zero_indices_input, 2] = 255
-            
-            img_corrected = Image.fromarray(input_arr, 'RGBA')
-            
-            # (2) 生成遮罩
-            img_rm = remover.process(img_corrected.convert('RGB'), type='rgba')
-            rm_arr = np.array(img_rm)
-            mask_arr_remover = rm_arr[:, :, 3]
+            # (1) 原始 Alpha 與 修正 (全透明填白避免 AI 誤判)
+            alpha_orig = input_arr[:, :, 3]
+            img_to_ai = img_rgba_input.convert('RGB')
+            # 如果原圖有全透明，填成白色再給 AI
+            if np.any(alpha_orig == 0):
+                bg_w = Image.new("RGB", img_rgba_input.size, (255, 255, 255))
+                bg_w.paste(img_to_ai, mask=img_rgba_input.split()[3])
+                img_to_ai = bg_w
 
-            # 結合原始 Alpha
-            combined_alpha = np.minimum(mask_arr_remover, alpha_channel_input)
+            # (2) 生成遮罩 (使用 map 模式)
+            # reverse 參數直接傳給 process
+            is_reverse = bool(cfg.get("mask_reverse", False))
+            
+            # Remover.process 回傳 PIL.Image (L 模式 if type='map')
+            mask_img_ai = remover.process(img_to_ai, type='map', reverse=is_reverse)
+            mask_arr_ai = np.array(mask_img_ai.convert('L')) # 0-255
 
-            # (3) Batch Only: 主體佔比檢查
-            if is_batch:
-                min_r = float(cfg.get("mask_batch_min_foreground_ratio", 0.1))
-                max_r = float(cfg.get("mask_batch_max_foreground_ratio", 0.8))
-                
-                fg_count = np.sum(combined_alpha == 255)
-                ratio = fg_count / combined_alpha.size
-                
-                if ratio < min_r or ratio > max_r:
-                    return None, None
+            # (3) Alpha 重新映射 (區間映射)
+            # 使用平均不透明度 (Mean Opacity) 作為佔比，比例 = (總 Alpha 和) / (總像素數 * 255)
+            # 這樣能更好地衡量「主體分量」，且保留半透明柔邊
+            min_r = float(cfg.get("mask_batch_min_foreground_ratio", 0.3))
+            max_r = float(cfg.get("mask_batch_max_foreground_ratio", 0.8))
+            
+            curr_ratio = np.mean(mask_arr_ai) / 255.0
+            
+            if curr_ratio < min_r:
+                # 擴張/增強：線性拉伸，將較低的機率往上拉
+                # 簡單做法：mask = (mask / 255) ^ gamma * 255。當 gamma < 1 時會變亮(擴張)
+                gamma = curr_ratio / min_r
+                mask_arr_ai = (np.power(mask_arr_ai / 255.0, gamma) * 255.0).astype(np.uint8)
+            elif curr_ratio > max_r:
+                # 縮減/減弱：當主體佔比太大時，提高 gamma (> 1) 讓較暗的部分更暗
+                gamma = curr_ratio / max_r
+                mask_arr_ai = (np.power(mask_arr_ai / 255.0, gamma) * 255.0).astype(np.uint8)
+            
+            # 結合原始 Alpha (確保原本透明的地方依然透明)
+            combined_alpha = np.minimum(mask_arr_ai, alpha_orig)
 
             # (4) Padding -> Blur -> Clamp
-            mask_img = Image.fromarray(combined_alpha)
-            
+            mask_processed = Image.fromarray(combined_alpha)
             if padding > 0:
-                mask_img = mask_img.filter(ImageFilter.MinFilter(padding * 2 + 1))
-            
+                mask_processed = mask_processed.filter(ImageFilter.MinFilter(padding * 2 + 1))
             if blur_radius > 0:
-                mask_img = mask_img.filter(ImageFilter.GaussianBlur(blur_radius))
+                mask_processed = mask_processed.filter(ImageFilter.GaussianBlur(blur_radius))
             
-            processed_alpha_float = np.array(mask_img).astype(np.float32)
-            
+            alpha_final = np.array(mask_processed).astype(np.float32)
             if alpha_threshold > 0:
-                processed_alpha_float = np.maximum(processed_alpha_float, alpha_threshold)
+                alpha_final = np.maximum(alpha_final, alpha_threshold)
+            alpha_final = np.clip(alpha_final, 0, 255).astype(np.uint8)
+
+            # (5) 儲存 Mask Map (黑白圖) 到 .\mask\
+            src_dir = os.path.dirname(image_path)
+            mask_dir = os.path.join(src_dir, "mask")
+            if bool(cfg.get("mask_save_map_file", False)) or bool(cfg.get("mask_only_output_map", False)):
+                os.makedirs(mask_dir, exist_ok=True)
+                map_name = os.path.splitext(os.path.basename(image_path))[0] + ".png"
+                map_path = os.path.join(mask_dir, map_name)
+                Image.fromarray(alpha_final).save(map_path)
+                
+                # 記錄到 sidecar
+                sidecar = load_image_sidecar(image_path)
+                sidecar["mask_map_rel_path"] = os.path.relpath(map_path, src_dir)
+                save_image_sidecar(image_path, sidecar)
+
+            # (6) 決定是否修改原圖
+            if bool(cfg.get("mask_only_output_map", False)):
+                # 不修改原檔，只回傳成功的標記
+                sidecar = load_image_sidecar(image_path)
+                sidecar["masked_background"] = True
+                save_image_sidecar(image_path, sidecar)
+                return image_path, image_path
             
-            processed_alpha = np.clip(processed_alpha_float, 0, 255).astype(np.uint8)
+            # 重組最終影像 (使用已填色修正過的 RGB，解決透明預填雜訊或拉伸問題)
+            # 我們直接使用 img_to_ai 的數據，因為它已經是「原圖 RGB + 透明處填白」的狀態
+            clean_rgb_arr = np.array(img_to_ai)
+            final_r = clean_rgb_arr[:, :, 0]
+            final_g = clean_rgb_arr[:, :, 1]
+            final_b = clean_rgb_arr[:, :, 2]
             
-            # 重組最終影像
-            final_r = rm_arr[:, :, 0]
-            final_g = rm_arr[:, :, 1]
-            final_b = rm_arr[:, :, 2]
-            
-            final_img_arr = np.dstack((final_r, final_g, final_b, processed_alpha))
-            final_img = Image.fromarray(final_img_arr, 'RGBA')
-            
-            # 儲存為 WEBP
+            final_img = Image.fromarray(np.dstack((final_r, final_g, final_b, alpha_final)), 'RGBA')
             final_img.save(target_file, 'WEBP', quality=100)
 
         # 如果原檔不是 WEBP，刪除原檔 (已備份)
@@ -2012,7 +2074,8 @@ class BatchUnmaskWorker(QThread):
 
             import torch
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            remover = Remover(device=device)
+            mode = self.cfg.get("mask_remover_mode", "base-nightly")
+            remover = Remover(device=device, mode=mode)
 
             total = len(self.image_paths)
             for i, p in enumerate(self.image_paths, start=1):
@@ -2021,7 +2084,7 @@ class BatchUnmaskWorker(QThread):
                 self.progress.emit(i, total, os.path.basename(p))
                 
                 # Batch 時檢查是否已處理過去背
-                if self.is_batch:
+                if self.is_batch and bool(self.cfg.get("mask_batch_skip_once_processed", True)):
                     sidecar = load_image_sidecar(p)
                     if sidecar.get("masked_background", False):
                         continue
@@ -2794,10 +2857,38 @@ class SettingsDialog(QDialog):
         self.spin_ocr_unclip.setToolTip(self.tr("setting_ocr_unclip_tip"))
         form3.addRow(self.tr("setting_ocr_unclip"), self.spin_ocr_unclip)
 
+        self.spin_mask_text_alpha = QSpinBox()
+        self.spin_mask_text_alpha.setRange(0, 255)
+        self.spin_mask_text_alpha.setValue(int(self.cfg.get("mask_text_alpha", 10)))
+        self.spin_mask_text_alpha.setToolTip("僅針對『去文字』功能使用的 Alpha 透明度 (預設 10)\n設定越低，遮得越透明/乾淨")
+        form3.addRow("Text Mask Alpha (去文字遮罩值):", self.spin_mask_text_alpha)
+
         self.chk_mask_del_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
         self.chk_mask_del_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
         self.chk_mask_del_npz.setToolTip("移動原圖時自動刪除對應的 .npz 快取檔案 (SD 訓練用)")
         form3.addRow("", self.chk_mask_del_npz)
+
+        self.chk_mask_reverse = QCheckBox("反轉遮罩 (Reverse)")
+        self.chk_mask_reverse.setChecked(bool(self.cfg.get("mask_reverse", False)))
+        self.chk_mask_reverse.setToolTip("將主體與背景反轉 (去主體留背景)")
+        form3.addRow("", self.chk_mask_reverse)
+
+        self.chk_save_map = QCheckBox("保存黑白 Mask 到 .\mask\ ")
+        self.chk_save_map.setChecked(bool(self.cfg.get("mask_save_map_file", False)))
+        form3.addRow("", self.chk_save_map)
+
+        self.chk_only_map = QCheckBox("不修改原圖，僅輸出黑白 Mask (動態顯示)")
+        self.chk_only_map.setChecked(bool(self.cfg.get("mask_only_output_map", False)))
+        self.chk_only_map.setToolTip("維持原圖檔不變，但在軟體顯示時會套用 mask/ 內的黑白圖進行去背預覽")
+        form3.addRow("", self.chk_only_map)
+
+        self.ed_remover_mode = QLineEdit(str(self.cfg.get("mask_remover_mode", "base-nightly")))
+        self.ed_remover_mode.setToolTip("Remover 模式：base, base-nightly, fast")
+        form3.addRow("Remover Mode:", self.ed_remover_mode)
+
+        self.chk_mask_batch_skip = QCheckBox("批量處理時跳過已去背過的圖片")
+        self.chk_mask_batch_skip.setChecked(bool(self.cfg.get("mask_batch_skip_once_processed", True)))
+        form3.addRow("", self.chk_mask_batch_skip)
 
         mask_layout.addLayout(form3)
 
@@ -2940,6 +3031,12 @@ class SettingsDialog(QDialog):
         cfg["mask_batch_min_foreground_ratio"] = float(f"{self.spin_mask_min_ratio.value():.2f}")
         cfg["mask_batch_max_foreground_ratio"] = float(f"{self.spin_mask_max_ratio.value():.2f}")
         cfg["mask_batch_skip_if_scenery_tag"] = self.chk_skip_scenery.isChecked()
+        cfg["mask_reverse"] = self.chk_mask_reverse.isChecked()
+        cfg["mask_save_map_file"] = self.chk_save_map.isChecked()
+        cfg["mask_only_output_map"] = self.chk_only_map.isChecked()
+        cfg["mask_remover_mode"] = self.ed_remover_mode.text().strip()
+        cfg["mask_batch_skip_once_processed"] = self.chk_mask_batch_skip.isChecked()
+        cfg["mask_text_alpha"] = self.spin_mask_text_alpha.value()
 
         # Tags Filter
         cfg["char_tag_blacklist_words"] = self._parse_tags(self.ed_bl_words.toPlainText())
@@ -2974,6 +3071,9 @@ class MainWindow(QMainWindow):
         self.default_custom_tags_global = list(self.settings.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
         self.english_force_lowercase = bool(self.settings.get("english_force_lowercase", True))
 
+        self.current_view_mode = 0  # 0=Original, 1=RGB, 2=Alpha
+        self.temp_view_mode = None  # For N/M keys override
+        
         self.translations_csv = load_translations()
 
         self.image_files = []
@@ -3098,12 +3198,24 @@ class MainWindow(QMainWindow):
         self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
         self.btn_clear_filter.clicked.connect(self.clear_filter)
         filter_bar.addWidget(self.btn_clear_filter)
+
+        # === View Mode Selector (RGB/Alpha) ===
+        self.cb_view_mode = QComboBox()
+        self.cb_view_mode.addItems(["預覽: 原圖", "預覽: RGB 色版 (N)", "預覽: Alpha 色版 (M)"])
+        self.cb_view_mode.setToolTip("切換圖片預覽模式\n- 原圖: 顯示原始圖片\n- RGB: 強制不透明顯示顏色\n- Alpha: 顯示透明度遮罩 (黑透白不透)\n\n快速鍵: 按住 N (RGB) / 按住 M (Alpha)")
+        self.cb_view_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus) # 避免搶走焦點影響快速鍵
+        self.cb_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
+        filter_bar.addWidget(self.cb_view_mode)
         
         left_layout.addLayout(filter_bar)
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setMinimumSize(400, 400)
+        
+        # Context Menu
+        self.image_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.image_label.customContextMenuRequested.connect(self.show_image_context_menu)
 
         # --- 棋盤格背景：用 Palette Brush（避免 data URI pixmap 警告） ---
         png_bytes = create_checkerboard_png_bytes()
@@ -3374,13 +3486,14 @@ class MainWindow(QMainWindow):
     # ==========================
     # Logic: Storage & Init
     # ==========================
-    def refresh_file_list(self):
+    def refresh_file_list(self, current_path=None): # 改回參數名以支援舊有呼叫
         if not self.root_dir_path or not os.path.exists(self.root_dir_path):
             return
         
         dir_path = self.root_dir_path
-        # Keep track of current file to restore selection
-        current_path = self.current_image_path
+        # 若無外部傳入路徑，則嘗試保留目前選取的路徑
+        if not current_path:
+            current_path = self.current_image_path
         
         self.image_files = []
         valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
@@ -3636,12 +3749,148 @@ class MainWindow(QMainWindow):
         """用於 Resize 或初次加載時更新圖片顯示"""
         if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
             return
-        scaled = self.current_pixmap.scaled(
+        scaled = self._get_processed_pixmap().scaled(
             self.image_label.size(),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
         self.image_label.setPixmap(scaled)
+
+    def _get_processed_pixmap(self) -> QPixmap:
+        """
+        根據目前的檢視模式 (Original/RGB/Alpha) 回傳對應的 QPixmap。
+        優先順序: 
+        1. 暫時按鍵 (temp_view_mode: N/M)
+        2. 下拉選單 (current_view_mode)
+        """
+        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
+            return QPixmap()
+
+        # 決定要用的模式 (0=Orig, 1=RGB, 2=Alpha)
+        mode = self.current_view_mode
+        if self.temp_view_mode is not None:
+            mode = self.temp_view_mode
+
+        # 如果是「原圖模式」，檢查是否有外部遮罩 (mask/*.png)
+        if mode == 0:
+            sidecar = load_image_sidecar(self.current_image_path)
+            rel_mask = sidecar.get("mask_map_rel_path", "")
+            if rel_mask:
+                mask_abs = os.path.normpath(os.path.join(os.path.dirname(self.current_image_path), rel_mask))
+                if os.path.exists(mask_abs):
+                    # 動態合成
+                    img_q = self.current_pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+                    mask_q = QImage(mask_abs).convertToFormat(QImage.Format.Format_Alpha8)
+                    if img_q.size() == mask_q.size():
+                        img_q.setAlphaChannel(mask_q)
+                        return QPixmap.fromImage(img_q)
+
+            return self.current_pixmap
+        
+        # 轉換處理
+        img = self.current_pixmap.toImage()
+        
+        if mode == 1: # RGB Only (Force Opaque)
+            # 轉換為 RGB888 (丟棄 Alpha)
+            img = img.convertToFormat(QImage.Format.Format_RGB888)
+            return QPixmap.fromImage(img)
+            
+        elif mode == 2: # Alpha Only
+            if img.hasAlphaChannel():
+                # Convert to Alpha8 (data is 8-bit alpha)
+                alpha_img = img.convertToFormat(QImage.Format.Format_Alpha8)
+                # Interpret the data as Grayscale8
+                # Note: We must ensure the data persists or is copied.
+                # Constructing QImage from inputs shares memory? 
+                # Safe way: Convert Alpha8 to RGBA, then fill RGB with Alpha? No.
+                
+                # Using PIL is robust and easy if we can convert.
+                ptr = alpha_img.constBits()
+                ptr.setsize(alpha_img.sizeInBytes())
+                # Create Grayscale QImage from the bytes
+                gray_img = QImage(ptr, alpha_img.width(), alpha_img.height(), alpha_img.bytesPerLine(), QImage.Format.Format_Grayscale8)
+                return QPixmap.fromImage(gray_img.copy()) # copy to detach
+            else:
+                # No Alpha -> White
+                white = QPixmap(img.size())
+                white.fill(Qt.GlobalColor.white)
+                return white
+        
+        return self.current_pixmap
+
+    def on_view_mode_changed(self, index):
+        self.current_view_mode = index
+        self.update_image_display()
+
+    def keyPressEvent(self, event):
+        if event.isAutoRepeat():
+            super().keyPressEvent(event)
+            return
+
+        key = event.key()
+        if key == Qt.Key.Key_N:
+            self.temp_view_mode = 1 # RGB
+            self.update_image_display()
+        elif key == Qt.Key.Key_M:
+            self.temp_view_mode = 2 # Alpha
+            self.update_image_display()
+        else:
+            super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            super().keyReleaseEvent(event)
+            return
+            
+        key = event.key()
+        if key == Qt.Key.Key_N or key == Qt.Key.Key_M:
+            # 放開時檢查是否還有其他鍵按著 (簡單起見，直接重置)
+            # 如果使用者同時按住 N 和 M，放開一個時會回到 View Mode
+            self.temp_view_mode = None
+            self.update_image_display()
+        else:
+            super().keyReleaseEvent(event)
+
+    def show_image_context_menu(self, pos: QPoint):
+        if not self.current_image_path:
+            return
+
+        menu = QMenu(self)
+        
+        # 1. 複製圖片
+        action_copy_img = QAction("複製圖片 (Copy Image)", self)
+        action_copy_img.triggered.connect(self._ctx_copy_image)
+        menu.addAction(action_copy_img)
+        
+        # 2. 複製路徑
+        action_copy_path = QAction("複製路徑 (Copy Path)", self)
+        action_copy_path.triggered.connect(self._ctx_copy_path)
+        menu.addAction(action_copy_path)
+        
+        menu.addSeparator()
+        
+        # 3. 開啟檔案位置
+        action_open_dir = QAction("打開檔案所在目錄 (Open Folder)", self)
+        action_open_dir.triggered.connect(self._ctx_open_folder)
+        menu.addAction(action_open_dir)
+        
+        menu.exec(self.image_label.mapToGlobal(pos))
+
+    def _ctx_copy_image(self):
+        if hasattr(self, 'current_pixmap') and not self.current_pixmap.isNull():
+            QApplication.clipboard().setPixmap(self.current_pixmap)
+            self.statusBar().showMessage("圖片已複製到剪貼簿", 2000)
+
+    def _ctx_copy_path(self):
+        if self.current_image_path:
+            QApplication.clipboard().setText(os.path.abspath(self.current_image_path))
+            self.statusBar().showMessage("路徑已複製到剪貼簿", 2000)
+    
+    def _ctx_open_folder(self):
+        if self.current_image_path:
+            folder = os.path.dirname(self.current_image_path)
+            # 使用 QDesktopServices 開啟目錄
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
