@@ -2,22 +2,31 @@
 #  Caption 神器 - 索引 (INDEX)
 # ============================================================
 #
-# [Ln 31-114]    Imports & 外部依賴
-# [Ln 115-450]   Configuration, I18n Resource & Globals
-# [Ln 460-570]   Settings Helpers (load/save/coerce 函式)
-# [Ln 570-750]   Utils: delete_matching_npz、JSON sidecar、Tag Parsing
-# [Ln 750-930]   Utils: Danbooru-style Query Filter (篩選器)
-# [Ln 930-1380]  Workers (TaggerWorker, LLMWorker, BatchTaggerWorker, BatchLLMWorker)
-# [Ln 1380-1760] Workers (Tagger/LLM/Mask/Restore)
-# [Ln 1760-1860] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦)
-# [Ln 1860-2070] UI Components (TagButton, TagFlowWidget)
-# [Ln 2070-2200] SettingsDialog
-# [Ln 2130-2270] AdvancedFindReplaceDialog
-# [Ln 2410-2520] MainWindow.__init__ & init_ui
-# [Ln 2870-2970] MainWindow: Load Image / Refresh / Filter Logic
-# [Ln 3000-3450] MainWindow: LLM / Tagger / Tools Logic
-# [Ln 3450-4500] MainWindow: Batch Operations (Batch LLM/Tagger/Mask)
-# [Ln 4500+]     MainWindow: Settings / Main Entry
+# [Ln 24-110]    Imports & 外部依賴
+# [Ln 112-445]   Configuration, I18n Resource & Globals
+# [Ln 448-561]   Settings Helpers (load/save/coerce 函式)
+# [Ln 562-604]   Model Unloading & Optimization (記憶體優化)
+# [Ln 606-771]   Utils: Sidecar JSON, Tags CSV, boorutag Parsing
+# [Ln 773-1030]  Utils: Danbooru-style Query Filter (篩選器系統)
+# [Ln 1032-1154] Utils: 標籤解析與文本正規化
+# [Ln 1157-1469] Workers: Tagger, LLM (單圖與批量任務)
+# [Ln 1475-1905] Workers: Masking (去背、去文字、還原)
+# [Ln 1907-2059] StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
+# [Ln 2061-2297] UI Components: TagButton, TagFlowWidget
+# [Ln 2299-2346] AdvancedFindReplaceDialog (尋找取代對話框)
+# [Ln 2348-2730] SettingsDialog (設定面板)
+# [Ln 2736-2816] MainWindow: 類別定義與初始化 (__init__)
+# [Ln 2817-3132] MainWindow: UI 介面佈建 (init_ui)
+# [Ln 3134-3268] MainWindow: 圖片載入與檔案切換邏輯
+# [Ln 3270-3353] MainWindow: 篩選與排序邏輯 (Filter Logic)
+# [Ln 3354-3444] MainWindow: 導航、跳轉與刪除功能
+# [Ln 3446-3559] MainWindow: 文本編輯、Token 計算與自動格式化
+# [Ln 3562-3785] MainWindow: 標籤、LLM 分頁與顯示邏輯
+# [Ln 3787-3860] MainWindow: 游標位置插入與標籤同步邏輯
+# [Ln 3862-4032] MainWindow: Tagger/LLM 執行與結果處理
+# [Ln 4035-4330] MainWindow: 工具功能 (去背、去文字、手繪橡皮擦) UI 邏輯
+# [Ln 4331-4800] MainWindow: 批量處理任務 (Batch Operations)
+# [Ln 4801-5013] MainWindow: 設定同步、語言切換與主程式入口
 #
 # ============================================================
 
