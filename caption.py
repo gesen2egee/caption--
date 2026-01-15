@@ -1,36 +1,5 @@
-# ============================================================
-#  Caption 神器 - 索引 (INDEX)
-# ============================================================
-#
-# [Ln 36-121]     Imports & 外部依賴
-# [Ln 123-469]    Configuration, I18n Resource & Globals
-# [Ln 470-583]    Settings Helpers (load/save/coerce 函式)
-# [Ln 584-627]    Model Unloading & Optimization (記憶體優化)
-# [Ln 628-828]    Utils: Sidecar JSON (圖片元數據)
-# [Ln 829-951]    Utils: Raw Image Backup/Restore (原圖備份還原)
-# [Ln 953-1018]   Utils: Tags CSV, boorutag Parsing
-# [Ln 1024-1277]  Utils: Danbooru-style Query Filter (篩選器系統)
-# [Ln 1279-1403]  Utils: 標籤解析與文本正規化
-# [Ln 1407-1718]  Workers: Tagger, LLM (單圖與批量任務)
-# [Ln 1724-2101]  Workers: Masking (去背、去文字)
-# [Ln 2102-2138]  Workers: BatchRestoreWorker (批量還原)
-# [Ln 2140-2292]  StrokeCanvas & StrokeEraseDialog (手繪橡皮擦工具)
-# [Ln 2297-2502]  UI Components: TagButton, TagFlowWidget
-# [Ln 2504-2580]  AdvancedFindReplaceDialog (尋找取代對話框)
-# [Ln 2581-3038]  SettingsDialog (設定面板 + ToolTip 說明)
-# [Ln 3039-3121]  MainWindow: 類別定義與初始化 (__init__)
-# [Ln 3123-3428]  MainWindow: UI 介面佈建 (init_ui + ToolTip 說明)
-# [Ln 3430-3600]  MainWindow: 圖片載入與檔案切換邏輯
-# [Ln 3604-3685]  MainWindow: 篩選與排序邏輯 (Filter Logic)
-# [Ln 3687-3891]  MainWindow: 預覽顯示、ViewMode(RGB/Alpha)、動態Mask、Context Menu、跳轉與刪除
-# [Ln 3893-4007]  MainWindow: 文本編輯、Token 計算與自動格式化
-# [Ln 4009-4230]  MainWindow: 標籤、LLM 分頁與顯示邏輯
-# [Ln 4234-4305]  MainWindow: 游標位置插入與標籤同步邏輯
-# [Ln 4309-4478]  MainWindow: Tagger/LLM 執行與結果處理
-# [Ln 4483-4723]  MainWindow: 工具功能 (去背、還原、去文字、手繪橡皮擦)
-# [Ln 4727-5278]  MainWindow: 批量處理任務 (Batch Operations)
-# [Ln 5282-5448]  MainWindow: 設定同步、語言切換與主程式入口
-#
+﻿# ============================================================
+#  Caption 神器
 # ============================================================
 
 import sys
