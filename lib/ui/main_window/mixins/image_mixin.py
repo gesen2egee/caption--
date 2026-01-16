@@ -32,7 +32,10 @@ class ImageMixin:
             if not self.image_files or index < 0 or index >= len(self.image_files):
                 return
             self.current_index = index
-            self.current_image_path = self.image_files[index]
+        
+        # 根據 current_index 更新 current_image_path
+        if self.image_files and 0 <= self.current_index < len(self.image_files):
+            self.current_image_path = self.image_files[self.current_index]
         
         if not self.current_image_path:
             return
@@ -50,6 +53,13 @@ class ImageMixin:
                 self.txt_edit.setPlainText("")
         else:
             self.txt_edit.setPlainText("")
+        
+        # 設定當前資料夾路徑
+        self.current_folder_path = os.path.dirname(self.current_image_path)
+        
+        # 載入資料夾自定義標籤
+        if hasattr(self, 'load_folder_custom_tags'):
+            self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
         
         # 載入標籤
         if hasattr(self, 'build_top_tags_for_current_image'):
