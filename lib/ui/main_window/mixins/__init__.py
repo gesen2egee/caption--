@@ -9,5 +9,7 @@ Mixin 設計原則：
 3. 所有共享屬性在 MainWindow.__init__() 中初始化
 """
 
-# 將在後續 Phase 中添加各個 Mixin 的導入
-__all__ = []
+from .shortcuts_mixin import ShortcutsMixin
+from .theme_mixin import ThemeMixin
+
+__all__ = ['ShortcutsMixin', 'ThemeMixin']
