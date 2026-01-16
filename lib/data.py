@@ -1,4 +1,5 @@
 
+import json
 import os
 import copy
 from dataclasses import dataclass, field
@@ -7,6 +8,29 @@ from PIL import Image
 from typing import Optional, List, Dict, Any
 
 from .utils import load_image_sidecar, save_image_sidecar, image_sidecar_json_path
+from .const import DEFAULT_APP_SETTINGS
+
+APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json")
+
+def load_app_settings() -> Dict[str, Any]:
+    cfg = copy.deepcopy(DEFAULT_APP_SETTINGS)
+    if os.path.exists(APP_SETTINGS_FILE):
+        try:
+            with open(APP_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                if isinstance(saved, dict):
+                    cfg.update(saved)
+        except Exception:
+            pass
+    return cfg
+
+def save_app_settings(cfg: Dict[str, Any]):
+    try:
+        with open(APP_SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 
 # ==========================================
 #  Settings Wrapper

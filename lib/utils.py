@@ -606,8 +606,43 @@ class DanbooruQueryFilter:
             except Exception:
                 return 1.0
         
-        if self.order_mode == 'landscape':
-            return sorted(image_paths, key=lambda p: -get_aspect(p))
-        elif self.order_mode == 'portrait':
-            return sorted(image_paths, key=lambda p: get_aspect(p))
-        return image_paths
+def parse_boorutag_meta(meta_path):
+    """
+    Advanced parsing of .boorutag file to extract tags and hint info.
+    """
+    tags_meta = []
+    hint_info = []
+    if not os.path.exists(meta_path):
+        return tags_meta, hint_info
+
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f.readlines()]
+            # Pad lines to ensure index access won't fail
+            lines += [''] * (max(0, 20 - len(lines)))
+
+            if len(lines) >= 19 and lines[18]:
+                tags_meta = [t.strip() for t in lines[18].split(',') if t.strip()]
+
+            if len(lines) >= 7 and lines[6] != "by artstyle" and lines[6]:
+                artist_val = lines[6].replace('by ', '').replace(' artstyle', '')
+                hint_info.append(f"the artist of this image: {{{artist_val}}}")
+
+            if len(lines) >= 10 and lines[9]:
+                sources = [s.strip() for s in lines[9].split(',') if s.strip()]
+                if len(sources) >= 3:
+                    hint_info.append("the copyright of this image: {{crossover}}")
+                else:
+                    hint_info.append("the copyright of this image: {{" + ', '.join(sources) + "}}")
+
+            if len(lines) >= 13 and lines[12]:
+                characters = [c.strip() for c in lines[12].split(',') if c.strip()]
+                if characters and len(characters) < 4:
+                    hint_info.append("the characters of this image: {{" + ', '.join(characters) + "}}")
+
+    except Exception as e:
+        print(f"[boorutag] 解析出錯 {meta_path}: {e}")
+    
+    return tags_meta, hint_info
+
+

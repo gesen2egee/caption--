@@ -81,13 +81,26 @@ except ImportError:
 
 
 # [Refactor Imports]
-from lib.data import AppSettings, ImageContext
-from lib.const import DEFAULT_CUSTOM_TAGS, LOCALIZATION, THEME_STYLES, DEFAULT_APP_SETTINGS, TEMPLATE_DEFAULT, DEFAULT_SYSTEM_PROMPT
+from lib.data import AppSettings, ImageContext, load_app_settings, save_app_settings
+from lib.const import (
+    DEFAULT_CUSTOM_TAGS, LOCALIZATION, THEME_STYLES, 
+    DEFAULT_APP_SETTINGS, TEMPLATE_DEFAULT, DEFAULT_SYSTEM_PROMPT
+)
 from lib.workers.batch import GenericBatchWorker
 from lib.processors.tagger import TaggerProcessor
 from lib.processors.llm import LLMProcessor
 from lib.processors.vision import UnmaskProcessor, TextMaskProcessor, RestoreProcessor
-from lib.utils import remove_underline
+from lib.utils import (
+    create_checkerboard_png_bytes, delete_matching_npz, image_sidecar_json_path,
+    load_image_sidecar, save_image_sidecar, backup_raw_image, restore_raw_image,
+    has_raw_backup, get_raw_image_dir, delete_raw_backup, ensure_tags_csv,
+    load_translations, parse_boorutag_meta, smart_parse_tags, extract_bracket_content,
+    is_basic_character_tag, cleanup_csv_like_text, split_csv_like_text,
+    try_tags_to_text_list, remove_underline, DanbooruQueryFilter, normalize_for_match
+)
+from lib.services.tagger import call_wd14
+from lib.services.common import unload_all_models
+
 
 
 
@@ -95,882 +108,12 @@ os.environ['ONNX_MODE'] = 'gpu'
 
 # ==========================================
 #  Configuration & Globals
-# ==========================================
+# Note: Utility functions (load_app_settings, call_wd14, etc.) 
+# have been moved to lib.utils, lib.services, and lib.data.
 
-TAGS_CSV_LOCAL = "Tags.csv"
-TAGS_CSV_URL_RAW = "https://raw.githubusercontent.com/waldolin/a1111-sd-webui-tagcomplete-TW/main/tags/Tags-tw-full-pack.csv"
 
 
-
-# --------------------------
-# App Settings (persisted)
-# --------------------------
-APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json")
-
-
-def load_app_settings() -> dict:
-    cfg = dict(DEFAULT_APP_SETTINGS)
-    try:
-        if os.path.exists(APP_SETTINGS_FILE):
-            with open(APP_SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f) or {}
-            if isinstance(data, dict):
-                cfg.update(data)
-    except Exception as e:
-        print(f"[Settings] load failed: {e}")
-    return cfg
-
-def save_app_settings(cfg: dict) -> bool:
-    try:
-        safe = dict(DEFAULT_APP_SETTINGS)
-        safe.update(cfg or {})
-        with open(APP_SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(safe, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        print(f"[Settings] save failed: {e}")
-        return False
-
-def _coerce_bool(v, default=False):
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, str):
-        s = v.strip().lower()
-        if s in ("1", "true", "yes", "y", "on"):
-            return True
-        if s in ("0", "false", "no", "n", "off"):
-            return False
-    return default
-
-def _coerce_float(v, default=0.0):
-    try:
-        return float(v)
-    except Exception:
-        return float(default)
-
-def _coerce_int(v, default=0):
-    try:
-        return int(v)
-    except Exception:
-        return int(default)
-
-def call_wd14(img_pil, cfg: dict):
-    """Call imgutils.tagging.get_wd14_tags with only supported kwargs."""
-    kwargs = {
-        "model_name": cfg.get("tagger_model", DEFAULT_APP_SETTINGS["tagger_model"]),
-        "general_threshold": _coerce_float(cfg.get("general_threshold", 0.2), 0.2),
-        "general_mcut_enabled": _coerce_bool(cfg.get("general_mcut_enabled", False), False),
-        "character_threshold": _coerce_float(cfg.get("character_threshold", 0.85), 0.85),
-        "character_mcut_enabled": _coerce_bool(cfg.get("character_mcut_enabled", True), True),
-        "drop_overlap": _coerce_bool(cfg.get("drop_overlap", True), True),
-    }
-    try:
-        sig = inspect.signature(get_wd14_tags)
-        allowed = set(sig.parameters.keys())
-        use = {k: v for k, v in kwargs.items() if k in allowed}
-    except Exception:
-        use = {
-            "model_name": kwargs["model_name"],
-            "general_threshold": kwargs["general_threshold"],
-            "character_mcut_enabled": kwargs["character_mcut_enabled"],
-            "drop_overlap": kwargs["drop_overlap"],
-        }
-    rating, features, chars = get_wd14_tags(img_pil, **use)
-    
-    # Normalize tags using remove_underline
-    features = {remove_underline(k): v for k, v in features.items()}
-    chars = {remove_underline(k): v for k, v in chars.items()}
-    
-    return rating, features, chars
-
-
-def unload_all_models():
-    """ 
-    強制執行垃圾回收，並在支援 Torch 的環境下排空 CUDA 快取。
-    這有助於在完成 WD14、OCR 或去背景任務後釋放記憶體。
-    """
-    gc.collect()
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except Exception:
-        pass
-
-
-NL_PAGE_DELIM = "\n\n=====NL_PAGE=====\n\n"
-
-# ==========================================
-#  Utils / Parsing
-# ==========================================
-
-def create_checkerboard_png_bytes():
-    """
-    生成 16x16 棋盤格 PNG bytes（不走 data URI，避免 Qt stylesheet pixmap 警告）
-    """
-    try:
-        w, h = 16, 16
-        img = Image.new('RGBA', (w, h), (255, 255, 255, 255))
-        pixels = img.load()
-        color = (220, 220, 220, 255)
-
-        for y in range(h):
-            for x in range(w):
-                if (x < 8 and y < 8) or (x >= 8 and y >= 8):
-                    pixels[x, y] = color
-
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        return buffered.getvalue()
-    except Exception as e:
-        print(f"Error creating checkerboard: {e}")
-        # 1x1 透明 PNG
-        return base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        )
-
-
-def delete_matching_npz(image_path: str) -> int:
-    """
-    刪除與圖檔名匹配的 npz 檔案。
-    例如圖檔 '1b7f4f85fac7f8f7076fa528e95176fb.webp' 
-    會匹配 '1b7f4f85fac7f8f7076fa528e95176fb_0849x0849_sdxl.npz'
-    回傳刪除的檔案數量。
-    """
-    if not image_path:
-        return 0
-    
-    try:
-        src_dir = os.path.dirname(image_path)
-        # 取得不含副檔名的完整檔名 (例如 1b7f4f85fac7f8f7076fa528e95176fb)
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        
-        deleted = 0
-        for f in os.listdir(src_dir):
-            if f.endswith(".npz") and f.startswith(base_name):
-                npz_path = os.path.join(src_dir, f)
-                try:
-                    os.remove(npz_path)
-                    deleted += 1
-                    print(f"[NPZ] 已刪除: {f}")
-                except Exception as e:
-                    print(f"[NPZ] 刪除失敗 {f}: {e}")
-        return deleted
-    except Exception as e:
-        print(f"[NPZ] delete_matching_npz 錯誤: {e}")
-        return 0
-
-
-def image_sidecar_json_path(image_path: str) -> str:
-    """取得圖片對應的 sidecar JSON 路徑"""
-    return os.path.splitext(image_path)[0] + ".json"
-
-
-def load_image_sidecar(image_path: str) -> dict:
-    """
-    載入圖片對應的 sidecar JSON。
-    結構: {
-        "tagger_tags": "...",
-        "nl_pages": [...],
-        "masked_background": bool,
-        "masked_text": bool
-    }
-    """
-    p = image_sidecar_json_path(image_path)
-    if os.path.exists(p):
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as e:
-            print(f"[Sidecar] 載入失敗 {p}: {e}")
-    return {}
-
-
-def save_image_sidecar(image_path: str, data: dict):
-    """儲存圖片對應的 sidecar JSON"""
-    p = image_sidecar_json_path(image_path)
-    try:
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[Sidecar] 儲存失敗 {p}: {e}")
-
-def backup_original_image(image_path: str) -> bool:
-    """
-    修改圖片前先備份原圖 (若為首次修改)。
-    備份到同層級的 raw_image 資料夾。
-    並在 sidecar 記錄 'raw_image_rel_path'。
-    """
-    try:
-        sidecar = load_image_sidecar(image_path)
-        
-        # 若已經有備份紀錄，先檢查檔案是否存在
-        if "raw_image_rel_path" in sidecar:
-            rel_path = sidecar["raw_image_rel_path"]
-            src_dir = os.path.dirname(image_path)
-            abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
-            if os.path.exists(abs_raw_path):
-                # 已經有備份且檔案存在，不需再備份
-                return True
-            else:
-                # 紀錄還在但檔案不見了，重新備份當前檔案視為原圖?
-                # 照需求: "放回原圖去raw_image找原圖 如果已經放回 回覆處理前狀態"
-                # 若檔案不見了可能被手動刪除，這裡視為需要重新備份
-                pass
-
-        # 執行備份
-        src_dir = os.path.dirname(image_path)
-        raw_dir = os.path.join(src_dir, "raw_image")
-        os.makedirs(raw_dir, exist_ok=True)
-        
-        # 原檔名
-        fname = os.path.basename(image_path)
-        dest_path = os.path.join(raw_dir, fname)
-        
-        # 如果 raw_image 也可以有同名衝突? 需求說 "用原檔名 複製一份"
-        # 假設 raw_image 裡就是最原始的
-        if not os.path.exists(dest_path):
-            shutil.copy2(image_path, dest_path)
-        
-        # 計算相對路徑存入 JSON
-        rel_path = os.path.relpath(dest_path, src_dir)
-        sidecar["raw_image_rel_path"] = rel_path
-        
-        # 標記 masked 狀態通常由 worker 更新，但這裡是備份邏輯
-        save_image_sidecar(image_path, sidecar)
-        return True
-    except Exception as e:
-        print(f"[Backup] 備份失敗 {image_path}: {e}")
-        return False
-
-def restore_original_image(image_path: str) -> bool:
-    """
-    嘗試從 sidecar 記錄的 raw_image 還原圖片。
-    """
-    try:
-        sidecar = load_image_sidecar(image_path)
-        if "raw_image_rel_path" not in sidecar:
-            return False
-            
-        rel_path = sidecar["raw_image_rel_path"]
-        src_dir = os.path.dirname(image_path)
-        abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
-        
-        if os.path.exists(abs_raw_path):
-            # "如果已經放回 回覆處理前狀態"
-            # 覆蓋當前圖片
-            shutil.copy2(abs_raw_path, image_path)
-            # 是否要刪除 mask 標記? "如果已經放回 (設計) 回覆處理前狀態"
-            # 通常這意味著不再是 masked 狀態
-            if "masked_text" in sidecar: del sidecar["masked_text"]
-            if "masked_background" in sidecar: del sidecar["masked_background"]
-            save_image_sidecar(image_path, sidecar)
-            return True
-        return False
-    except Exception as e:
-        print(f"[Restore] 還原失敗 {image_path}: {e}")
-        return False
-
-
-# ==========================================
-#  Raw Image Backup / Restore (原圖備份還原)
-# ==========================================
-
-def get_raw_image_dir(image_path: str) -> str:
-    """取得 raw_image 備份資料夾路徑"""
-    return os.path.join(os.path.dirname(image_path), "raw_image")
-
-
-def has_raw_backup(image_path: str) -> bool:
-    """
-    檢查圖片是否已有原圖備份。
-    檢查 sidecar JSON 中的 raw_backup_path 欄位。
-    """
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    if not raw_rel:
-        return False
-    
-    # 驗證備份檔案是否存在
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    return os.path.exists(raw_abs)
-
-
-def backup_raw_image(image_path: str) -> bool:
-    """
-    備份原圖到 raw_image 資料夾。
-    - 如果已有備份，不重複備份
-    - 備份後在 sidecar JSON 中記錄相對路徑
-    - 回傳 True 表示有執行備份，False 表示已存在備份
-    """
-    if not image_path or not os.path.exists(image_path):
-        return False
-    
-    # 檢查是否已有備份
-    if has_raw_backup(image_path):
-        return False
-    
-    try:
-        src_dir = os.path.dirname(image_path)
-        raw_dir = get_raw_image_dir(image_path)
-        os.makedirs(raw_dir, exist_ok=True)
-        
-        filename = os.path.basename(image_path)
-        dest_path = os.path.join(raw_dir, filename)
-        
-        # 避免檔名衝突
-        if os.path.exists(dest_path):
-            base, ext = os.path.splitext(filename)
-            for i in range(1, 9999):
-                dest_path = os.path.join(raw_dir, f"{base}_{i}{ext}")
-                if not os.path.exists(dest_path):
-                    break
-        
-        # 複製原檔 (不是移動，因為之後還要在原位置處理)
-        shutil.copy2(image_path, dest_path)
-        
-        # 計算相對路徑並儲存到 sidecar
-        rel_path = os.path.relpath(dest_path, src_dir)
-        sidecar = load_image_sidecar(image_path)
-        sidecar["raw_backup_path"] = rel_path
-        save_image_sidecar(image_path, sidecar)
-        
-        print(f"[Backup] 已備份原圖: {filename} -> {rel_path}")
-        return True
-        
-    except Exception as e:
-        print(f"[Backup] 備份失敗 {image_path}: {e}")
-        return False
-
-
-def restore_raw_image(image_path: str) -> bool:
-    """
-    從 raw_image 還原原圖。
-    - 如果沒有備份紀錄，回傳 False
-    - 還原後清除 sidecar 中的 mask 標記
-    - 回傳 True 表示還原成功
-    """
-    if not image_path:
-        return False
-    
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    
-    if not raw_rel:
-        print(f"[Restore] 找不到備份紀錄: {image_path}")
-        return False
-    
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    
-    if not os.path.exists(raw_abs):
-        print(f"[Restore] 備份檔案不存在: {raw_abs}")
-        return False
-    
-    try:
-        # 複製備份回原位置 (覆蓋目前的處理版本)
-        shutil.copy2(raw_abs, image_path)
-        
-        # 清除 sidecar 中的 mask 標記，但保留備份路徑
-        sidecar["masked_background"] = False
-        sidecar["masked_text"] = False
-        save_image_sidecar(image_path, sidecar)
-        
-        print(f"[Restore] 已還原: {os.path.basename(image_path)}")
-        return True
-        
-    except Exception as e:
-        print(f"[Restore] 還原失敗 {image_path}: {e}")
-        return False
-
-
-def delete_raw_backup(image_path: str) -> bool:
-    """
-    刪除原圖備份（當使用者確認不需要還原時）。
-    - 刪除 raw_image 中的備份檔案
-    - 清除 sidecar 中的備份路徑
-    """
-    if not image_path:
-        return False
-    
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    
-    if not raw_rel:
-        return False
-    
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    
-    try:
-        if os.path.exists(raw_abs):
-            os.remove(raw_abs)
-            print(f"[Backup] 已刪除備份: {raw_rel}")
-        
-        # 清除 sidecar 中的備份路徑
-        if "raw_backup_path" in sidecar:
-            del sidecar["raw_backup_path"]
-        save_image_sidecar(image_path, sidecar)
-        
-        return True
-        
-    except Exception as e:
-        print(f"[Backup] 刪除備份失敗 {image_path}: {e}")
-        return False
-
-
-def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
-    if os.path.exists(csv_path):
-        return True
-    try:
-        req = Request(TAGS_CSV_URL_RAW, headers={"User-Agent": "Mozilla/5.0"})
-        with urlopen(req, timeout=20) as resp:
-            data = resp.read()
-        with open(csv_path, "wb") as f:
-            f.write(data)
-        return True
-    except Exception as e:
-        print(f"[Tags.csv] 下載失敗: {e}")
-        return False
-
-
-def load_translations(csv_path=TAGS_CSV_LOCAL):
-    translations = {}
-    if not os.path.exists(csv_path):
-        ensure_tags_csv(csv_path)
-
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        # 使用 remove_underline 統一格式
-                        key = remove_underline(row[0].strip())
-                        translations[key] = row[1].strip()
-        except Exception as e:
-            print(f"Error loading translations: {e}")
-    return translations
-
-
-def parse_boorutag_meta(meta_path):
-    tags_meta = []
-    hint_info = []
-    try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f.readlines()]
-            lines += [''] * (20 - len(lines))
-
-            if len(lines) >= 19 and lines[18]:
-                tags_meta = [t.strip() for t in lines[18].split(',') if t.strip()]
-
-            if len(lines) >= 7 and lines[6] != "by artstyle" and lines[6]:
-                artist_val = lines[6].replace('by ', '').replace(' artstyle', '')
-                hint_info.append(f"the artist of this image: {{{artist_val}}}")
-
-            if len(lines) >= 10 and lines[9]:
-                sources = [s.strip() for s in lines[9].split(',') if s.strip()]
-                if len(sources) >= 3:
-                    hint_info.append("the copyright of this image: {{crossover}}")
-                else:
-                    hint_info.append("the copyright of this image: {{" + ', '.join(sources) + '}}')
-
-            if len(lines) >= 13 and lines[12]:
-                characters = [c.strip() for c in lines[12].split(',') if c.strip()]
-                if characters and len(characters) < 4:
-                    hint_info.append("the characters of this image: {{" + ', '.join(characters) + '}}')
-
-    except Exception as e:
-        print(f"[boorutag] 解析出錯 {meta_path}: {e}")
-    return tags_meta, hint_info
-
-
-# ==========================================
-#  Danbooru-style Query Filter
-# ==========================================
-import fnmatch
-
-class DanbooruQueryFilter:
-    """
-    Danbooru-style query parser and matcher.
-    Supports: AND (space), OR, NOT (-), grouping (()), wildcards (*), rating shortcuts, order.
-    """
-
-    def __init__(self, query: str):
-        self.query = query.strip()
-        self.order_mode = None  # 'landscape' or 'portrait'
-        self._parse_order()
-
-    def _parse_order(self):
-        """Extract order: directive from query."""
-        import re
-        match = re.search(r'\border:(landscape|portrait)\b', self.query, re.IGNORECASE)
-        if match:
-            self.order_mode = match.group(1).lower()
-            self.query = re.sub(r'\border:(landscape|portrait)\b', '', self.query, flags=re.IGNORECASE).strip()
-
-    def _normalize(self, text: str) -> str:
-        """Normalize text: lowercase, underscores to spaces."""
-        return text.lower().replace("_", " ").strip()
-
-    def _expand_rating(self, term: str) -> str:
-        """Expand rating shortcuts like rating:e -> rating:explicit."""
-        rating_map = {
-            "rating:e": "rating:explicit",
-            "rating:q": "rating:questionable",
-            "rating:s": "rating:sensitive",
-            "rating:g": "rating:general",
-        }
-        lower = term.lower()
-        return rating_map.get(lower, term)
-
-    def _term_matches(self, term: str, content: str) -> bool:
-        """Check if a single term matches the content."""
-        term = self._expand_rating(term)
-        term_norm = self._normalize(term)
-        content_norm = self._normalize(content)
-
-        # Handle wildcards
-        if "*" in term_norm:
-            # fnmatch style: * matches any characters
-            pattern = term_norm.replace(" ", "*")  # Allow flexible spacing
-            # Check each word in content
-            words = content_norm.split()
-            for word in words:
-                if fnmatch.fnmatch(word, pattern):
-                    return True
-            # Also check whole content
-            if fnmatch.fnmatch(content_norm, f"*{pattern}*"):
-                return True
-            return False
-
-        # Handle rating:q,s format (multiple ratings)
-        if term_norm.startswith("rating:") and "," in term_norm:
-            ratings = term_norm.replace("rating:", "").split(",")
-            for r in ratings:
-                r = r.strip()
-                expanded = self._expand_rating(f"rating:{r}")
-                if self._normalize(expanded) in content_norm:
-                    return True
-            return False
-
-        # Simple substring match for normalized content
-        return term_norm in content_norm
-
-    def _tokenize(self, query: str) -> list:
-        """Tokenize the query into terms and operators."""
-        import re
-        # Tokens: (, ), or, ~term, -term, -(, term
-        tokens = []
-        i = 0
-        query = query.strip()
-        
-        while i < len(query):
-            if query[i].isspace():
-                i += 1
-                continue
-            
-            # Grouping
-            if query[i] == '(':
-                tokens.append('(')
-                i += 1
-            elif query[i] == ')':
-                tokens.append(')')
-                i += 1
-            # Negation with group
-            elif query[i:i+2] == '-(':
-                tokens.append('-')
-                tokens.append('(')
-                i += 2
-            # Negation prefix
-            elif query[i] == '-':
-                # Find the term after -
-                i += 1
-                term_start = i
-                while i < len(query) and not query[i].isspace() and query[i] not in '()':
-                    i += 1
-                term = query[term_start:i]
-                if term:
-                    tokens.append(('-', term))
-            # Legacy OR prefix
-            elif query[i] == '~':
-                i += 1
-                term_start = i
-                while i < len(query) and not query[i].isspace() and query[i] not in '()':
-                    i += 1
-                term = query[term_start:i]
-                if term:
-                    tokens.append(('~', term))
-            # OR keyword
-            elif query[i:i+2].lower() == 'or' and (i+2 >= len(query) or query[i+2].isspace()):
-                tokens.append('or')
-                i += 2
-            # Regular term
-            else:
-                term_start = i
-                while i < len(query) and not query[i].isspace() and query[i] not in '()':
-                    i += 1
-                term = query[term_start:i]
-                if term and term.lower() != 'or':
-                    tokens.append(term)
-        
-        return tokens
-
-    def _evaluate(self, tokens: list, content: str) -> bool:
-        """Evaluate tokenized query against content."""
-        if not tokens:
-            return True
-
-        # Handle legacy OR (~term ~term)
-        tilde_terms = [t[1] for t in tokens if isinstance(t, tuple) and t[0] == '~']
-        if tilde_terms:
-            # Any of the tilde terms must match
-            other_tokens = [t for t in tokens if not (isinstance(t, tuple) and t[0] == '~')]
-            tilde_result = any(self._term_matches(term, content) for term in tilde_terms)
-            if other_tokens:
-                return tilde_result and self._evaluate(other_tokens, content)
-            return tilde_result
-
-        # Split by OR
-        or_groups = []
-        current_group = []
-        paren_depth = 0
-        
-        for token in tokens:
-            if token == '(':
-                paren_depth += 1
-                current_group.append(token)
-            elif token == ')':
-                paren_depth -= 1
-                current_group.append(token)
-            elif token == 'or' and paren_depth == 0:
-                if current_group:
-                    or_groups.append(current_group)
-                current_group = []
-            else:
-                current_group.append(token)
-        
-        if current_group:
-            or_groups.append(current_group)
-
-        # If we have OR groups, any must match
-        if len(or_groups) > 1:
-            return any(self._evaluate_and_group(group, content) for group in or_groups)
-        
-        return self._evaluate_and_group(tokens, content)
-
-    def _evaluate_and_group(self, tokens: list, content: str) -> bool:
-        """Evaluate an AND group (all must match, except negations)."""
-        i = 0
-        while i < len(tokens):
-            token = tokens[i]
-            
-            if token == '(':
-                # Find matching )
-                paren_depth = 1
-                j = i + 1
-                while j < len(tokens) and paren_depth > 0:
-                    if tokens[j] == '(':
-                        paren_depth += 1
-                    elif tokens[j] == ')':
-                        paren_depth -= 1
-                    j += 1
-                sub_tokens = tokens[i+1:j-1]
-                if not self._evaluate(sub_tokens, content):
-                    return False
-                i = j
-            elif token == ')':
-                i += 1
-            elif token == '-':
-                # Next token is negated
-                i += 1
-                if i < len(tokens):
-                    next_token = tokens[i]
-                    if next_token == '(':
-                        # Negated group
-                        paren_depth = 1
-                        j = i + 1
-                        while j < len(tokens) and paren_depth > 0:
-                            if tokens[j] == '(':
-                                paren_depth += 1
-                            elif tokens[j] == ')':
-                                paren_depth -= 1
-                            j += 1
-                        sub_tokens = tokens[i+1:j-1]
-                        if self._evaluate(sub_tokens, content):
-                            return False
-                        i = j
-                    else:
-                        i += 1
-            elif isinstance(token, tuple):
-                op, term = token
-                if op == '-':
-                    if self._term_matches(term, content):
-                        return False
-                elif op == '~':
-                    pass  # Handled above
-                i += 1
-            elif isinstance(token, str) and token not in ('(', ')', 'or'):
-                if not self._term_matches(token, content):
-                    return False
-                i += 1
-            else:
-                i += 1
-        
-        return True
-
-    def matches(self, content: str) -> bool:
-        """Check if content matches the query."""
-        if not self.query:
-            return True
-        tokens = self._tokenize(self.query)
-        return self._evaluate(tokens, content)
-
-    def sort_images(self, image_paths: list) -> list:
-        """Sort images by order mode (landscape/portrait)."""
-        if not self.order_mode:
-            return image_paths
-        
-        def get_aspect(path):
-            try:
-                img = Image.open(path)
-                return img.width / img.height
-            except Exception:
-                return 1.0
-        
-        if self.order_mode == 'landscape':
-            return sorted(image_paths, key=lambda p: -get_aspect(p))
-        elif self.order_mode == 'portrait':
-            return sorted(image_paths, key=lambda p: get_aspect(p))
-        return image_paths
-
-
-def extract_bracket_content(text):
-    return re.findall(r'\{(.*?)\}', text)
-
-
-def smart_parse_tags(text):
-    """
-    Parses text into a list of dictionaries {'text': str, 'trans': str}.
-    """
-    if not text:
-        return []
-
-    clean_text = text.strip()
-    if not clean_text:
-        return []
-
-    parsed_items = []
-    lines = [l.strip() for l in clean_text.split('\n') if l.strip()]
-
-    is_sentence_mode = False
-    if len(lines) > 1:
-        for line in lines:
-            if (line.startswith("(") and line.endswith(")")) or \
-               (line.startswith("（") and line.endswith("）")):
-                is_sentence_mode = True
-                break
-    elif "." in clean_text and "," not in clean_text and len(clean_text) > 50:
-        is_sentence_mode = True
-        lines = [l.strip() for l in clean_text.replace(". ", ".\n").split('\n') if l.strip()]
-
-    if is_sentence_mode:
-        i = 0
-        while i < len(lines):
-            current_line = lines[i]
-            if (current_line.startswith("(") and current_line.endswith(")")) or \
-               (current_line.startswith("（") and current_line.endswith("）")):
-                i += 1
-                continue
-
-            trans = None
-            if i + 1 < len(lines):
-                next_line = lines[i + 1]
-                if (next_line.startswith("(") and next_line.endswith(")")) or \
-                   (next_line.startswith("（") and next_line.endswith("）")):
-                    trans = next_line[1:-1].strip()
-                    i += 1
-
-            parsed_items.append({'text': current_line, 'trans': trans})
-            i += 1
-
-    else:
-        segments = clean_text.replace("\n", ",").split(",")
-        for s in segments:
-            if s.strip():
-                parsed_items.append({'text': s.strip(), 'trans': None})
-
-    return parsed_items
-
-
-def is_basic_character_tag(text: str, cfg: dict) -> bool:
-    """
-    判定一段文字（tag 或句子）是否為特徵內容。
-    邏輯：任何黑名單 word 包含在文字中，且沒有任何白名單 word 包含在文字中。
-    """
-    if not text:
-        return False
-    
-    # 正規化：小寫，保持空格
-    t = text.strip().lower()
-    
-    # 取得黑白名單 words（以逗號分隔）
-    bl_words = [w.strip().lower() for w in cfg.get("char_tag_blacklist_words", []) if w.strip()]
-    wl_words = [w.strip().lower() for w in cfg.get("char_tag_whitelist_words", []) if w.strip()]
-    
-    # 如果沒有黑名單，直接回傳 False
-    if not bl_words:
-        return False
-    
-    # 檢查是否包含任何黑名單 word
-    has_blacklist = any(bw in t for bw in bl_words)
-    if not has_blacklist:
-        return False
-    
-    # 檢查是否包含任何白名單 word（若有則不算符合）
-    has_whitelist = any(ww in t for ww in wl_words)
-    if has_whitelist:
-        return False
-    
-    return True
-
-
-def normalize_for_match(s: str) -> str:
-    if s is None:
-        return ""
-    t = str(s).strip()
-    t = t.replace(", ", "").replace(",", "")
-    t = t.strip()
-    t = t.rstrip(".")
-    return t.strip()
-
-
-def cleanup_csv_like_text(text: str, force_lower: bool = False) -> str:
-    parts = [p.strip() for p in text.split(",")]
-    parts = [p for p in parts if p]
-    result = ", ".join(parts)
-    if force_lower:
-        result = result.lower()
-    return result
-
-
-def split_csv_like_text(text: str):
-    return [p.strip() for p in text.split(",") if p.strip()]
-
-
-def try_tags_to_text_list(tags_list):
-    """
-    先 tags_to_text，再拆回 list；若失敗就 fallback
-    """
-    try:
-        s = tags_to_text(tags_list)
-        parts = [p.strip() for p in s.split(",") if p.strip()]
-        return parts
-    except Exception:
-        return [t.strip() for t in tags_list if str(t).strip()]
+# Danbooru filter and Utilities have been moved to lib.utils
 
 class StrokeCanvas(QLabel):
     def __init__(self, pixmap: QPixmap, parent=None):
@@ -2013,6 +1156,9 @@ class MainWindow(QMainWindow):
         self.batch_llm_thread = None
         self.batch_unmask_thread = None
         self.batch_mask_text_thread = None
+        self.tagger_thread = None # Add missing single threads
+        self.llm_thread = None
+
 
         self.init_ui()
         self.apply_theme()
@@ -2944,15 +2090,7 @@ class MainWindow(QMainWindow):
                 print(f"Token count error: {e}")
                 self.txt_token_label.setText(self.tr("label_tokens_err"))
 
-    def retranslate_ui(self):
-        # ... other retranslate calls ...
-        self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
-        self.btn_reset_prompt.setText(self.tr("btn_reset_prompt"))
-        # Update token label text if it's currently showing "Tokens: Err"
-        if self.txt_token_label.text() == "Tokens: Err":
-            self.txt_token_label.setText(self.tr("label_tokens_err"))
-        # Update NL page label
-        self.update_nl_page_controls()
+
 
 
 # ==========================
@@ -3332,8 +2470,7 @@ class MainWindow(QMainWindow):
         self.refresh_tags_tab()
         self.on_text_changed()
 
-    def reset_prompt(self):
-        self.prompt_edit.setPlainText(DEFAULT_USER_PROMPT_TEMPLATE)
+
 
     def build_llm_tags_context_for_image(self, image_path: str) -> str:
         top_tags = []
@@ -3382,42 +2519,7 @@ class MainWindow(QMainWindow):
 
         return "\n".join(all_tags)
 
-    def run_llm_generation(self):
-        if not self.current_image_path:
-            return
 
-        tags_text = self.build_llm_tags_context_for_image(self.current_image_path)
-        user_prompt = self.prompt_edit.toPlainText()
-
-        self.btn_run_llm.setEnabled(False)
-        self.btn_run_llm.setText("Running LLM...")
-
-        # Check empty tags logic
-        if "{tags}" in user_prompt and not tags_text.strip():
-            reply = QMessageBox.question(
-                self, "Warning", 
-                "Prompt 包含 {tags} 但目前沒有標籤資料。\n確定要繼續嗎？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.No:
-                self.btn_run_llm.setEnabled(True)
-                self.btn_batch_llm.setEnabled(True)
-                return
-
-        self.llm_thread = LLMWorker(
-            self.llm_base_url,
-            self.api_key,
-            self.model_name,
-            self.llm_system_prompt,
-            user_prompt,
-            self.current_image_path,
-            tags_text,
-            max_dim=int(self.settings.get("llm_max_image_dimension", 1024)),
-            settings=self.settings
-        )
-        self.llm_thread.finished.connect(self.on_llm_finished_latest_only)
-        self.llm_thread.error.connect(self.on_llm_error_no_popup)
-        self.llm_thread.start()
 
     @staticmethod
     def extract_llm_content_and_postprocess(full_text: str, force_lowercase: bool = True) -> str:
@@ -3526,12 +2628,12 @@ class MainWindow(QMainWindow):
         ctx = ImageContext(self.current_image_path)
         proc = UnmaskProcessor(self.app_settings, is_batch=False)
         
-        self.btn_batch_unmask_thread = GenericBatchWorker([ctx], proc)
-        self.btn_batch_unmask_thread.progress.connect(self.show_progress)
-        self.btn_batch_unmask_thread.item_done.connect(self.on_batch_unmask_per_image)
-        self.btn_batch_unmask_thread.finished_all.connect(lambda: self.on_batch_done("單圖去背完成"))
-        self.btn_batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
-        self.btn_batch_unmask_thread.start()
+        self.batch_unmask_thread = GenericBatchWorker([ctx], proc)
+        self.batch_unmask_thread.progress.connect(self.show_progress)
+        self.batch_unmask_thread.item_done.connect(self.on_batch_unmask_per_image)
+        self.batch_unmask_thread.finished_all.connect(lambda: self.on_batch_done("單圖去背完成"))
+        self.batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
+        self.batch_unmask_thread.start()
 
     def mask_text_current_image(self):
         if not self.current_image_path:
@@ -4006,21 +3108,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Batch Tagger 完成", 5000)
 
     
-    def use_default_prompt(self):
-        """Switch prompt editor to Default Prompt template."""
-        self.current_prompt_mode = "default"
-        try:
-            self.prompt_edit.setPlainText(self.default_user_prompt_template)
-        except Exception:
-            pass
 
-    def use_custom_prompt(self):
-        """Switch prompt editor to Custom Prompt template."""
-        self.current_prompt_mode = "custom"
-        try:
-            self.prompt_edit.setPlainText(self.custom_prompt_template)
-        except Exception:
-            pass
 
     def run_batch_llm(self):
         if not self.image_files:
@@ -4244,7 +3332,12 @@ class MainWindow(QMainWindow):
 
     def cancel_batch(self):
         self.statusBar().showMessage("正在中止...", 2000)
-        for attr in ['batch_unmask_thread', 'batch_mask_text_thread', 'batch_restore_thread', 'batch_tagger_thread', 'batch_llm_thread']:
+        thread_names = [
+            'batch_unmask_thread', 'batch_mask_text_thread', 
+            'batch_restore_thread', 'batch_tagger_thread', 
+            'batch_llm_thread', 'tagger_thread', 'llm_thread'
+        ]
+        for attr in thread_names:
             thread = getattr(self, attr, None)
             if thread is not None and thread.isRunning():
                 thread.stop()
@@ -4278,7 +3371,6 @@ class MainWindow(QMainWindow):
             self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
 
             if hasattr(self, "prompt_edit") and self.prompt_edit:
-                self.prompt_edit.setPlainText(self.default_user_prompt_template)
                 self.prompt_edit.setPlainText(self.default_user_prompt_template)
 
             self.statusBar().showMessage(self.tr("status_ready"), 4000)
