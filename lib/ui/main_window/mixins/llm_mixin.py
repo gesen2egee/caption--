@@ -57,23 +57,12 @@ class LLMMixin:
         self.btn_run_llm.setEnabled(True)
         if hasattr(self, 'bot_label'):
             self.bot_label.setText(f"<b>{self.tr('label_txt_content')}</b>")
-        self.statusBar().showMessage("LLM Done", 3000)
+        self.statusBar().showMessage(self.tr("status.status_llm_done"), 3000)
         
         # Update UI if current
         if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.path):
-             # Append result
-             result_text = ctx.llm_result or ""
-             if result_text:
-                 self.nl_latest = result_text
-                 # Add to history (nl_pages)
-                 self.save_nl_for_image(self.current_image_path, result_text)
-                 
-                 # Reload to update paging
-                 if hasattr(self, 'load_nl_for_current_image'):
-                     self.nl_pages = self.load_nl_pages_for_image(self.current_image_path)
-                     self.nl_page_index = len(self.nl_pages) - 1
-                     self.refresh_nl_tab()
-                     self.update_nl_page_controls()
+            # 重新載入整個圖片以刷新所有內容（包括 NL 分頁和標籤）
+            self.load_image()
 
     def on_llm_single_error(self, err):
         """單圖 LLM 錯誤回調"""

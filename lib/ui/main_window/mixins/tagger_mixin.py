@@ -36,35 +36,35 @@ class TaggerMixin:
             
         self.statusBar().showMessage(self.tr("msg_tagging"))
         
+        # 禁用按鈕防止重複點擊
+        if hasattr(self, 'btn_auto_tag'):
+            self.btn_auto_tag.setEnabled(False)
+        
         ctx = ImageContext(self.current_image_path)
         self.tagger_thread = TaggerWorker(ctx, self.app_settings)
         self.tagger_thread.finished.connect(self.on_auto_tag_finished)
-        self.tagger_thread.error.connect(lambda e: QMessageBox.warning(self, "Tagger Error", str(e)))
+        self.tagger_thread.error.connect(self.on_auto_tag_error)
         self.tagger_thread.start()
+    
+    def on_auto_tag_error(self, err):
+        """單圖打標錯誤回調"""
+        if hasattr(self, 'btn_auto_tag'):
+            self.btn_auto_tag.setEnabled(True)
+        QMessageBox.warning(self, self.tr("error.error_tagger_failed"), str(err))
 
     def on_auto_tag_finished(self, ctx: ImageContext):
         """單圖打標完成回調"""
+        # 恢復按鈕狀態
+        if hasattr(self, 'btn_auto_tag'):
+            self.btn_auto_tag.setEnabled(True)
+            
         if hasattr(self, 'statusBar'):
-            self.statusBar().showMessage("Tagging done", 3000)
+            self.statusBar().showMessage(self.tr("status.status_tagging_done"), 3000)
             
         # Update UI if it's still the current image
         if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.path):
-            self.tagger_tags = ctx.tagger_tags_list # update memory
-            
-            # Update Tagger flow widget
-            active_text = self.txt_edit.toPlainText() if hasattr(self, 'txt_edit') else ""
-            if hasattr(self, 'flow_tagger'):
-                # 重新載入 sidecar 確保最新
-                from lib.utils import load_image_sidecar, smart_parse_tags
-                sidecar = load_image_sidecar(self.current_image_path)
-                raw = sidecar.get("tagger_tags", "")
-                self.tagger_tags = [x.strip() for x in raw.split(",") if x.strip()]
-                
-                self.flow_tagger.render_tags_flow(
-                    smart_parse_tags(", ".join(self.tagger_tags)),
-                    active_text,
-                    self.settings
-                )
+            # 重新載入整個圖片以刷新所有內容
+            self.load_image()
     
     def run_batch_tagger(self, to_txt=False):
         """批量打標"""
