@@ -14,11 +14,14 @@ from lib.const import DEFAULT_APP_SETTINGS
 class TagButton(QPushButton):
     toggled_tag = pyqtSignal(str, bool)
 
-    def __init__(self, text, translation=None, parent=None):
+    def __init__(self, text, translation=None, parent=None, is_active=None):
         super().__init__(parent)
         self.raw_text = text
         self.translation = translation
         self.setCheckable(True)
+        if is_active is not None:
+            self.setChecked(is_active)
+            
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
 
         self.layout = QVBoxLayout(self)
@@ -70,6 +73,7 @@ class TagButton(QPushButton):
                 border-radius: 4px;
                 background-color: {bg_color};
                 color: {text_color};
+                text-align: left;
             }}
             QPushButton:checked {{
                 background-color: {checked_bg};
@@ -108,7 +112,12 @@ class TagButton(QPushButton):
 class TagFlowWidget(QWidget):
     tag_clicked = pyqtSignal(str, bool)
 
-    def __init__(self, parent=None, use_scroll=True):
+    def __init__(self, parent=None, use_scroll=True, on_tag_click=None):
+        # 兼容性處理: 如果 parent 不是 QWidget (例如是 settings dict)，則設為 None
+        from PyQt6.QtWidgets import QWidget
+        if not isinstance(parent, QWidget):
+            parent = None
+            
         super().__init__(parent)
         self.use_scroll = use_scroll
         self.layout = QVBoxLayout(self)
@@ -116,6 +125,9 @@ class TagFlowWidget(QWidget):
 
         self.translations_csv = {}
         self.buttons = {}
+
+        if on_tag_click:
+            self.tag_clicked.connect(on_tag_click)
 
         if self.use_scroll:
             self.scroll = QScrollArea()
@@ -174,7 +186,6 @@ class TagFlowWidget(QWidget):
             text = item['text']
             trans = item['trans']
             if not trans:
-                # 使用 remove_underline 進行統一匹配
                 lookup_key = remove_underline(text)
                 trans = self.translations_csv.get(lookup_key)
 
@@ -187,7 +198,7 @@ class TagFlowWidget(QWidget):
 
             btn.toggled_tag.connect(self.handle_tag_toggle)
             self.buttons[text] = btn
-            # 特徵標籤標記
+            
             if cfg:
                 if is_basic_character_tag(text, cfg):
                     btn.set_is_character(True)
@@ -206,36 +217,25 @@ class TagFlowWidget(QWidget):
                 item_count_in_row = 0
 
         self.container_layout.addWidget(wrapper)
-
         self.sync_state(active_text_content)
 
     def handle_tag_toggle(self, tag, checked):
         self.tag_clicked.emit(tag, checked)
 
     def sync_state(self, active_text_content: str):
-        # 1. CSV split matching (exact full match of segments)
         current_tokens = split_csv_like_text(active_text_content)
         current_norm = set(normalize_for_match(t) for t in current_tokens)
-        
-        # 2. Text search (Word boundary regex match)
-        # 用於處理 LLM 產生的自然語言句子
         search_text = active_text_content.lower()
 
         for tag, btn in self.buttons.items():
             btn.blockSignals(True)
-            
-            # Check 1: CSV match
             is_active = normalize_for_match(tag) in current_norm
-            
-            # Check 2: Regex match if not found yet
             if not is_active:
                 try:
-                    # Escape tag for regex, add word boundaries
                     esc = re.escape(tag.lower())
                     if re.search(rf"\b{esc}\b", search_text):
                         is_active = True
                 except Exception:
                     pass
-            
             btn.setChecked(is_active)
             btn.blockSignals(False)

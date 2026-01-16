@@ -48,7 +48,7 @@ class TaggerMixin:
             self.statusBar().showMessage("Tagging done", 3000)
             
         # Update UI if it's still the current image
-        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.image_path):
+        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.path):
             self.tagger_tags = ctx.tagger_tags_list # update memory
             
             # Update Tagger flow widget

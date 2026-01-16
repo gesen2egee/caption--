@@ -114,7 +114,7 @@ class AppCoreMixin:
         self.sec1_title = QLabel(f"<b>{self.tr('sec_folder_meta')}</b>")
         layout.addWidget(self.sec1_title)
         
-        self.flow_top = TagFlowWidget(self.settings, 
+        self.flow_top = TagFlowWidget(self, 
                                     on_tag_click=lambda t, c: self.on_tag_button_toggled(t, c))
         layout.addWidget(self.flow_top)
         
@@ -127,7 +127,7 @@ class AppCoreMixin:
         self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
         layout.addWidget(self.btn_add_custom_tag)
         
-        self.flow_custom = TagFlowWidget(self.settings,
+        self.flow_custom = TagFlowWidget(self,
                                        on_tag_click=lambda t, c: self.on_tag_button_toggled(t, c))
         layout.addWidget(self.flow_custom)
         
@@ -152,7 +152,7 @@ class AppCoreMixin:
         
         layout.addLayout(h_tagger)
         
-        self.flow_tagger = TagFlowWidget(self.settings,
+        self.flow_tagger = TagFlowWidget(self,
                                        on_tag_click=lambda t, c: self.on_tag_button_toggled(t, c))
         layout.addWidget(self.flow_tagger)
         
@@ -217,7 +217,7 @@ class AppCoreMixin:
         layout.addLayout(h_nav)
         
         # Result Flow
-        self.flow_nl = TagFlowWidget(self.settings,
+        self.flow_nl = TagFlowWidget(self,
                                    on_tag_click=lambda t, c: self.on_tag_button_toggled(t, c))
         # Use ScrollArea for result
         sa_nl = QScrollArea()

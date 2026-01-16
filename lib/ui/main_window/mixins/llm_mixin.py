@@ -60,7 +60,7 @@ class LLMMixin:
         self.statusBar().showMessage("LLM Done", 3000)
         
         # Update UI if current
-        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.image_path):
+        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(ctx.path):
              # Append result
              result_text = ctx.llm_result or ""
              if result_text:
