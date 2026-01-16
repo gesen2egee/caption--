@@ -88,9 +88,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
 
         # UI Init
         self.setup_ui_components() # From AppCoreMixin
-        self.apply_theme() # From ThemeMixin
-        if hasattr(self, 'setup_shortcuts'):
-            self.setup_shortcuts() # From ShortcutsMixin
             
         self._hf_tokenizer = None
 
@@ -98,7 +95,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         last_dir = self.settings.get("last_open_dir", "")
         if last_dir and os.path.exists(last_dir):
             self.root_dir_path = last_dir
-            self.refresh_file_list() # From FileMixin
+            # Delay loading to prevent freeze on startup
+            QTimer.singleShot(100, self.refresh_file_list) 
 
         # Check CUDA availability
         try:
