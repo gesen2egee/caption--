@@ -138,8 +138,12 @@ from lib.ui.main_window.mixins.theme_mixin import ThemeMixin
 from lib.ui.main_window.mixins.nl_mixin import NLMixin
 from lib.ui.main_window.mixins.dialogs_mixin import DialogsMixin
 from lib.ui.main_window.mixins.progress_mixin import ProgressMixin
+from lib.ui.main_window.mixins.file_mixin import FileMixin
+from lib.ui.main_window.mixins.filter_mixin import FilterMixin
+from lib.ui.main_window.mixins.navigation_mixin import NavigationMixin
 
-class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, QMainWindow):
+class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, 
+                 FileMixin, FilterMixin, NavigationMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -550,83 +554,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # ==========================
     # Logic: Storage & Init
     # ==========================
-    def refresh_file_list(self, current_path=None): # 改回參數名以支援舊有呼叫
-        if not self.root_dir_path or not os.path.exists(self.root_dir_path):
-            return
-        
-        dir_path = self.root_dir_path
-        # 若無外部傳入路徑，則嘗試保留目前選取的路徑
-        if not current_path:
-            current_path = self.current_image_path
-        
-        self.image_files = []
-        valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-        ignore_dirs = {"no_used", "unmask"}
+    # refresh_file_list() moved to Mixin
 
-        # Copied logic from open_directory scan
-        try:
-            for entry in os.scandir(dir_path):
-                if entry.is_file() and entry.name.lower().endswith(valid_exts):
-                    if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
-                        continue
-                    self.image_files.append(entry.path)
-        except Exception:
-            pass
-
-        try:
-            for entry in os.scandir(dir_path):
-                if entry.is_dir():
-                    if entry.name.lower() in ignore_dirs:
-                        continue
-                    try:
-                        for sub in os.scandir(entry.path):
-                            if sub.is_file() and sub.name.lower().endswith(valid_exts):
-                                if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
-                                    continue
-                                self.image_files.append(sub.path)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        self.image_files = natsorted(self.image_files)
-
-        if not self.image_files:
-            self.image_label.clear()
-            self.txt_edit.clear()
-            self.img_info_label.setText("No Images Found")
-            self.current_index = -1
-            self.current_image_path = None
-            return
-
-        # Restore index
-        if current_path and current_path in self.image_files:
-            self.current_index = self.image_files.index(current_path)
-        else:
-            # If current file gone, try to stay at same index or 0
-            if self.current_index >= len(self.image_files):
-                self.current_index = len(self.image_files) - 1
-            if self.current_index < 0:
-                self.current_index = 0
-        
-        self.load_image()
-        self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
-
-    def open_directory(self):
-        default_dir = self.settings.get("last_open_dir", "")
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"), default_dir)
-        if dir_path:
-            self.root_dir_path = dir_path
-            self.settings["last_open_dir"] = dir_path
-            save_app_settings(self.settings)
-
-            # Reset filter state
-            self.filter_active = False
-            self.filter_input.clear()
-            self.all_image_files = []
-            self.filtered_image_files = []
-
-            self.refresh_file_list()
 
     def load_image(self):
         if 0 <= self.current_index < len(self.image_files):
@@ -708,85 +637,14 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         
         return " ".join(content_parts)
 
-    def apply_filter(self):
-        """Apply Danbooru-style filter to image list."""
-        query = self.filter_input.text().strip()
-        
-        if not query:
-            self.clear_filter()
-            return
-        
-        if not self.image_files and not self.all_image_files:
-            return
-        
-        # Store original list if not already stored
-        if not self.all_image_files:
-            self.all_image_files = list(self.image_files)
-        
-        # Create filter
-        qf = DanbooruQueryFilter(query)
-        
-        # Filter images
-        matched = []
-        for img_path in self.all_image_files:
-            content = self._get_image_content_for_filter(img_path)
-            if qf.matches(content):
-                matched.append(img_path)
-        
-        # Apply ordering
-        matched = qf.sort_images(matched)
-        
-        if not matched:
-            self.statusBar().showMessage("篩選結果為空", 3000)
-            return
-        
-        self.filtered_image_files = matched
-        self.image_files = matched
-        self.filter_active = True
-        self.current_index = 0
-        self.load_image()
-        self.statusBar().showMessage(f"篩選結果: {len(matched)} 張圖片", 3000)
+    # apply_filter() moved to Mixin
 
-    def clear_filter(self):
-        """Clear filter and restore original image list."""
-        self.filter_input.clear()
-        
-        if self.all_image_files:
-            current_path = self.current_image_path
-            self.image_files = list(self.all_image_files)
-            self.all_image_files = []
-            self.filtered_image_files = []
-            self.filter_active = False
-            
-            # Try to keep current image selected
-            if current_path and current_path in self.image_files:
-                self.current_index = self.image_files.index(current_path)
-            else:
-                self.current_index = 0
-            
-            if self.image_files:
-                self.load_image()
-            self.statusBar().showMessage("已清除篩選", 2000)
 
-    def next_image(self):
-        if self.current_index < len(self.image_files) - 1:
-            self.current_index += 1
-            self.load_image()
+    # clear_filter() moved to Mixin
 
-    def prev_image(self):
-        if self.current_index > 0:
-            self.current_index -= 1
-            self.load_image()
 
-    def first_image(self):
-        if self.image_files:
-            self.current_index = 0
-            self.load_image()
+    # next_image() moved to Mixin
 
-    def last_image(self):
-        if self.image_files:
-            self.current_index = len(self.image_files) - 1
-            self.load_image()
 
     def jump_to_index(self):
         try:
@@ -934,39 +792,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
         QTimer.singleShot(10, self.update_image_display)
 
-    def delete_current_image(self):
-        if not self.current_image_path:
-            return
-        reply = QMessageBox.question(
-            self, "Confirm", self.tr("msg_delete_confirm"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            src_dir = os.path.dirname(self.current_image_path)
-            no_used_dir = os.path.join(src_dir, "no_used")
-            if not os.path.exists(no_used_dir):
-                os.makedirs(no_used_dir)
+    # delete_current_image() moved to Mixin
 
-            files_to_move = [self.current_image_path]
-            for ext in [".txt", ".npz", ".boorutag", ".pool.json", ".json"]:
-                p = os.path.splitext(self.current_image_path)[0] + ext
-                if os.path.exists(p):
-                    files_to_move.append(p)
-
-            for f_path in files_to_move:
-                try:
-                    shutil.move(f_path, os.path.join(no_used_dir, os.path.basename(f_path)))
-                except Exception:
-                    pass
-
-            self.image_files.pop(self.current_index)
-            if self.current_index >= len(self.image_files):
-                self.current_index -= 1
-            if self.image_files:
-                self.load_image()
-            else:
-                self.image_label.clear()
-                self.txt_edit.clear()
 
     def on_text_changed(self):
         if not self.current_image_path:
