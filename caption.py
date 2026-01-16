@@ -141,9 +141,10 @@ from lib.ui.main_window.mixins.progress_mixin import ProgressMixin
 from lib.ui.main_window.mixins.file_mixin import FileMixin
 from lib.ui.main_window.mixins.filter_mixin import FilterMixin
 from lib.ui.main_window.mixins.navigation_mixin import NavigationMixin
+from lib.ui.main_window.mixins.text_edit_mixin import TextEditMixin
 
 class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, 
-                 FileMixin, FilterMixin, NavigationMixin, QMainWindow):
+                 FileMixin, FilterMixin, NavigationMixin, TextEditMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -795,54 +796,9 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # delete_current_image() moved to Mixin
 
 
-    def on_text_changed(self):
-        if not self.current_image_path:
-            return
-        
-        content = self.txt_edit.toPlainText()
-        original_content = content
-        
-        # 自動移除空行
-        if self.settings.get("text_auto_remove_empty_lines", True):
-            lines = content.split("\n")
-            lines = [line for line in lines if line.strip()]
-            content = "\n".join(lines)
-        
-        # 自動格式化 (用 , 分割，去除空白，用 ', ' 重組)
-        if self.settings.get("text_auto_format", True):
-            # 如果內容看起來是 CSV 格式
-            if "," in content and "\n" not in content.strip():
-                parts = [p.strip() for p in content.split(",") if p.strip()]
-                content = ", ".join(parts)
-        
-        # 如果內容有變動，更新編輯框
-        if content != original_content:
-            cursor_pos = self.txt_edit.textCursor().position()
-            self.txt_edit.blockSignals(True)
-            self.txt_edit.setPlainText(content)
-            self.txt_edit.blockSignals(False)
-            # 嘗試恢復游標位置
-            cursor = self.txt_edit.textCursor()
-            cursor.setPosition(min(cursor_pos, len(content)))
-            self.txt_edit.setTextCursor(cursor)
-        
-        # 自動儲存 txt
-        if self.settings.get("text_auto_save", True):
-            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
-            try:
-                with open(txt_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-            except Exception:
-                pass
+    # on_text_changed() moved to TextEditMixin
 
-        self.flow_top.sync_state(content)
-        self.flow_custom.sync_state(content)
-        self.flow_tagger.sync_state(content)
-        self.flow_nl.sync_state(content)
 
-        self.update_txt_token_count()
-
-    
     def _get_clip_tokenizer(self):
         if CLIPTokenizer is None:
             return None
@@ -853,59 +809,9 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
                 self._clip_tokenizer = None
         return self._clip_tokenizer
 
-    def _get_tokenizer(self):
-        """
-        Lazy load tokenizer to avoid startup lag.
-        Uses the standard SD 1.5 CLIP model (openai/clip-vit-large-patch14).
-        """
-        if not TRANSFORMERS_AVAILABLE:
-            return None
-            
-        if self._hf_tokenizer is None:
-            try:
-                # 這裡會下載約 1MB 的 tokenizer 設定檔 (只會下載一次)
-                # 這是 Stable Diffusion 1.x / 2.x 最常用的 Text Encoder
-                self._hf_tokenizer = AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-            except Exception as e:
-                print(f"Failed to load CLIP tokenizer: {e}")
-                self._hf_tokenizer = None
-                
-        return self._hf_tokenizer
-
-    def update_txt_token_count(self):
-            content = self.txt_edit.toPlainText()
-            tokenizer = self._get_tokenizer()
-
-            count = 0
-
-            try:
-                if tokenizer:
-                    # 使用 CLIP Tokenizer 精確計算
-                    tokens = tokenizer.encode(content, add_special_tokens=False)
-                    count = len(tokens)
-                else:
-                    # 降級使用 Regex 估算
-                    if content.strip():
-                        tokens = re.findall(r'\w+|[^\w\s]', content)
-                        count = len(tokens)
-                
-                # 設定顏色：超過 225 才變紅，否則全黑
-                text_color = "red" if count > 225 else "black"
-                self.txt_token_label.setStyleSheet(f"color: {text_color}")
-                
-                # 設定文字：只顯示 "Tokens: 數字"
-                self.txt_token_label.setText(f"{self.tr('label_tokens')}{count}")
-                
-            except Exception as e:
-                print(f"Token count error: {e}")
-                self.txt_token_label.setText(self.tr("label_tokens_err"))
+    # _get_tokenizer() moved to TextEditMixin
 
 
-
-
-# ==========================
-    # TAGS sources
-    # ==========================
     def build_top_tags_for_current_image(self):
         hints = []
         tags_from_meta = []
@@ -1086,66 +992,12 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
 
         self.on_text_changed()
 
-    def insert_token_at_cursor(self, token: str):
-        token = token.strip()
-        if not token:
-            return
+    # insert_token_at_cursor() moved to TextEditMixin
 
-        edit = self.txt_edit
-        text = edit.toPlainText()
-        cursor = edit.textCursor()
-        
-        # (2) 如果沒有游標 (游標在開頭且沒焦點) 則附加在 text 尾
-        # 在 PyQt 中，hasFocus() 可以在點擊按鈕前判斷是否有交互
-        if cursor.position() == 0 and len(text) > 0 and not edit.hasFocus():
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            edit.setTextCursor(cursor)
 
-        # (1) 優先插入在游標位置
-        pos = cursor.position()
-        before = text[:pos]
-        after = text[pos:]
+    # remove_token_everywhere() moved to TextEditMixin
 
-        # 前後加 ", " 然後格式化
-        new_text = before + ", " + token + ", " + after
-        final = cleanup_csv_like_text(new_text, self.english_force_lowercase)
 
-        edit.blockSignals(True)
-        edit.setPlainText(final)
-        edit.blockSignals(False)
-        
-        # 格式化後嘗試把游標移到插入的 token 之後
-        new_cursor = edit.textCursor()
-        # 簡單搜尋 token 出現的位置 (從之前位置附近開始找)
-        search_start = max(0, pos - 5)
-        new_pos = final.find(token, search_start)
-        if new_pos != -1:
-            new_cursor.setPosition(new_pos + len(token))
-        else:
-            new_cursor.movePosition(QTextCursor.MoveOperation.End)
-        
-        edit.setTextCursor(new_cursor)
-        edit.ensureCursorVisible()
-        # 不需要強行 setFocus，保留按鈕焦點可能更方便連續按
-
-    def remove_token_everywhere(self, token: str):
-        token = token.strip()
-        if not token:
-            return
-        text = self.txt_edit.toPlainText()
-
-        new_text = text.replace(token, "")
-        new_text = cleanup_csv_like_text(new_text)
-
-        self.txt_edit.blockSignals(True)
-        self.txt_edit.setPlainText(new_text)
-        self.txt_edit.blockSignals(False)
-
-        self.update_txt_token_count()
-
-    # ==========================
-    # Logic: Tagger & LLM
-    # ==========================
     def run_tagger(self):
         if not self.current_image_path:
             return

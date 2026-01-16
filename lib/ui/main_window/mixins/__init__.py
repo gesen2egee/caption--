@@ -10,6 +10,7 @@ from .progress_mixin import ProgressMixin
 from .file_mixin import FileMixin
 from .filter_mixin import FilterMixin
 from .navigation_mixin import NavigationMixin
+from .text_edit_mixin import TextEditMixin
 
 __all__ = ['ShortcutsMixin', 'ThemeMixin', 'NLMixin', 'DialogsMixin', 'ProgressMixin',
-           'FileMixin', 'FilterMixin', 'NavigationMixin']
+           'FileMixin', 'FilterMixin', 'NavigationMixin', 'TextEditMixin']
