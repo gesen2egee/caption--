@@ -170,6 +170,8 @@ class ImageContext:
         """
         取得 PIL Image 物件。預設會快取以供後續使用。
         若記憶體吃緊，使用完後請呼叫 clear_image_cache()。
+        
+        針對 WEBP 動畫：只使用第一幀
         """
         if self._image_cache:
             if mode and self._image_cache.mode != mode:
@@ -177,13 +179,27 @@ class ImageContext:
                 return self._image_cache.convert(mode)
             return self._image_cache
         
-        # Load independent copy
-        img = Image.open(self.path)
-        if mode and img.mode != mode:
-            img = img.convert(mode)
-        
-        self._image_cache = img
-        return img
+        # Load image
+        try:
+            img = Image.open(self.path)
+            
+            # 針對可能的動畫格式（WEBP、GIF），確保只使用第一幀
+            if hasattr(img, 'n_frames') and img.n_frames > 1:
+                # 強制到第一幀
+                img.seek(0)
+                # 複製第一幀以避免後續操作影響原始檔案
+                img = img.copy()
+            
+            if mode and img.mode != mode:
+                img = img.convert(mode)
+            
+            self._image_cache = img
+            return img
+        except Exception as e:
+            print(f"[ImageContext] 載入圖片失敗 {self.path}: {e}")
+            # 返回一個空的圖片以避免崩潰
+            dummy = Image.new(mode or 'RGB', (100, 100), (128, 128, 128))
+            return dummy
 
     def clear_image_cache(self):
         """釋放圖片記憶體"""

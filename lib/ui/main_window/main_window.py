@@ -86,6 +86,14 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.llm_thread = None
         self.batch_restore_thread = None
 
+        # 載入標籤翻譯（在 UI 初始化前載入，確保翻譯可用）
+        from lib.utils import load_translations
+        try:
+            self.translations_csv = load_translations()
+        except Exception as e:
+            print(f"[Warning] 載入標籤翻譯失敗: {e}")
+            self.translations_csv = {}
+
         # UI Init
         self.setup_ui_components() # From AppCoreMixin
             
@@ -103,14 +111,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
 
     def _lazy_init_models(self):
         """非同步初始化模型，避免卡死介面"""
-        # Ensure translations are loaded (if not already)
-        if not hasattr(self, 'translations_csv') or not self.translations_csv:
-             from lib.utils import load_translations
-             self.translations_csv = load_translations()
-             # Refresh tags with translations if already loaded
-             if hasattr(self, 'refresh_tags_tab'):
-                 self.refresh_tags_tab()
-
         # Check CUDA
         try:
             import torch

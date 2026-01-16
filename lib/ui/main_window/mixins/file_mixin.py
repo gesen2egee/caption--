@@ -46,12 +46,35 @@ class FileMixin:
             self.current_image_path = ""
 
     def _scan_images(self, folder):
-        """掃描資料夾中的圖片檔案"""
+        """
+        遞迴掃描資料夾中的圖片檔案
+        
+        排除以下資料夾：no_used, unmask, raw_image, mask
+        """
         exts = ('.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif')
+        excluded_folders = {'no_used', 'unmask', 'raw_image', 'mask'}
         files = []
-        for f in os.listdir(folder):
-            if f.lower().endswith(exts):
-                files.append(os.path.join(folder, f))
+        
+        try:
+            # 掃描當前資料夾的圖片
+            for entry in os.scandir(folder):
+                if entry.is_file() and entry.name.lower().endswith(exts):
+                    files.append(entry.path)
+            
+            # 遞迴掃描子資料夾
+            for entry in os.scandir(folder):
+                if entry.is_dir():
+                    # 檢查是否為排除的資料夾
+                    if entry.name.lower() not in excluded_folders:
+                        # 遞迴掃描子資料夾
+                        subfolder_files = self._scan_images(entry.path)
+                        files.extend(subfolder_files)
+        except PermissionError:
+            # 忽略無權限的資料夾
+            pass
+        except Exception as e:
+            print(f"[Scan] 掃描資料夾時發生錯誤 {folder}: {e}")
+        
         return natsorted(files)
 
     def first_image(self):

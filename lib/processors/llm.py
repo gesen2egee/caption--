@@ -57,20 +57,24 @@ class LLMProcessor(BaseProcessor):
             is_gray_masked=self.settings.get("llm_use_gray_mask", True)
         )
 
+        # 清理 LLM 輸出（移除提示標記）
+        from lib.utils import clean_llm_output
+        cleaned_content = clean_llm_output(content)
+
         # 5. 更新 Sidecar
-        ctx.sidecar["llm_response"] = content
+        ctx.sidecar["llm_response"] = cleaned_content
         
         # 将结果也追加到 nl_pages (历史记录)，确保 Batch 模式下也能被后续逻辑 (如 to_txt) 读取
         nl_pages = ctx.sidecar.get("nl_pages", [])
         if not isinstance(nl_pages, list):
             nl_pages = []
-        nl_pages.append(content)
+        nl_pages.append(cleaned_content)
         ctx.sidecar["nl_pages"] = nl_pages
         
         ctx.save_sidecar()
 
         # 回傳內容，讓 UI 可以顯示或寫入 txt
-        return True, content
+        return True, cleaned_content
 
     def cleanup(self):
         self.client = None

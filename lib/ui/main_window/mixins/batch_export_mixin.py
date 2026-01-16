@@ -201,24 +201,55 @@ class BatchExportMixin:
             for line in raw_lines:
                 line = line.strip()
                 if not line: continue
-                # Skip translation lines
+                
+                # Skip translation lines (括號包圍的翻譯行)
                 if (line.startswith("(") and line.endswith(")")) or (line.startswith("（") and line.endswith("）")):
                     continue
-                # Simple cleanup
-                line = re.sub(r"[\(（].*?[\)）]", "", line).strip()
+                
+                # 只清理句首和句尾的括號（保留句中的括號）
+                # 句首括號
+                while line and (line.startswith("(") or line.startswith("（")):
+                    # 找到對應的右括號
+                    if line.startswith("("):
+                        close_idx = line.find(")")
+                        if close_idx > 0:
+                            line = line[close_idx + 1:].strip()
+                        else:
+                            break
+                    elif line.startswith("（"):
+                        close_idx = line.find("）")
+                        if close_idx > 0:
+                            line = line[close_idx + 1:].strip()
+                        else:
+                            break
+                
+                # 句尾括號
+                while line and (line.endswith(")") or line.endswith("）")):
+                    # 找到對應的左括號
+                    if line.endswith(")"):
+                        open_idx = line.rfind("(")
+                        if open_idx >= 0:
+                            line = line[:open_idx].strip()
+                        else:
+                            break
+                    elif line.endswith("）"):
+                        open_idx = line.rfind("（")
+                        if open_idx >= 0:
+                            line = line[:open_idx].strip()
+                        else:
+                            break
+                
                 if not line: continue
                 
+                # Character Tags 過濾（如果啟用）
                 if delete_chars:
-                    # 簡單過濾：如果句子包含 basic character tag，則忽略 (這是種簡單策略，可能太過激進)
-                    # 更好的策略可能是：如果句子 *完全等於* 某個 character tag
-                    # 或使用更複雜的 NLP。
-                    # 這裡沿用 Legacy 邏輯：is_basic_character_tag 檢查的是單詞。
-                    # 對於句子，我們暫且不過濾，或者只過濾單詞級別的？
-                    # 查看 Legacy 代碼，LLM 模式下是否過濾？
-                    # Legacy 代碼顯示 LLM 模式下如果 delete_chars 為 True，會檢查 sentences。
-                    # 但 is_basic_character_tag 主要是針對 comma separated tags。
-                    # 對於 LLM 句子，通常不過濾，除非它是 "1girl" 這種單詞。
-                    pass
+                    # 檢查是否為單一標籤（不包含空格或句號，像 "1girl", "red hair"）
+                    # 或者檢查是否包含 character tag 關鍵字
+                    words = line.lower().split()
+                    # 如果只有 1-3 個詞，且包含 character tag 關鍵字，則過濾
+                    if len(words) <= 3:
+                        if is_basic_character_tag(line, cfg):
+                            continue
                 
                 sentences.append(line)
             items = sentences

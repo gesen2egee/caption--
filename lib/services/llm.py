@@ -76,7 +76,27 @@ def prepare_image_for_llm(ctx: ImageContext, settings: AppSettings) -> Image.Ima
     return img
 
 def encode_image_base64(img: Image.Image) -> str:
+    """
+    將圖片編碼為 base64 字串
+    
+    注意：JPEG 不支援透明度，如果圖片是 RGBA 需先轉為 RGB
+    """
     buffered = BytesIO()
+    
+    # 如果圖片有透明通道（RGBA、LA），先轉為 RGB
+    if img.mode in ('RGBA', 'LA', 'P'):
+        # 建立白色背景
+        rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'P':
+            # 調色盤模式先轉 RGBA
+            img = img.convert('RGBA')
+        # 使用 alpha 合成
+        if img.mode in ('RGBA', 'LA'):
+            rgb_img.paste(img, mask=img.split()[-1])  # 使用 alpha 通道作為 mask
+        else:
+            rgb_img.paste(img)
+        img = rgb_img
+    
     img.save(buffered, format="JPEG", quality=90)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 

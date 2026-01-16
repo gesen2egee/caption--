@@ -97,19 +97,24 @@ class TaggerMixin:
             sidecar = load_image_sidecar(new_path)
             tags = sidecar.get("tagger_tags", "")
             
-            # format
-            if self.english_force_lowercase:
-                tags = tags.lower()
-            if self.settings.get("text_auto_format", True):
-                parts = [p.strip() for p in tags.split(",") if p.strip()]
-                tags = ", ".join(parts)
-            
-            txt_path = os.path.splitext(new_path)[0] + ".txt"
-            try:
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(tags)
-            except Exception as e:
-                print(f"Failed to write txt for {new_path}: {e}")
+            if tags:
+                # 使用統一的寫入方法，包含過濾和格式化
+                if hasattr(self, 'write_batch_result_to_txt'):
+                    self.write_batch_result_to_txt(new_path, tags, is_tagger=True)
+                else:
+                    # Fallback: 直接寫入
+                    if self.english_force_lowercase:
+                        tags = tags.lower()
+                    if self.settings.get("text_auto_format", True):
+                        parts = [p.strip() for p in tags.split(",") if p.strip()]
+                        tags = ", ".join(parts)
+                    
+                    txt_path = os.path.splitext(new_path)[0] + ".txt"
+                    try:
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(tags)
+                    except Exception as e:
+                        print(f"Failed to write txt for {new_path}: {e}")
 
         # 如果是當前圖片，刷新顯示
         if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
@@ -122,4 +127,9 @@ class TaggerMixin:
         self.btn_batch_tagger_to_txt.setEnabled(True)
         self.btn_auto_tag.setEnabled(True)
         self._is_batch_to_txt = False
+        
+        # 批次完成後刷新當前圖片顯示
+        if hasattr(self, 'load_image') and self.current_image_path:
+            self.load_image()
+        
         self.on_batch_done("Batch Tagger Completed")

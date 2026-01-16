@@ -28,6 +28,11 @@ class BatchBaseMixin:
         if hasattr(self, "btn_cancel_batch"):
             self.btn_cancel_batch.setVisible(False)
             self.btn_cancel_batch.setEnabled(False)
+        
+        # 批次完成後刷新當前圖片顯示
+        if hasattr(self, 'load_image') and hasattr(self, 'current_image_path') and self.current_image_path:
+            self.load_image()
+        
         QMessageBox.information(self, "Batch", msg)
         unload_all_models()
 

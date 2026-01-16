@@ -110,13 +110,17 @@ class LLMMixin:
             pages = sidecar.get("nl_pages", [])
             if pages:
                 latest = pages[-1]
-                # Write to txt
-                txt_path = os.path.splitext(new_path)[0] + ".txt"
-                try:
-                    with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(latest)
-                except Exception as e:
-                     print(f"Failed to write txt for {new_path}: {e}")
+                # 使用統一的寫入方法，包含解析和格式化
+                if hasattr(self, 'write_batch_result_to_txt'):
+                    self.write_batch_result_to_txt(new_path, latest, is_tagger=False)
+                else:
+                    # Fallback: 直接寫入
+                    txt_path = os.path.splitext(new_path)[0] + ".txt"
+                    try:
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(latest)
+                    except Exception as e:
+                         print(f"Failed to write txt for {new_path}: {e}")
 
         # 如果是當前圖片，刷新顯示
         if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
@@ -128,4 +132,9 @@ class LLMMixin:
         self.btn_batch_llm_to_txt.setEnabled(True)
         self.btn_run_llm.setEnabled(True)
         self._is_batch_to_txt = False
+        
+        # 批次完成後刷新當前圖片顯示
+        if hasattr(self, 'load_image') and self.current_image_path:
+            self.load_image()
+        
         self.on_batch_done("Batch LLM Completed")

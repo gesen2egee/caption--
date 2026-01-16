@@ -10,6 +10,31 @@ from io import BytesIO
 from urllib.request import urlopen, Request
 from pathlib import Path
 from PIL import Image
+import hashlib
+import numpy as np
+from natsort import natsorted
+
+# ==========================================
+#  LLM Output Cleaning
+# ==========================================
+
+def clean_llm_output(content: str) -> str:
+    """
+    清理 LLM 輸出中的提示標記
+    
+    移除： ===處理結果開始===、===處理結果結束=== 等模板標記
+    """
+    if not content:
+        return content
+    
+    # 移除開始和結束標記（支援各種變體）
+    cleaned = re.sub(r'===.*?處理結果.*?開始.*?===\s*', '', content)
+    cleaned = re.sub(r'===.*?處理結果.*?結束.*?===\s*', '', cleaned)
+    # 移除其他常見的 markdown 標記
+    cleaned = re.sub(r'```.*?\n', '', cleaned)  # 移除代碼塊標記
+    cleaned = cleaned.strip()
+    
+    return cleaned
 
 # Import constants if needed
 try:

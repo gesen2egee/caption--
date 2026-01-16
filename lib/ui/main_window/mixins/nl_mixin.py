@@ -35,8 +35,13 @@ class NLMixin:
         根據當前的 nl_latest 內容重新渲染 NL 標籤流式佈局
         """
         active_text = self.txt_edit.toPlainText()
+        
+        # 清理 LLM 輸出中的提示標記（使用統一的清理函數）
+        from lib.utils import clean_llm_output
+        cleaned_content = clean_llm_output(self.nl_latest)
+        
         self.flow_nl.render_tags_flow(
-            smart_parse_tags(self.nl_latest),
+            smart_parse_tags(cleaned_content),
             active_text,
             self.settings
         )
