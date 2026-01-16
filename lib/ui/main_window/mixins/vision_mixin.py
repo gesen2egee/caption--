@@ -63,7 +63,7 @@ class VisionMixin:
             QMessageBox.warning(self, "Unmask", "transparent_background.Remover not available")
             return
             
-        contexts = [ImageContext(p, load_sidecar=True) for p in self.image_files]
+        contexts = [ImageContext(p) for p in self.image_files]
         proc = UnmaskProcessor(self.app_settings, is_batch=True)
         
         self.batch_unmask_thread = GenericBatchWorker(contexts, proc)
@@ -116,7 +116,7 @@ class VisionMixin:
              QMessageBox.warning(self, "Mask Text", self.tr("setting_mask_ocr_hint"))
              return
              
-        contexts = [ImageContext(p, load_sidecar=True) for p in self.image_files]
+        contexts = [ImageContext(p) for p in self.image_files]
         proc = TextMaskProcessor(self.app_settings, is_batch=True)
         
         self.batch_mask_text_thread = GenericBatchWorker(contexts, proc)

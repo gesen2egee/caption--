@@ -4,7 +4,7 @@ Main Window Module
 這是應用程式的主視窗類別，通過組合多個 Mixin 來實現完整功能。
 """
 import os
-from PyQt6.QtWidgets import QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QApplication
 from PyQt6.QtCore import QTimer
 
 # Import Config & Utils
@@ -54,7 +54,7 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.current_view_mode = 0  # 0=Original, 1=RGB, 2=Alpha
         self.temp_view_mode = None  # For N/M keys override
         
-        self.translations_csv = load_translations()
+        self.translations_csv = {} 
 
         # State Variables
         self.image_files = []
@@ -98,14 +98,34 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             # Delay loading to prevent freeze on startup
             QTimer.singleShot(100, self.refresh_file_list) 
 
-        # Check CUDA availability
+        # Lazy Init Models (background) to prevent startup freeze
+        QTimer.singleShot(500, self._lazy_init_models)
+
+    def _lazy_init_models(self):
+        """非同步初始化模型，避免卡死介面"""
+        # Ensure translations are loaded (if not already)
+        if not hasattr(self, 'translations_csv') or not self.translations_csv:
+             from lib.utils import load_translations
+             self.translations_csv = load_translations()
+             # Refresh tags with translations if already loaded
+             if hasattr(self, 'refresh_tags_tab'):
+                 self.refresh_tags_tab()
+
+        # Check CUDA
         try:
             import torch
             if not torch.cuda.is_available():
-                QTimer.singleShot(1000, lambda: QMessageBox.warning(
+                QMessageBox.warning(
                     self, 
                     "CUDA Warning", 
                     "偵測不到 NVIDIA GPU (CUDA)。\n\n這可能是因為 venv 中的 PyTorch 版本錯誤。\n請執行根目錄下的 'fix_torch_gpu.bat' 來修復。\n\n目前將使用 CPU 執行，速度會非常慢。"
-                ))
+                )
         except ImportError:
             pass
+
+        # Pre-load Tokenizer (This might take time, but now it's AFTER UI displays)
+        if hasattr(self, '_get_clip_tokenizer'):
+            self.statusBar().showMessage("Loading Clip Tokenizer...")
+            QApplication.processEvents()
+            self._get_clip_tokenizer()
+            self.statusBar().showMessage("Ready", 3000)

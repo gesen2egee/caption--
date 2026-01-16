@@ -606,6 +606,16 @@ class DanbooruQueryFilter:
             except Exception:
                 return 1.0
         
+        # Sort by aspect ratio based on order_mode
+        if self.order_mode == 'landscape':
+            # Landscape first (wider images, aspect > 1)
+            return sorted(image_paths, key=lambda p: -get_aspect(p))
+        elif self.order_mode == 'portrait':
+            # Portrait first (taller images, aspect < 1)
+            return sorted(image_paths, key=lambda p: get_aspect(p))
+        
+        return image_paths
+
 def parse_boorutag_meta(meta_path):
     """
     Advanced parsing of .boorutag file to extract tags and hint info.

@@ -88,7 +88,7 @@ class LLMMixin:
             return
             
         self._is_batch_to_txt = to_txt
-        contexts = [ImageContext(p, load_sidecar=True) for p in self.image_files]
+        contexts = [ImageContext(p) for p in self.image_files]
         
         # Override user prompt from UI? 
         # Ideally batch uses settings, or current UI prompt?

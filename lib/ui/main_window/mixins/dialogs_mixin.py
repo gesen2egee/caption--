@@ -34,12 +34,6 @@ class DialogsMixin:
             self.apply_theme()
             self.retranslate_ui()
 
-    def open_find_replace(self):
-        """開啟查找替換對話框"""
-        dlg = AdvancedFindReplaceDialog(self)
-        if dlg.exec():
-            opts = dlg.get_options()
-            self._do_find_replace(opts)
 
     def open_stroke_eraser(self):
         """開啟手繪橡皮擦對話框"""

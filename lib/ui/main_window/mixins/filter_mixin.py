@@ -17,6 +17,7 @@
 - self.update_file_list_ui() (optional)
 """
 
+from PyQt6.QtWidgets import QApplication
 from lib.utils import DanbooruQueryFilter, normalize_for_match, load_image_sidecar
 import os
 
@@ -41,7 +42,6 @@ class FilterMixin:
             if hasattr(self, 'update_file_list_ui'):
                 self.update_file_list_ui() # Update visual list if exists
             
-            self.btn_filter.setText(self.tr("btn_filter_apply"))
             self.load_image()
             return
             
@@ -70,7 +70,6 @@ class FilterMixin:
         if hasattr(self, 'update_file_list_ui'):
             self.update_file_list_ui()
             
-        self.btn_filter.setText(f"{self.tr('btn_filter_apply')} ({len(res)})")
         self.load_image()
         self.statusBar().showMessage(f"Filter done. Found {len(res)} images.")
 

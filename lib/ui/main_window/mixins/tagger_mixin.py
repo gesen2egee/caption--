@@ -72,7 +72,7 @@ class TaggerMixin:
             return
             
         self._is_batch_to_txt = to_txt
-        contexts = [ImageContext(p, load_sidecar=True) for p in self.image_files]
+        contexts = [ImageContext(p) for p in self.image_files]
         
         # Disable buttons
         self.btn_batch_tagger.setEnabled(False)

@@ -15,13 +15,25 @@
 class ProgressMixin:
     """批量處理進度管理 Mixin"""
     
-    def show_progress(self):
-        """顯示進度條和取消按鈕"""
+    def show_progress(self, current: int = 0, total: int = 0, filename: str = ""):
+        """顯示進度條和取消按鈕
+        
+        Args:
+            current: 當前處理的索引 (1-based)
+            total: 總數
+            filename: 當前檔案名
+        """
         if hasattr(self, 'progress_bar') and self.progress_bar:
             self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
+            if total > 0:
+                self.progress_bar.setMaximum(total)
+                self.progress_bar.setValue(current)
+            else:
+                self.progress_bar.setValue(0)
         if hasattr(self, 'btn_cancel_batch') and self.btn_cancel_batch:
             self.btn_cancel_batch.setVisible(True)
+        if hasattr(self, 'statusBar') and filename:
+            self.statusBar().showMessage(f"Processing [{current}/{total}]: {filename}")
 
     def hide_progress(self):
         """隱藏進度條和取消按鈕"""

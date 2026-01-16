@@ -141,24 +141,44 @@ class TagsMixin:
         save_image_sidecar(image_path, sidecar)
 
     def refresh_tags_tab(self):
-        """刷新標籤頁面"""
+        """刷新標籤頁面 - 用於切換圖片或執行打標後的全量更新"""
+        active_text = self.txt_edit.toPlainText() if hasattr(self, 'txt_edit') else ""
+        
+        if hasattr(self, 'flow_top'):
+            self.flow_top.render_tags_flow(
+                smart_parse_tags(", ".join(self.top_tags)),
+                active_text,
+                self.settings
+            )
+        if hasattr(self, 'flow_custom'):
+            self.flow_custom.render_tags_flow(
+                smart_parse_tags(", ".join(self.custom_tags)),
+                active_text,
+                self.settings
+            )
+        if hasattr(self, 'flow_tagger'):
+            self.flow_tagger.render_tags_flow(
+                smart_parse_tags(", ".join(self.tagger_tags)),
+                active_text,
+                self.settings
+            )
+        if hasattr(self, 'refresh_nl_tab'):
+            self.refresh_nl_tab()
+
+    def sync_tags_highlighting(self):
+        """僅同步標籤的高亮狀態，不重新渲染元件，解決打字卡頓問題"""
+        if not hasattr(self, 'txt_edit'):
+            return
         active_text = self.txt_edit.toPlainText()
         
-        self.flow_top.render_tags_flow(
-            smart_parse_tags(", ".join(self.top_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_custom.render_tags_flow(
-            smart_parse_tags(", ".join(self.custom_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_tagger.render_tags_flow(
-            smart_parse_tags(", ".join(self.tagger_tags)),
-            active_text,
-            self.settings
-        )
+        if hasattr(self, 'flow_top'):
+            self.flow_top.sync_state(active_text)
+        if hasattr(self, 'flow_custom'):
+            self.flow_custom.sync_state(active_text)
+        if hasattr(self, 'flow_tagger'):
+            self.flow_tagger.sync_state(active_text)
+        if hasattr(self, 'flow_nl'):
+            self.flow_nl.sync_state(active_text)
 
     def on_tag_button_toggled(self, tag, checked):
         """標籤按鈕切換事件"""

@@ -42,21 +42,34 @@ class TextEditMixin:
             else:
                 self.txt_token_label.setStyleSheet("")
         
-        # Save to file
-        if self.current_image_path:
-            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
-            try:
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-            except Exception as e:
-                print(f"Failed to save txt: {e}")
-        
-        # Refresh Highlight
-        if hasattr(self, 'refresh_tags_tab'):
-            # Avoid infinite loop or lag? Typically ok.
-            # Ideally we only refresh highlighting, not reload everything.
-            # But refresh_tags_tab uses active_text to highlight buttons.
-            self.refresh_tags_tab()
+        # Refresh Highlight (Use sync instead of full refresh to avoid lag)
+        if hasattr(self, 'sync_tags_highlighting'):
+            self.sync_tags_highlighting()
+            
+        # Debounced Save
+        if not hasattr(self, '_txt_save_timer'):
+            from PyQt6.QtCore import QTimer
+            self._txt_save_timer = QTimer()
+            self._txt_save_timer.setSingleShot(True)
+            self._txt_save_timer.setInterval(1000) # 1 second delay
+            self._txt_save_timer.timeout.connect(self._save_txt_file)
+            
+        self._txt_save_timer.start()
+
+    def _save_txt_file(self):
+        """非同步儲存文字檔案"""
+        if not self.current_image_path:
+            return
+            
+        content = self.txt_edit.toPlainText()
+        txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
+        try:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            print(f"Failed to save txt: {e}")
+            if hasattr(self, 'statusBar'):
+                self.statusBar().showMessage(f"Save failed: {e}", 3000)
 
     def calculate_token_count(self, text):
         """計算 Token 數量"""

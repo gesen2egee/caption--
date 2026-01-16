@@ -73,6 +73,16 @@ class ImageMixin:
         self.current_pixmap = QPixmap(self.current_image_path)
         self.update_image_display()
         
+        # 更新頂部導航欄 (Top Info Bar)
+        if hasattr(self, 'index_input'):
+            self.index_input.blockSignals(True)
+            self.index_input.setText(str(self.current_index + 1))
+            self.index_input.blockSignals(False)
+        if hasattr(self, 'total_label'):
+            self.total_label.setText(f"/ {len(self.image_files)}")
+        if hasattr(self, 'filename_label'):
+            self.filename_label.setText(f": {os.path.basename(self.current_image_path)}")
+
         # 更新狀態欄
         if hasattr(self, 'statusBar'):
             self.statusBar().showMessage(

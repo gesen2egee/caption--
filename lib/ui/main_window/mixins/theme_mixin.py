@@ -79,22 +79,33 @@ class ThemeMixin:
         self.btn_txt_undo.setText(self.tr("btn_undo"))
         self.btn_txt_redo.setText(self.tr("btn_redo"))
         
-        self.nl_label.setText(f"<b>{self.tr('sec_nl')}</b>")
-        self.bot_label.setText(f"<b>{self.tr('label_txt_content')}</b>")
-        self.nl_result_title.setText(f"<b>{self.tr('label_nl_result')}</b>")
-        self.update_txt_token_count()
-        self.update_nl_page_controls()
+        if hasattr(self, 'nl_label'):
+            self.nl_label.setText(f"<b>{self.tr('sec_nl')}</b>")
+        if hasattr(self, 'bot_label'):
+            self.bot_label.setText(f"<b>{self.tr('label_txt_content')}</b>")
+        if hasattr(self, 'nl_result_title'):
+             self.nl_result_title.setText(f"<b>{self.tr('label_nl_result')}</b>")
+        
+        if hasattr(self, 'update_txt_token_count'):
+            self.update_txt_token_count()
+        if hasattr(self, 'update_nl_page_controls'):
+            self.update_nl_page_controls()
 
         # Update tabs
-        self.tabs.setTabText(0, self.tr("sec_tags"))
-        self.tabs.setTabText(1, self.tr("sec_nl"))
+        if hasattr(self, 'tabs'):
+            self.tabs.setTabText(0, self.tr("sec_tags"))
+            self.tabs.setTabText(1, self.tr("sec_nl"))
         
         # Labels
-        self.sec1_title.setText(f"<b>{self.tr('sec_folder_meta')}</b>")
+        if hasattr(self, 'sec1_title'):
+            self.sec1_title.setText(f"<b>{self.tr('sec_folder_meta')}</b>")
+        if hasattr(self, 'sec2_title'):
+            self.sec2_title.setText(f"<b>{self.tr('sec_custom')}</b>")
+        if hasattr(self, 'sec3_title'):
+            self.sec3_title.setText(f"<b>{self.tr('sec_tagger')}</b>")
+        
         if hasattr(self, 'btn_cancel_batch') and self.btn_cancel_batch:
             self.btn_cancel_batch.setText(self.tr("btn_cancel_batch"))
-        self.sec2_title.setText(f"<b>{self.tr('sec_custom')}</b>")
-        self.sec3_title.setText(f"<b>{self.tr('sec_tagger')}</b>")
         
         # Menus
         self.menuBar().clear()
