@@ -142,9 +142,18 @@ from lib.ui.main_window.mixins.file_mixin import FileMixin
 from lib.ui.main_window.mixins.filter_mixin import FilterMixin
 from lib.ui.main_window.mixins.navigation_mixin import NavigationMixin
 from lib.ui.main_window.mixins.text_edit_mixin import TextEditMixin
+from lib.ui.main_window.mixins.tags_mixin import TagsMixin
+from lib.ui.main_window.mixins.image_mixin import ImageMixin
+from lib.ui.main_window.mixins.batch_base_mixin import BatchBaseMixin
+from lib.ui.main_window.mixins.vision_mixin import VisionMixin
+from lib.ui.main_window.mixins.tagger_mixin import TaggerMixin
+from lib.ui.main_window.mixins.llm_mixin import LLMMixin
+from lib.ui.main_window.mixins.app_core_mixin import AppCoreMixin
 
 class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, 
-                 FileMixin, FilterMixin, NavigationMixin, TextEditMixin, QMainWindow):
+                 FileMixin, FilterMixin, NavigationMixin, TextEditMixin, TagsMixin,
+                 ImageMixin, BatchBaseMixin, VisionMixin, TaggerMixin, LLMMixin, 
+                 AppCoreMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -226,310 +235,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # apply_theme() moved to ThemeMixin
 
     def init_ui(self):
-        font = QFont()
-        font.setPointSize(12)
-        QApplication.instance().setFont(font)
+        self.setup_ui_components()
 
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        main_layout = QHBoxLayout(main_widget)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
-
-        # === Left Side ===
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        # === Info Bar (Interactive Index & Filename) ===
-        info_layout = QHBoxLayout()
-        info_layout.setSpacing(5)
-        
-        self.index_input = QLineEdit()
-        self.index_input.setFixedWidth(80)
-        self.index_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.index_input.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        self.index_input.returnPressed.connect(self.jump_to_index)
-        info_layout.addWidget(self.index_input)
-
-        self.total_info_label = QLabel("/ 0")
-        self.total_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        info_layout.addWidget(self.total_info_label)
-
-        self.img_file_label = QLabel(": No Image")
-        self.img_file_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        self.img_file_label.setWordWrap(False)
-        info_layout.addWidget(self.img_file_label, 1)
-
-        left_layout.addLayout(info_layout)
-
-        # === Filter Bar ===
-        filter_bar = QHBoxLayout()
-        filter_bar.setContentsMargins(0, 0, 0, 0)
-        
-        self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
-        self.filter_input.setToolTip("用 Danbooru 語法篩選圖片，輸入後按 Enter\n例如：blonde_hair blue_eyes (同時含)\n-rating:explicit (排除 NSFW)\norder:landscape (橫圖優先)")
-        self.filter_input.returnPressed.connect(self.apply_filter)
-        filter_bar.addWidget(self.filter_input, 1)
-        
-        self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
-        self.chk_filter_tags.setChecked(True)
-        self.chk_filter_tags.setToolTip("勾選後，會搜尋圖片的標籤 (Sidecar JSON)")
-        filter_bar.addWidget(self.chk_filter_tags)
-        
-        self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
-        self.chk_filter_text.setChecked(False)
-        self.chk_filter_text.setToolTip("勾選後，會搜尋圖片的 .txt 檔案內容")
-        filter_bar.addWidget(self.chk_filter_text)
-        
-        self.btn_clear_filter = QPushButton("✕")
-        self.btn_clear_filter.setFixedWidth(30)
-        self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
-        self.btn_clear_filter.clicked.connect(self.clear_filter)
-        filter_bar.addWidget(self.btn_clear_filter)
-
-        # === View Mode Selector (RGB/Alpha) ===
-        self.cb_view_mode = QComboBox()
-        self.cb_view_mode.addItems(["預覽: 原圖", "預覽: RGB 色版 (N)", "預覽: Alpha 色版 (M)"])
-        self.cb_view_mode.setToolTip("切換圖片預覽模式\n- 原圖: 顯示原始圖片\n- RGB: 強制不透明顯示顏色\n- Alpha: 顯示透明度遮罩 (黑透白不透)\n\n快速鍵: 按住 N (RGB) / 按住 M (Alpha)")
-        self.cb_view_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus) # 避免搶走焦點影響快速鍵
-        self.cb_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
-        filter_bar.addWidget(self.cb_view_mode)
-        
-        left_layout.addLayout(filter_bar)
-
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumSize(400, 400)
-        
-        # Context Menu
-        self.image_label.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.image_label.customContextMenuRequested.connect(self.show_image_context_menu)
-
-        # --- 棋盤格背景：用 Palette Brush（避免 data URI pixmap 警告） ---
-        png_bytes = create_checkerboard_png_bytes()
-        bg = QPixmap()
-        bg.loadFromData(png_bytes, "PNG")
-
-        self.image_label.setAutoFillBackground(True)
-        pal = self.image_label.palette()
-        pal.setBrush(QPalette.ColorRole.Window, QBrush(bg))  # 會自動平鋪
-        self.image_label.setPalette(pal)
-        self.image_label.setStyleSheet("background-color:#888;")
-
-        left_layout.addWidget(self.image_label, 1)
-        splitter.addWidget(left_panel)
-
-        # === Right Side ===
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-
-        self.right_splitter = QSplitter(Qt.Orientation.Vertical)
-        right_layout.addWidget(self.right_splitter)
-
-        # Tabs (TAGS / NL)
-        self.tabs = QTabWidget()
-        self.right_splitter.addWidget(self.tabs)
-
-        # ---- TAGS Tab ----
-        tags_tab = QWidget()
-        tags_tab_layout = QVBoxLayout(tags_tab)
-        tags_tab_layout.setContentsMargins(5, 5, 5, 5)
-
-        tags_toolbar = QHBoxLayout()
-        tags_label = QLabel("<b>TAGS</b>")
-        tags_toolbar.addWidget(tags_label)
-
-        self.btn_auto_tag = QPushButton(self.tr("btn_auto_tag"))
-        self.btn_auto_tag.setToolTip("用 WD14 AI 模型自動識別當前圖片的標籤\n點選標籤可加入下方的文字框")
-        self.btn_auto_tag.clicked.connect(self.run_tagger)
-        tags_toolbar.addWidget(self.btn_auto_tag)
-
-        self.btn_batch_tagger = QPushButton(self.tr("btn_batch_tagger"))
-        self.btn_batch_tagger.setToolTip("對資料夾內所有圖片執行自動標籤\n結果儲存在 JSON 中，不會寫入 txt")
-        self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
-        tags_toolbar.addWidget(self.btn_batch_tagger)
-
-        self.btn_batch_tagger_to_txt = QPushButton(self.tr("btn_batch_tagger_to_txt"))
-        self.btn_batch_tagger_to_txt.setToolTip("對所有圖片執行標籤並寫入 .txt 檔案\n已有標籤記錄的圖片會直接使用快取")
-        self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
-        tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
-
-        self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
-        self.btn_add_custom_tag.setToolTip("新增自定義標籤到當前資料夾\n這些標籤會儲存在 .custom_tags.json 中")
-        self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
-        tags_toolbar.addWidget(self.btn_add_custom_tag)
-
-        tags_toolbar.addStretch(1)
-        tags_tab_layout.addLayout(tags_toolbar)
-
-        self.tags_scroll = QScrollArea()
-        self.tags_scroll.setWidgetResizable(True)
-        self.tags_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        tags_tab_layout.addWidget(self.tags_scroll)
-
-        tags_scroll_container = QWidget()
-        self.tags_scroll_layout = QVBoxLayout(tags_scroll_container)
-        self.tags_scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.tags_scroll_layout.setSpacing(8)
-
-        self.sec1_title = QLabel(f"<b>{self.tr('sec_folder_meta')}</b>")
-        self.tags_scroll_layout.addWidget(self.sec1_title)
-        self.flow_top = TagFlowWidget(use_scroll=False)
-        self.flow_top.set_translations_csv(self.translations_csv)
-        self.flow_top.tag_clicked.connect(self.on_tag_button_toggled)
-        self.tags_scroll_layout.addWidget(self.flow_top)
-
-        self.tags_scroll_layout.addWidget(self.make_hline())
-
-        self.sec2_title = QLabel(f"<b>{self.tr('sec_custom')}</b>")
-        self.tags_scroll_layout.addWidget(self.sec2_title)
-        self.flow_custom = TagFlowWidget(use_scroll=False)
-        self.flow_custom.set_translations_csv(self.translations_csv)
-        self.flow_custom.tag_clicked.connect(self.on_tag_button_toggled)
-        self.tags_scroll_layout.addWidget(self.flow_custom)
-
-        self.tags_scroll_layout.addWidget(self.make_hline())
-
-        self.sec3_title = QLabel(f"<b>{self.tr('sec_tagger')}</b>")
-        self.tags_scroll_layout.addWidget(self.sec3_title)
-        self.flow_tagger = TagFlowWidget(use_scroll=False)
-        self.flow_tagger.set_translations_csv(self.translations_csv)
-        self.flow_tagger.tag_clicked.connect(self.on_tag_button_toggled)
-        self.tags_scroll_layout.addWidget(self.flow_tagger)
-
-        self.tags_scroll_layout.addStretch(1)
-        self.tags_scroll.setWidget(tags_scroll_container)
-        
-        self.tabs.addTab(tags_tab, self.tr("sec_tags"))
-
-        # ---- NL Tab ----
-        nl_tab = QWidget()
-        nl_layout = QVBoxLayout(nl_tab)
-        nl_layout.setContentsMargins(5, 5, 5, 5)
-
-        nl_toolbar = QHBoxLayout()
-        self.nl_label = QLabel(f"<b>{self.tr('sec_nl')}</b>")
-        nl_toolbar.addWidget(self.nl_label)
-
-        self.btn_run_llm = QPushButton(self.tr("btn_run_llm"))
-        self.btn_run_llm.setToolTip("用 AI 大型語言模型生成自然語言描述\n結果顯示在上方的 LLM 結果區")
-        self.btn_run_llm.clicked.connect(self.run_llm_generation)
-        nl_toolbar.addWidget(self.btn_run_llm)
-
-        # ✅ Batch 按鍵保留在上方
-        self.btn_batch_llm = QPushButton(self.tr("btn_batch_llm"))
-        self.btn_batch_llm.setToolTip("對所有圖片執行 LLM 自然語言生成\n結果儲存在 JSON 中，不會寫入 txt")
-        self.btn_batch_llm.clicked.connect(self.run_batch_llm)
-        nl_toolbar.addWidget(self.btn_batch_llm)
-
-        self.btn_batch_llm_to_txt = QPushButton(self.tr("btn_batch_llm_to_txt"))
-        self.btn_batch_llm_to_txt.setToolTip("對所有圖片執行 LLM 並寫入 .txt 檔案\n已有 LLM 結果的圖片會直接使用快取")
-        self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
-        nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
-
-        self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
-        self.btn_prev_nl.setToolTip("查看上一次的 LLM 生成結果\n每張圖片的所有 LLM 歷史都會保留")
-        self.btn_prev_nl.clicked.connect(self.prev_nl_page)
-        nl_toolbar.addWidget(self.btn_prev_nl)
-
-        self.btn_next_nl = QPushButton(self.tr("btn_next"))
-        self.btn_next_nl.setToolTip("查看下一次的 LLM 生成結果")
-        self.btn_next_nl.clicked.connect(self.next_nl_page)
-        nl_toolbar.addWidget(self.btn_next_nl)
-
-        self.btn_reset_prompt = QPushButton(self.tr("btn_reset_prompt"))
-        self.btn_reset_prompt.setToolTip("重置為目前設定的 Prompt 模板內容")
-        self.btn_reset_prompt.clicked.connect(self.on_reset_prompt)
-        nl_toolbar.addWidget(self.btn_reset_prompt)
-        self.nl_page_label = QLabel(f"{self.tr('label_page')} 0/0")
-        nl_toolbar.addWidget(self.nl_page_label)
-
-        nl_toolbar.addStretch(1)
-        nl_layout.addLayout(nl_toolbar)
-
-        # ✅ RESULT 最上面
-        self.nl_result_title = QLabel(f"<b>{self.tr('label_nl_result')}</b>")
-        nl_layout.addWidget(self.nl_result_title)
-
-        self.flow_nl = TagFlowWidget(use_scroll=True)
-        self.flow_nl.set_translations_csv(self.translations_csv)
-        self.flow_nl.tag_clicked.connect(self.on_tag_button_toggled)
-        nl_layout.addWidget(self.flow_nl)
-
-        # ✅ RESULT 大小：大致顯示倒 9 行（可依你字體再微調）
-        self.flow_nl.setMinimumHeight(520)
-        self.flow_nl.setMaximumHeight(900)
-
-        # ✅ Prompt 放中間（Result 下方）
-        self.prompt_edit = QTextEdit()
-        self.prompt_edit.setFont(QFont("Consolas", 11))
-        self.prompt_edit.setPlainText(self.default_user_prompt_template)
-        nl_layout.addWidget(self.prompt_edit, 1)
-
-        self.tabs.addTab(nl_tab, self.tr("sec_nl"))
-
-        # ---- Bottom: txt ----
-        bot_widget = QWidget()
-        bot_layout = QVBoxLayout(bot_widget)
-        bot_layout.setContentsMargins(5, 5, 5, 5)
-
-        bot_toolbar = QHBoxLayout()
-        self.bot_label = QLabel(f"<b>{self.tr('label_txt_content')}</b>")
-        bot_toolbar.addWidget(self.bot_label)
-        bot_toolbar.addSpacing(10)
-        self.txt_token_label = QLabel(f"{self.tr('label_tokens')}0")
-        self.txt_token_label.setToolTip("CLIP Token 計數，SD 建議不超過 225\n超過後文字會變紅色警告")
-        bot_toolbar.addWidget(self.txt_token_label)
-        bot_toolbar.addStretch(1)
-
-        self.btn_find_replace = QPushButton(self.tr("btn_find_replace"))
-        self.btn_find_replace.setToolTip("在當前圖片或所有圖片的 txt 中\n尋找並取代文字 (支援正則表達式)")
-        self.btn_find_replace.clicked.connect(self.open_find_replace)
-        bot_toolbar.addWidget(self.btn_find_replace)
-
-        self.btn_txt_undo = QPushButton(self.tr("btn_undo"))
-        self.btn_txt_undo.setToolTip("復原上一步的文字編輯 (Ctrl+Z)")
-        self.btn_txt_redo = QPushButton(self.tr("btn_redo"))
-        self.btn_txt_redo.setToolTip("重做下一步的文字編輯 (Ctrl+Y)")
-        bot_toolbar.addWidget(self.btn_txt_undo)
-        bot_toolbar.addWidget(self.btn_txt_redo)
-
-        bot_layout.addLayout(bot_toolbar)
-
-        self.txt_edit = QPlainTextEdit()
-        self.txt_edit.setFont(QFont("Consolas", 12))
-        self.txt_edit.textChanged.connect(self.on_text_changed)
-
-        # ✅ txt 小一點（大約 300 英文字）
-        self.txt_edit.setMaximumHeight(260)
-
-        bot_layout.addWidget(self.txt_edit)
-
-        self.btn_txt_undo.clicked.connect(self.txt_edit.undo)
-        self.btn_txt_redo.clicked.connect(self.txt_edit.redo)
-        self.txt_edit.undoAvailable.connect(self.btn_txt_undo.setEnabled)
-        self.txt_edit.redoAvailable.connect(self.btn_txt_redo.setEnabled)
-
-        self.right_splitter.addWidget(bot_widget)
-
-        splitter.addWidget(right_panel)
-        splitter.setSizes([700, 900])
-
-        # ✅ 調整三個欄的大小（上:tabs 下:txt）
-        self.right_splitter.setSizes([780, 220])
-
-        # status bar progress
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.statusBar().addPermanentWidget(self.progress_bar)
-
-        self.btn_cancel_batch = QPushButton(self.tr("btn_cancel_batch"))
-        self.btn_cancel_batch.setVisible(False)
-        self.btn_cancel_batch.clicked.connect(self.cancel_batch)
-        self.statusBar().addPermanentWidget(self.btn_cancel_batch)
-
-        self._setup_menus()
 
     def make_hline(self):
         line = QFrame()
@@ -558,64 +265,9 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # refresh_file_list() moved to Mixin
 
 
-    def load_image(self):
-        if 0 <= self.current_index < len(self.image_files):
-            self.current_image_path = self.image_files[self.current_index]
-            self.current_folder_path = str(Path(self.current_image_path).parent)
+    # load_image() moved to Mixin
 
-            # Update info bar
-            total_count = len(self.filtered_image_files) if self.filter_active else len(self.image_files)
-            current_num = self.filtered_image_files.index(self.current_image_path) + 1 if self.filter_active and self.current_image_path in self.filtered_image_files else self.current_index + 1
-            
-            self.index_input.blockSignals(True)
-            self.index_input.setText(str(current_num))
-            self.index_input.blockSignals(False)
-            
-            if self.filter_active:
-                self.total_info_label.setText(f"<span style='color:red;'> / {total_count}</span>")
-            else:
-                self.total_info_label.setText(f" / {total_count}")
-            
-            self.img_file_label.setText(f" : {os.path.basename(self.current_image_path)}")
 
-            self.current_pixmap = QPixmap(self.current_image_path)
-            if not self.current_pixmap.isNull():
-                self.update_image_display()
-            else:
-                self.image_label.clear()
-
-            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
-            content = ""
-            if os.path.exists(txt_path):
-                with open(txt_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            self.txt_edit.blockSignals(True)
-            self.txt_edit.setPlainText(content)
-            self.txt_edit.blockSignals(False)
-
-            self.update_txt_token_count()
-
-            self.top_tags = self.build_top_tags_for_current_image()
-            self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
-            self.tagger_tags = self.load_tagger_tags_for_current_image()
-
-            self.nl_pages = self.load_nl_pages_for_image(self.current_image_path)
-            if self.nl_pages:
-                self.nl_page_index = len(self.nl_pages) - 1
-                self.nl_latest = self.nl_pages[self.nl_page_index]
-            else:
-                self.nl_page_index = 0
-                self.nl_latest = ""
-
-            self.refresh_tags_tab()
-            self.refresh_nl_tab()
-            self.update_nl_page_controls()
-
-            self.on_text_changed()
-
-    # ==========================
-    # Filter Logic
-    # ==========================
     def _get_image_content_for_filter(self, image_path: str) -> str:
         """Get combined content (tags + text) for filtering."""
         content_parts = []
@@ -668,16 +320,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         except Exception:
             self.load_image()
 
-    def update_image_display(self):
-        """用於 Resize 或初次加載時更新圖片顯示"""
-        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
-            return
-        scaled = self._get_processed_pixmap().scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled)
+    # update_image_display() moved to Mixin
+
 
     def _get_processed_pixmap(self) -> QPixmap:
         """
@@ -741,11 +385,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         
         return self.current_pixmap
 
-    def on_view_mode_changed(self, index):
-        self.current_view_mode = index
-        self.update_image_display()
+    # on_view_mode_changed() moved to Mixin
 
-    # keyPressEvent() and keyReleaseEvent() moved to ShortcutsMixin
 
     def show_image_context_menu(self, pos: QPoint):
         if not self.current_image_path:
@@ -812,190 +453,34 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # _get_tokenizer() moved to TextEditMixin
 
 
-    def build_top_tags_for_current_image(self):
-        hints = []
-        tags_from_meta = []
+    # build_top_tags_for_current_image() moved to Mixin
 
-        meta_path = str(self.current_image_path) + ".boorutag"
-        if os.path.isfile(meta_path):
-            tags_meta, hint_info = parse_boorutag_meta(meta_path)
-            tags_from_meta.extend(tags_meta)
-            hints.extend(hint_info)
-
-        parent = Path(self.current_image_path).parent.name
-        if "_" in parent:
-            folder_hint = parent.split("_", 1)[1]
-            if "{" not in folder_hint:
-                folder_hint = f"{{{folder_hint}}}"
-            hints.append(folder_hint)
-
-        initial_keywords = []
-        for h in hints:
-            initial_keywords.extend(extract_bracket_content(h))
-
-        combined = initial_keywords + tags_from_meta
-        seen = set()
-        final_list = [x for x in combined if not (x in seen or seen.add(x))]
-        final_list = [str(t).replace("_", " ").strip() for t in final_list if str(t).strip()]
-        if self.english_force_lowercase:
-            final_list = [t.lower() for t in final_list]
-        return final_list
 
     def folder_custom_tags_path(self, folder_path):
         return os.path.join(folder_path, ".custom_tags.json")
 
-    def load_folder_custom_tags(self, folder_path):
-        p = self.folder_custom_tags_path(folder_path)
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                tags = data.get("custom_tags", [])
-                tags = [str(t).strip() for t in tags if str(t).strip()]
-                if not tags:
-                    tags = list(self.default_custom_tags_global)
-                return tags
-            except Exception:
-                return list(self.default_custom_tags_global)
-        else:
-            tags = list(self.default_custom_tags_global)
-            try:
-                with open(p, "w", encoding="utf-8") as f:
-                    json.dump({"custom_tags": tags}, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-            return tags
-
-    def save_folder_custom_tags(self, folder_path, tags):
-        p = self.folder_custom_tags_path(folder_path)
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump({"custom_tags": tags}, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    def add_custom_tag_dialog(self):
-        if not self.current_folder_path:
-            return
-        tag, ok = QInputDialog.getText(self, self.tr("dialog_add_tag_title"), self.tr("dialog_add_tag_label"))
-        if not ok:
-            return
-        tag = str(tag).strip()
-        if not tag:
-            return
-        tag = tag.replace("_", " ").strip()
-        if self.english_force_lowercase:
-            tag = tag.lower()
-
-        tags = list(self.custom_tags)
-        if tag not in tags:
-            tags.append(tag)
-            self.custom_tags = tags
-            self.save_folder_custom_tags(self.current_folder_path, tags)
-            self.refresh_tags_tab()
-            self.on_text_changed()
-
-    def load_tagger_tags_for_current_image(self):
-        """從 JSON sidecar 載入 tagger_tags"""
-        sidecar = load_image_sidecar(self.current_image_path)
-        raw = sidecar.get("tagger_tags", "")
-        if not raw:
-            return []
-        parts = [x.strip() for x in raw.split(",") if x.strip()]
-        parts = [t.replace("_", " ").strip() for t in parts]
-        if self.english_force_lowercase:
-            parts = [t.lower() for t in parts]
-        return parts
-
-    def save_tagger_tags_for_image(self, image_path, raw_tags_str):
-        """儲存 tagger_tags 到 JSON sidecar"""
-        sidecar = load_image_sidecar(image_path)
-        sidecar["tagger_tags"] = raw_tags_str
-        save_image_sidecar(image_path, sidecar)
-
-    def load_nl_pages_for_image(self, image_path):
-        """從 JSON sidecar 載入 nl_pages"""
-        sidecar = load_image_sidecar(image_path)
-        pages = sidecar.get("nl_pages", [])
-        if isinstance(pages, list):
-            return [p for p in pages if p and str(p).strip()]
-        return []
-
-    def load_nl_for_current_image(self):
-        pages = self.load_nl_pages_for_image(self.current_image_path)
-        return pages[-1] if pages else ""
-
-    def save_nl_for_image(self, image_path, content):
-        """Append nl content 到 JSON sidecar"""
-        if not content:
-            return
-        content = str(content).strip()
-        if not content:
-            return
-
-        sidecar = load_image_sidecar(image_path)
-        pages = sidecar.get("nl_pages", [])
-        if not isinstance(pages, list):
-            pages = []
-        pages.append(content)
-        sidecar["nl_pages"] = pages
-        save_image_sidecar(image_path, sidecar)
-
-    def refresh_tags_tab(self):
-        active_text = self.txt_edit.toPlainText()
-
-        self.flow_top.render_tags_flow(
-            smart_parse_tags(", ".join(self.top_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_custom.render_tags_flow(
-            smart_parse_tags(", ".join(self.custom_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_tagger.render_tags_flow(
-            smart_parse_tags(", ".join(self.tagger_tags)),
-            active_text,
-            self.settings
-        )
-
-    # refresh_nl_tab() moved to NLMixin
+    # load_folder_custom_tags() moved to Mixin
 
 
-    # ==========================
-    # NL paging / dynamic sizing
-    # ==========================
-    # set_current_nl_page() moved to NLMixin
-
-    # update_nl_page_controls() moved to NLMixin
-
-    # prev_nl_page() and next_nl_page() moved to NLMixin
-
-    # update_nl_result_height() moved to NLMixin
-
-    # ==========================
-    # Logic: Insert / Remove to txt at cursor
-    # ==========================
-    def on_tag_button_toggled(self, tag, checked):
-        if not self.current_image_path:
-            return
-
-        tag = str(tag).strip()
-        if not tag:
-            return
-
-        if checked:
-            self.insert_token_at_cursor(tag)
-        else:
-            self.remove_token_everywhere(tag)
-
-        self.on_text_changed()
-
-    # insert_token_at_cursor() moved to TextEditMixin
+    # save_folder_custom_tags() moved to Mixin
 
 
-    # remove_token_everywhere() moved to TextEditMixin
+    # add_custom_tag_dialog() moved to Mixin
+
+
+    # load_tagger_tags_for_current_image() moved to Mixin
+
+
+    # save_tagger_tags_for_image() moved to Mixin
+
+
+    # load_nl_pages_for_image() moved to Mixin
+
+
+    # load_nl_for_current_image() moved to Mixin
+
+
+    # save_nl_for_image() moved to Mixin
 
 
     def run_tagger(self):
@@ -1190,23 +675,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
                 return p2
         return path
 
-    def _replace_image_path_in_list(self, old_path: str, new_path: str):
-        if not old_path or not new_path or os.path.abspath(old_path) == os.path.abspath(new_path):
-            return
-        
-        # Update current path first if match
-        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(old_path):
-            self.current_image_path = new_path
+    # _replace_image_path_in_list() moved to Mixin
 
-        found = False
-        abs_old = os.path.abspath(old_path)
-        for i, p in enumerate(self.image_files):
-            if os.path.abspath(p) == abs_old:
-                self.image_files[i] = new_path
-                found = True
-                break
-        
-        # If not found (rare), append? No, just ignore.
 
     def _tagger_has_background(self, image_path: str) -> bool:
         """檢查 tagger_tags 是否含有 background"""
@@ -1216,91 +686,14 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             return False
         return re.search(r"background", raw, re.IGNORECASE) is not None
 
-    def unmask_current_image(self):
-        if not self.current_image_path:
-            return
-        
-        try:
-            from transparent_background import Remover
-        except ImportError:
-            QMessageBox.warning(self, "Unmask", "transparent_background.Remover not available")
-            return
-            
-        # [Refactor] Use GenericBatchWorker for single image with is_batch=False
-        ctx = ImageContext(self.current_image_path)
-        proc = UnmaskProcessor(self.app_settings, is_batch=False)
-        
-        self.batch_unmask_thread = GenericBatchWorker([ctx], proc)
-        self.batch_unmask_thread.progress.connect(self.show_progress)
-        self.batch_unmask_thread.item_done.connect(self.on_batch_unmask_per_image)
-        self.batch_unmask_thread.finished_all.connect(lambda: self.on_batch_done("單圖去背完成"))
-        self.batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
-        self.batch_unmask_thread.start()
+    # unmask_current_image() moved to Mixin
 
-    def mask_text_current_image(self):
-        if not self.current_image_path:
-            return
-        if not bool(self.app_settings.get("mask_batch_detect_text_enabled", True)):
-            QMessageBox.information(self, "Info", "OCR text detection is disabled in settings.")
-            return
 
-        if detect_text_with_ocr is None:
-             QMessageBox.warning(self, "Mask Text", self.tr("setting_mask_ocr_hint"))
-             return
+    # mask_text_current_image() moved to Mixin
 
-        # [Refactor] Use GenericBatchWorker for single image with is_batch=False
-        ctx = ImageContext(self.current_image_path)
-        proc = TextMaskProcessor(self.app_settings, is_batch=False)
-        
-        self.batch_mask_text_thread = GenericBatchWorker([ctx], proc)
-        self.batch_mask_text_thread.progress.connect(self.show_progress)
-        self.batch_mask_text_thread.item_done.connect(self.on_batch_mask_text_per_image)
-        self.batch_mask_text_thread.finished_all.connect(lambda: self.on_batch_done("Mask Text 完成"))
-        self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Mask Text", e))
-        self.batch_mask_text_thread.start()
 
-    def restore_current_image(self):
-        """還原當前圖片為原始備份 (從 raw_image 資料夾)"""
-        if not self.current_image_path:
-            return
-        
-        # [Refactor] Use GenericBatchWorker + RestoreProcessor
-        ctx = ImageContext(self.current_image_path)
-        proc = RestoreProcessor(self.app_settings)
-        
-        self.batch_restore_thread = GenericBatchWorker([ctx], proc)
-        self.batch_restore_thread.item_done.connect(lambda c, r: self.load_image())
-        self.batch_restore_thread.error.connect(lambda e: self.statusBar().showMessage(f"Restore failed: {e}", 3000))
-        self.batch_restore_thread.start()
+    # restore_current_image() moved to Mixin
 
-    def run_batch_unmask_background(self):
-        if not self.image_files:
-            return
-        
-        # Check basic import availability (fast)
-        try:
-            from transparent_background import Remover
-        except ImportError:
-            QMessageBox.warning(self, "Batch Unmask", "transparent_background.Remover not available")
-            return
-
-        if hasattr(self, 'action_batch_unmask'):
-            self.action_batch_unmask.setEnabled(False)
-            
-        # [Refactor] Use GenericBatchWorker + UnmaskProcessor
-        # Processor handles filtering internally based on settings
-        contexts = [ImageContext(p) for p in self.image_files]
-        proc = UnmaskProcessor(self.app_settings)
-        
-        self.batch_unmask_thread = GenericBatchWorker(contexts, proc)
-        self.batch_unmask_thread.progress.connect(self.show_progress)
-        self.batch_unmask_thread.item_done.connect(self.on_batch_unmask_per_image)
-        self.batch_unmask_thread.finished_all.connect(self.on_batch_unmask_done)
-        self.batch_unmask_thread.error.connect(self.on_batch_error)
-        self.batch_unmask_thread.start()
-
-    def on_batch_unmask_per_image(self, old_path: str, new_path: str):
-        self._replace_image_path_in_list(old_path, new_path)
 
     def on_batch_unmask_done(self):
         if hasattr(self, 'action_batch_unmask'):
@@ -1333,31 +726,11 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # hide_progress() moved to ProgressMixin
 
 
-    def on_batch_done(self, msg="Batch Process Completed"):
-        self.hide_progress()
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(False)
-            self.btn_cancel_batch.setEnabled(False)
-        QMessageBox.information(self, "Batch", msg)
-        unload_all_models()
+    # on_batch_done() moved to Mixin
 
-    def run_batch_tagger(self):
-        if not self.image_files:
-            return
 
-        self.btn_batch_tagger.setEnabled(False)
-        self.btn_auto_tag.setEnabled(False)
+    # run_batch_tagger() moved to Mixin
 
-        # [Refactor] Use GenericBatchWorker + TaggerProcessor
-        contexts = [ImageContext(p) for p in self.image_files]
-        proc = TaggerProcessor(self.app_settings)
-        
-        self.batch_tagger_thread = GenericBatchWorker(contexts, proc)
-        self.batch_tagger_thread.progress.connect(self.show_progress)
-        self.batch_tagger_thread.item_done.connect(self.on_batch_tagger_per_image)
-        self.batch_tagger_thread.finished_all.connect(self.on_batch_tagger_done)
-        self.batch_tagger_thread.error.connect(self.on_batch_error)
-        self.batch_tagger_thread.start()
 
     def run_batch_tagger_to_txt(self):
         if not self.image_files:
@@ -1609,19 +982,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         except Exception as e:
             print(f"[BatchWriter] 寫入失敗 {txt_path}: {e}")
 
-    def on_batch_tagger_per_image(self, image_path, raw_tags_str):
-        self.save_tagger_tags_for_image(image_path, raw_tags_str)
+    # on_batch_tagger_per_image() moved to Mixin
 
-        if image_path == self.current_image_path:
-            parts = [x.strip() for x in raw_tags_str.split(",") if x.strip()]
-            parts = try_tags_to_text_list(parts)
-            parts = [t.replace("_", " ").strip() for t in parts if t.strip()]
-            self.tagger_tags = parts
-            self.refresh_tags_tab()
-            self.on_text_changed()
-        
-        if getattr(self, "_is_batch_to_txt", False):
-            self.write_batch_result_to_txt(image_path, raw_tags_str, is_tagger=True)
 
     def on_batch_tagger_done(self):
         self.btn_batch_tagger.setEnabled(True)
@@ -1634,54 +996,11 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     
 
 
-    def run_batch_llm(self):
-        if not self.image_files:
-            return
+    # run_batch_llm() moved to Mixin
 
-        self.btn_batch_llm.setEnabled(False)
-        self.btn_run_llm.setEnabled(False)
 
-        user_prompt = self.prompt_edit.toPlainText()
+    # on_batch_llm_per_image() moved to Mixin
 
-        # Check for unreplaced placeholder {角色名}
-        if "{角色名}" in user_prompt:
-            reply = QMessageBox.question(
-                self, "Warning", 
-                "Prompt 包含未替換的 '{角色名}'。\n這可能會導致生成結果不正確。\n請手動輸入角色名或調整提示。\n\n確定要繼續嗎？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.No:
-                self.btn_batch_llm.setEnabled(True)
-                self.btn_run_llm.setEnabled(True)
-                return
-
-        # [Refactor] Use GenericBatchWorker + LLMProcessor
-        contexts = [ImageContext(p) for p in self.image_files]
-        proc = LLMProcessor(self.app_settings, override_user_prompt=user_prompt)
-        
-        self.batch_llm_thread = GenericBatchWorker(contexts, proc)
-        self.batch_llm_thread.progress.connect(self.show_progress)
-        self.batch_llm_thread.item_done.connect(self.on_batch_llm_per_image)
-        self.batch_llm_thread.finished_all.connect(self.on_batch_llm_done)
-        self.batch_llm_thread.error.connect(self.on_batch_error)
-        self.batch_llm_thread.start()
-
-    def on_batch_llm_per_image(self, image_path, nl_content):
-        if not nl_content:
-            return
-        self.save_nl_for_image(image_path, nl_content)
-        if image_path == self.current_image_path:
-            if not self.nl_pages:
-                self.nl_pages = []
-            self.nl_pages.append(nl_content)
-            self.nl_page_index = len(self.nl_pages) - 1
-            self.nl_latest = nl_content
-            self.refresh_nl_tab()
-            self.update_nl_page_controls()
-            self.on_text_changed()
-
-        if getattr(self, "_is_batch_to_txt", False):
-            self.write_batch_result_to_txt(image_path, nl_content, is_tagger=False)
 
     def on_batch_llm_done(self):
         self.btn_batch_llm.setEnabled(True)
@@ -1691,21 +1010,7 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.hide_progress()
         self.statusBar().showMessage("Batch LLM 完成", 5000)
 
-    def on_batch_error(self, err):
-        self.btn_batch_tagger.setEnabled(True)
-        self.btn_batch_tagger_to_txt.setEnabled(True)
-        self.btn_auto_tag.setEnabled(True)
-        self.btn_batch_llm.setEnabled(True)
-        self.btn_batch_llm_to_txt.setEnabled(True)
-        self.btn_run_llm.setEnabled(True)
-        self._is_batch_to_txt = False
-        self.hide_progress()
-        self.statusBar().showMessage(f"Batch Error: {err}", 8000)
-
-    # ==========================
-    # Find/Replace
-    # ==========================
-    # open_find_replace() moved to DialogsMixin
+    # on_batch_error() moved to Mixin
 
 
     def _image_has_background_tag(self, image_path: str) -> bool:
@@ -1731,33 +1036,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             pass
         return False
 
-    def on_batch_mask_text_per_image(self, old_path, new_path):
-        if old_path != new_path:
-            self._replace_image_path_in_list(old_path, new_path)
-            # If current image is the one processed, reload it
-            if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
-                self.load_image()
+    # on_batch_mask_text_per_image() moved to Mixin
 
-    def run_batch_mask_text(self):
-        if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
-            return
-
-        # [Refactor] Use GenericBatchWorker + TextMaskProcessor
-        contexts = [ImageContext(p) for p in self.image_files]
-        proc = TextMaskProcessor(self.app_settings)
-        
-        # Check settings
-        if not bool(self.app_settings.get("mask_batch_detect_text_enabled", True)):
-             QMessageBox.warning(self, "Warning", "Batch Text detection is disabled in settings.")
-             return
-
-        self.batch_mask_text_thread = GenericBatchWorker(contexts, proc)
-        self.batch_mask_text_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, name))
-        self.batch_mask_text_thread.item_done.connect(self.on_batch_mask_text_per_image)
-        self.batch_mask_text_thread.finished_all.connect(lambda: self.on_batch_done("Batch Mask Text 完成"))
-        self.batch_mask_text_thread.error.connect(lambda e: self.on_batch_error("Batch Mask Text", e))
-        self.batch_mask_text_thread.start()
 
     def on_batch_restore_per_image(self, old_path, new_path):
         if old_path != new_path:
@@ -1766,32 +1046,7 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
                 self.load_image()
 
-    def run_batch_restore(self):
-        if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
-            return
-
-        reply = QMessageBox.question(
-            self, "Batch Restore",
-            "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        # [Refactor] Use GenericBatchWorker + RestoreProcessor
-        contexts = [ImageContext(p) for p in self.image_files]
-        proc = RestoreProcessor(self.app_settings)
-
-        self.batch_restore_thread = GenericBatchWorker(contexts, proc)
-        # Using lambda for progress signature matching
-        self.batch_restore_thread.progress.connect(lambda i, t, name: self.show_progress(i, t, name))
-        self.batch_restore_thread.item_done.connect(lambda ctx, res: self.on_batch_restore_per_image(ctx.path, res))
-        self.batch_restore_thread.finished_all.connect(lambda: self.on_batch_done("Batch Restore 完成"))
-        self.batch_restore_thread.error.connect(lambda e: self.on_batch_error("Batch Restore", e))
-        self.batch_restore_thread.start()
-
-    # cancel_batch() moved to ProgressMixin
+    # run_batch_restore() moved to Mixin
 
 
     def on_reset_prompt(self):
