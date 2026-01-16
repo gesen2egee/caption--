@@ -135,8 +135,9 @@ os.environ['ONNX_MODE'] = 'gpu'
 # Import Mixins
 from lib.ui.main_window.mixins.shortcuts_mixin import ShortcutsMixin
 from lib.ui.main_window.mixins.theme_mixin import ThemeMixin
+from lib.ui.main_window.mixins.nl_mixin import NLMixin
 
-class MainWindow(ShortcutsMixin, ThemeMixin, QMainWindow):
+class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -1224,79 +1225,19 @@ class MainWindow(ShortcutsMixin, ThemeMixin, QMainWindow):
             self.settings
         )
 
-    def refresh_nl_tab(self):
-        active_text = self.txt_edit.toPlainText()
-        self.flow_nl.render_tags_flow(
-            smart_parse_tags(self.nl_latest),
-            active_text,
-            self.settings
-        )
+    # refresh_nl_tab() moved to NLMixin
 
 
     # ==========================
     # NL paging / dynamic sizing
     # ==========================
-    def set_current_nl_page(self, idx: int):
-        if not self.nl_pages:
-            self.nl_page_index = 0
-            self.nl_latest = ""
-            self.refresh_nl_tab()
-            self.update_nl_page_controls()
-            return
+    # set_current_nl_page() moved to NLMixin
 
-        idx = max(0, min(int(idx), len(self.nl_pages) - 1))
-        self.nl_page_index = idx
-        self.nl_latest = self.nl_pages[self.nl_page_index]
+    # update_nl_page_controls() moved to NLMixin
 
-        self.refresh_nl_tab()
-        self.update_nl_page_controls()
-        self.on_text_changed()
+    # prev_nl_page() and next_nl_page() moved to NLMixin
 
-    def update_nl_page_controls(self):
-        total = len(self.nl_pages)
-        if total <= 0:
-            if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText(f"{self.tr('label_page')} 0/0")
-            if hasattr(self, "btn_prev_nl"):
-                self.btn_prev_nl.setEnabled(False)
-            if hasattr(self, "btn_next_nl"):
-                self.btn_next_nl.setEnabled(False)
-        else:
-            self.nl_page_index = max(0, min(self.nl_page_index, total - 1))
-            if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText(f"Page {self.nl_page_index + 1}/{total}")
-            if hasattr(self, "btn_prev_nl"):
-                self.btn_prev_nl.setEnabled(self.nl_page_index > 0)
-            if hasattr(self, "btn_next_nl"):
-                self.btn_next_nl.setEnabled(self.nl_page_index < total - 1)
-
-        self.update_nl_result_height()
-
-    def prev_nl_page(self):
-        if self.nl_pages and self.nl_page_index > 0:
-            self.set_current_nl_page(self.nl_page_index - 1)
-
-    def next_nl_page(self):
-        if self.nl_pages and self.nl_page_index < len(self.nl_pages) - 1:
-            self.set_current_nl_page(self.nl_page_index + 1)
-
-    def update_nl_result_height(self):
-        # make RESULT taller when content is long, and shrink prompt area accordingly
-        try:
-            lines = [l for l in (self.nl_latest or "").splitlines() if l.strip()]
-            n = len(lines)
-
-            if n >= 16:
-                self.flow_nl.setMinimumHeight(760)
-                self.prompt_edit.setMaximumHeight(220)
-            elif n >= 10:
-                self.flow_nl.setMinimumHeight(660)
-                self.prompt_edit.setMaximumHeight(280)
-            else:
-                self.flow_nl.setMinimumHeight(520)
-                self.prompt_edit.setMaximumHeight(9999)
-        except Exception:
-            pass
+    # update_nl_result_height() moved to NLMixin
 
     # ==========================
     # Logic: Insert / Remove to txt at cursor
