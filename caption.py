@@ -82,11 +82,12 @@ except ImportError:
 
 # [Refactor Imports]
 from lib.data import AppSettings, ImageContext
-from lib.const import DEFAULT_CUSTOM_TAGS, LOCALIZATION, THEME_STYLES, DEFAULT_APP_SETTINGS
+from lib.const import DEFAULT_CUSTOM_TAGS, LOCALIZATION, THEME_STYLES, DEFAULT_APP_SETTINGS, TEMPLATE_DEFAULT, DEFAULT_SYSTEM_PROMPT
 from lib.workers.batch import GenericBatchWorker
 from lib.processors.tagger import TaggerProcessor
 from lib.processors.llm import LLMProcessor
 from lib.processors.vision import UnmaskProcessor, TextMaskProcessor, RestoreProcessor
+from lib.utils import remove_underline
 
 
 

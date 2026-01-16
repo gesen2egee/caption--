@@ -337,6 +337,11 @@ def cleanup_csv_like_text(text: str, force_lower: bool = False) -> str:
 def split_csv_like_text(text: str):
     return [p.strip() for p in text.split(",") if p.strip()]
 
+def remove_underline(text: str) -> str:
+    if not text:
+        return ""
+    return text.replace("_", " ").strip()
+
 def try_tags_to_text_list(tags_obj, remove_underline_func=None):
     if not tags_obj: return []
     if isinstance(tags_obj, dict):
