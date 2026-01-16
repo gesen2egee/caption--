@@ -6,9 +6,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from lib.const import (
-    LOCALIZATION, DEFAULT_SYSTEM_PROMPT, DEFAULT_PROMPT_TEMPLATES, 
+    DEFAULT_SYSTEM_PROMPT, DEFAULT_PROMPT_TEMPLATES, 
     TEMPLATE_DEFAULT, DEFAULT_CUSTOM_TAGS, DEFAULT_APP_SETTINGS
 )
+from lib import localization
 
 def _coerce_int(val, default):
     try:
@@ -26,7 +27,12 @@ class SettingsDialog(QDialog):
     def __init__(self, cfg: dict, parent=None):
         super().__init__(parent)
         self.cfg = dict(cfg or {})
-        self.setWindowTitle(self.tr("btn_settings"))
+        
+        # 設定本地化模組使用當前語言
+        current_lang = self.cfg.get("ui_language", "zh_tw")
+        localization.set_language(current_lang)
+        
+        self.setWindowTitle(self.tr("ui.btn_settings"))
         self.setMinimumWidth(640)
 
         self.layout = QVBoxLayout(self)
@@ -36,9 +42,16 @@ class SettingsDialog(QDialog):
         # 初始化 UI
         self._init_ui()
 
-    def tr(self, key: str) -> str:
-        lang = self.cfg.get("ui_language", "zh_tw")
-        return LOCALIZATION.get(lang, LOCALIZATION["zh_tw"]).get(key, key)
+    def tr(self, key: str, **kwargs) -> str:
+        """翻譯函數，支援點分隔路徑"""
+        # 支援舊式不帶前綴的 key (向後兼容)
+        if "." not in key:
+            for prefix in ["ui", "dialog", "settings", "status", "error", "context_menu", "tooltip"]:
+                result = localization.get_text(f"{prefix}.{key}", **kwargs)
+                if result != f"{prefix}.{key}":
+                    return result
+            return localization.get_text(f"settings.{key}", **kwargs)
+        return localization.get_text(key, **kwargs)
 
     def _init_ui(self):
         # ---- UI ----
@@ -46,13 +59,18 @@ class SettingsDialog(QDialog):
         ui_layout = QVBoxLayout(tab_ui)
         ui_form = QFormLayout()
         
+        # 動態載入可用語言
         self.cb_lang = QComboBox()
-        self.cb_lang.addItem(self.tr("setting_lang_zh"), "zh_tw")
-        self.cb_lang.addItem(self.tr("setting_lang_en"), "en")
-        idx_lang = self.cb_lang.findData(self.cfg.get("ui_language", "zh_tw"))
+        available_langs = localization.get_available_languages()
+        current_lang = self.cfg.get("ui_language", "zh_tw")
+        
+        for lang_info in available_langs:
+            self.cb_lang.addItem(lang_info["name"], lang_info["code"])
+        
+        idx_lang = self.cb_lang.findData(current_lang)
         self.cb_lang.setCurrentIndex(idx_lang if idx_lang >= 0 else 0)
         
-        ui_form.addRow(self.tr("setting_ui_lang"), self.cb_lang)
+        ui_form.addRow(self.tr("settings.setting_ui_lang"), self.cb_lang)
         
         self.rb_light = QRadioButton(self.tr("setting_theme_light"))
         self.rb_dark = QRadioButton(self.tr("setting_theme_dark"))

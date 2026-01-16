@@ -352,39 +352,30 @@ def try_tags_to_text_list(tags_obj, remove_underline_func=None):
 #  Helpers: CSV / Translation
 # ==========================================
 
-def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
-    if os.path.exists(csv_path):
-        return True
-    try:
-        from urllib.request import Request, urlopen
-        req = Request(TAGS_CSV_URL_RAW, headers={"User-Agent": "Mozilla/5.0"})
-        with urlopen(req, timeout=20) as resp:
-            data = resp.read()
-        with open(csv_path, "wb") as f:
-            f.write(data)
-        return True
-    except Exception as e:
-        print(f"[Tags.csv] 下載失敗: {e}")
-        return False
-
-
 def load_translations(csv_path=TAGS_CSV_LOCAL):
+    """
+    載入標籤翻譯 CSV 文件 (本地)
+    
+    注意：不再從網路下載，請確保 Tags.csv 已存在於專案根目錄
+    """
     translations = {}
+    
     if not os.path.exists(csv_path):
-        ensure_tags_csv(csv_path)
+        print(f"[Tags.csv] 本地檔案不存在: {csv_path}")
+        return translations
 
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        # 簡單處理
-                        key = row[0].strip().replace("_", " ")
-                        translations[key] = row[1].strip()
-        except Exception as e:
-            print(f"Error loading translations: {e}")
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if len(row) >= 2:
+                    key = row[0].strip().replace("_", " ")
+                    translations[key] = row[1].strip()
+    except Exception as e:
+        print(f"[Tags.csv] 載入失敗: {e}")
+        
     return translations
+
 
 # ==========================================
 #  Danbooru Filter

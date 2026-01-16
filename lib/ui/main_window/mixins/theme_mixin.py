@@ -24,25 +24,40 @@
 
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtGui import QAction, QKeySequence
-from lib.const import THEME_STYLES, LOCALIZATION
+from lib.const import THEME_STYLES
 from lib.ui.widgets import TagButton
+from lib import localization
 
 
 class ThemeMixin:
     """主題和本地化 Mixin"""
     
-    def tr(self, key: str) -> str:
+    def tr(self, key: str, **kwargs) -> str:
         """
         翻譯函數
         
         Args:
-            key: 翻譯鍵值
+            key: 翻譯鍵值 (支援點分隔路徑如 "ui.app_title")
+            **kwargs: 格式化參數
             
         Returns:
             翻譯後的字串，如果找不到則返回原鍵值
         """
+        # 確保本地化模組使用與 settings 相同的語言
         lang = self.settings.get("ui_language", "zh_tw")
-        return LOCALIZATION.get(lang, LOCALIZATION["zh_tw"]).get(key, key)
+        if localization.get_current_language() != lang:
+            localization.set_language(lang)
+        
+        # 支援舊式不帶前綴的 key (向後兼容)
+        if "." not in key:
+            # 嘗試在各區域查找
+            for prefix in ["ui", "dialog", "settings", "status", "error", "context_menu", "tooltip"]:
+                result = localization.get_text(f"{prefix}.{key}", **kwargs)
+                if result != f"{prefix}.{key}":
+                    return result
+            return localization.get_text(f"ui.{key}", **kwargs)
+        
+        return localization.get_text(key, **kwargs)
 
     def apply_theme(self):
         """

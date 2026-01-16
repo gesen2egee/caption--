@@ -28,7 +28,7 @@ class DialogsMixin:
         """開啟設定對話框"""
         dlg = SettingsDialog(self.settings, self)
         if dlg.exec():
-            new_cfg = dlg.get_config()
+            new_cfg = dlg.get_cfg()
             self.settings.update(new_cfg)
             save_app_settings(self.settings)
             self.apply_theme()
