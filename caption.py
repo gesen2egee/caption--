@@ -101,7 +101,17 @@ from lib.utils import (
 from lib.services.tagger import call_wd14
 from lib.services.common import unload_all_models
 
+# Optional: OCR text detection (used in MainWindow.mask_text_current_image)
+try:
+    from imgutils.ocr import detect_text_with_ocr
+except ImportError:
+    detect_text_with_ocr = None
 
+# Optional: CLIPTokenizer for token counting
+try:
+    from clip_anytokenizer import CLIPTokenizer
+except ImportError:
+    CLIPTokenizer = None
 
 
 os.environ['ONNX_MODE'] = 'gpu'
