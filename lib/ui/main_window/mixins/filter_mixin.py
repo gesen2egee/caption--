@@ -2,70 +2,96 @@
 篩選功能 Mixin
 
 負責處理：
-- Danbooru 查詢篩選
-- 篩選應用和清除
+- Danbooru 標籤與文字篩選邏輯
+- 應用篩選結果
+- 獲取圖片內容以供篩選
 
 依賴的屬性：
-- self.filter_active: bool - 篩選是否啟用
-- self.all_image_files: list - 所有圖片列表
-- self.filtered_image_files: list - 篩選後的圖片列表
-- self.image_files: list - 當前圖片列表
-- self.filter_edit - 篩選輸入框
+- self.all_image_files: list
+- self.image_files: list (當前使用的列表)
+- self.filtered_image_files: list
+- self.filter_active: bool
+- self.current_index: int
+- self.filter_input, self.chk_filter_tags, self.chk_filter_text
+- self.load_image()
+- self.update_file_list_ui() (optional)
 """
 
-from lib.utils import DanbooruQueryFilter, load_image_sidecar
+from lib.utils import DanbooruQueryFilter, normalize_for_match, load_image_sidecar
 import os
-
 
 class FilterMixin:
     """篩選功能 Mixin"""
     
     def apply_filter(self):
-        """應用 Danbooru 篩選"""
-        query = self.filter_edit.text().strip()
+        """應用篩選條件"""
+        query = self.filter_input.text().strip()
         if not query:
-            self.clear_filter()
-            return
-        
-        try:
-            filter_obj = DanbooruQueryFilter(query)
+            # 清除篩選
+            self.filter_active = False
+            self.image_files = list(self.all_image_files)
             self.filtered_image_files = []
             
-            for img_path in self.all_image_files:
-                # 載入 sidecar 和 txt 內容
-                sidecar = load_image_sidecar(img_path)
-                txt_path = os.path.splitext(img_path)[0] + ".txt"
-                txt_content = ""
-                if os.path.exists(txt_path):
-                    try:
-                        with open(txt_path, 'r', encoding='utf-8') as f:
-                            txt_content = f.read()
-                    except:
-                        pass
-                
-                # 組合搜尋內容
-                search_content = f"{txt_content} {sidecar.get('tagger_tags', '')}"
-                
-                if filter_obj.matches(search_content):
-                    self.filtered_image_files.append(img_path)
-            
-            self.image_files = self.filtered_image_files
-            self.filter_active = True
-            
-            if self.image_files:
-                self.load_image(0)
+            # Restore index
+            if self.current_image_path in self.image_files:
+                self.current_index = self.image_files.index(self.current_image_path)
             else:
-                self.current_index = -1
-                self.current_image_path = ""
-                
-        except Exception as e:
-            print(f"Filter error: {e}")
-
-    def clear_filter(self):
-        """清除篩選"""
-        self.filter_active = False
-        self.image_files = list(self.all_image_files)
-        self.filtered_image_files = []
+                self.current_index = 0 if self.image_files else -1
+            
+            if hasattr(self, 'update_file_list_ui'):
+                self.update_file_list_ui() # Update visual list if exists
+            
+            self.btn_filter.setText(self.tr("btn_filter_apply"))
+            self.load_image()
+            return
+            
+        # 執行篩選
+        self.statusBar().showMessage("Filtering...")
+        QApplication.processEvents() if 'QApplication' in globals() else None
         
-        if self.image_files:
-            self.load_image(0)
+        matcher = DanbooruQueryFilter(query)
+        res = []
+        
+        for p in self.all_image_files:
+            content = self._get_image_content_for_filter(p)
+            if matcher.matches(content):
+                res.append(p)
+                
+        self.filtered_image_files = res
+        self.image_files = res
+        self.filter_active = True
+        
+        self.current_index = 0 if res else -1
+        if res:
+             self.current_image_path = res[0]
+        else:
+             self.current_image_path = ""
+             
+        if hasattr(self, 'update_file_list_ui'):
+            self.update_file_list_ui()
+            
+        self.btn_filter.setText(f"{self.tr('btn_filter_apply')} ({len(res)})")
+        self.load_image()
+        self.statusBar().showMessage(f"Filter done. Found {len(res)} images.")
+
+    def _get_image_content_for_filter(self, image_path: str) -> str:
+        """Get combined content (tags + text) for filtering."""
+        content_parts = []
+        
+        if hasattr(self, 'chk_filter_tags') and self.chk_filter_tags.isChecked():
+            # Get tags from sidecar
+            sidecar = load_image_sidecar(image_path)
+            tags = sidecar.get("tagger_tags", "")
+            content_parts.append(tags)
+        
+        if hasattr(self, 'chk_filter_text') and self.chk_filter_text.isChecked():
+            # Get text from .txt file
+            txt_path = os.path.splitext(image_path)[0] + ".txt"
+            if os.path.exists(txt_path):
+                try:
+                    with open(txt_path, 'r', encoding='utf-8') as f:
+                        content_parts.append(f.read())
+                except Exception:
+                    pass
+        
+        return " ".join(content_parts)

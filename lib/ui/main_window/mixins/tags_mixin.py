@@ -89,6 +89,10 @@ class TagsMixin:
                 json.dump({"custom_tags": tags}, f, ensure_ascii=False, indent=2)
         except:
             pass
+            
+    def folder_custom_tags_path(self, folder_path):
+        """獲取自定義標籤檔案路徑"""
+        return os.path.join(folder_path, ".custom_tags.json")
 
     def add_custom_tag_dialog(self):
         """新增自定義標籤對話框"""
