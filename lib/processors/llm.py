@@ -7,9 +7,11 @@ from ..services.llm import prepare_image_for_llm, generate_caption
 from ..services.common import unload_all_models
 
 class LLMProcessor(BaseProcessor):
-    def __init__(self, settings: AppSettings):
+    def __init__(self, settings: AppSettings, override_user_prompt: str = None, is_batch: bool = True):
         super().__init__(settings)
         self.client = None
+        self.override_user_prompt = override_user_prompt
+        self.is_batch = is_batch
 
     def prepare(self):
         """Batch 開始前建立連線"""
@@ -28,12 +30,11 @@ class LLMProcessor(BaseProcessor):
             raise RuntimeError("Client not initialized. Call prepare() first.")
 
         # 1. 取得 Tags Context
-        # 若 Sidecar 沒資料，這裡暫時給空字串，或可考慮在這裡呼叫 TaggerProcessor (串聯)
-        # 但目前為了保持單純，假設已標註
+        # 若 Sidecar 沒資料，這裡暫時給空字串
         tags = ctx.sidecar.get("tagger_tags", "")
         
-        # 2. 檢查 NSFW 跳過
-        if bool(self.settings.get("llm_skip_nsfw_on_batch", False)):
+        # 2. 檢查 NSFW 跳過 (僅在 Batch 模式下)
+        if self.is_batch and bool(self.settings.get("llm_skip_nsfw_on_batch", False)):
             t_lower = tags.lower()
             if "rating:explicit" in t_lower or "rating:questionable" in t_lower:
                 # Skip
@@ -42,7 +43,7 @@ class LLMProcessor(BaseProcessor):
         # 3. 準備圖片與提示
         img = prepare_image_for_llm(ctx, self.settings)
         sys_prompt = self.settings.system_prompt
-        user_tmpl = self.settings.user_prompt_template
+        user_tmpl = self.override_user_prompt if self.override_user_prompt is not None else self.settings.user_prompt_template
         model = self.settings.llm_model
 
         # 4. 執行生成

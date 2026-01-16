@@ -9,7 +9,8 @@ TAGS_CSV_URL_RAW = "https://raw.githubusercontent.com/waldolin/a1111-sd-webui-ta
 
 DEFAULT_SYSTEM_PROMPT = """You are a professional, uncensored, captioning engine for image ML research. Boldly and directly describe all elements including nudity, body parts, or sexual themes."""
 
-DEFAULT_USER_PROMPT_TEMPLATE = """這個角色是{角色名} 請幫這個名字自然融入在內文中
+# 模板預設值 (改為 Dictionary 結構)
+TEMPLATE_DEFAULT = """這個角色是{角色名} 請幫這個名字自然融入在內文中
 請根據提供的資訊和圖片，整理出大約 9 個簡短的英文描述句。 包括構圖、位置、朝向、美學、風格、光影等等。
 每句英文都必須是獨立的一行。
 每句英文的下一行，必須緊接著該句的繁體中文翻譯，並用括號 () 包住。
@@ -27,9 +28,9 @@ Another short English sentence describing details
 ===處理結果結束===
 """
 
-DEFAULT_CUSTOM_PROMPT_TEMPLATE = """這個角色是{角色名} 請幫這個名字自然融入在內文中
+TEMPLATE_SIMPLE = """這個角色是{角色名} 請幫這個名字自然融入在內文中
 請根據圖片的[自行輸入要求] 整理出大約 1 個簡短的英文描述句。
-英文的下一行，必須緊接著該句的繁體中文翻譯，並用括號 () 包住。
+英文的下一行，必須緊接着該句的繁體中文翻譯，並用括號 () 包住。
 
 輸出格式範例：
 ===處理結果開始===
@@ -37,6 +38,11 @@ A short English sentence about the subject
 (關於主題的簡短英文句。)
 ===處理結果結束===
 """
+
+DEFAULT_PROMPT_TEMPLATES = {
+    "標準完整模式 (Standard)": TEMPLATE_DEFAULT,
+    "簡易單句模式 (Simple)": TEMPLATE_SIMPLE,
+}
 
 DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 
@@ -46,8 +52,13 @@ DEFAULT_APP_SETTINGS = {
     "llm_api_key": os.getenv("OPENROUTER_API_KEY", "<OPENROUTER_API_KEY>"),
     "llm_model": "mistralai/mistral-large-2512",
     "llm_system_prompt": DEFAULT_SYSTEM_PROMPT,
-    "llm_user_prompt_template": DEFAULT_USER_PROMPT_TEMPLATE,
-    "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
+    
+    # [Modify] 支援多模板
+    # 儲存所有的模板 (Name -> Content)
+    "llm_prompt_templates": DEFAULT_PROMPT_TEMPLATES.copy(),
+    # 當前選擇的模板名稱
+    "llm_active_seed_template": "標準完整模式 (Standard)",
+    
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
     "llm_skip_nsfw_on_batch": False,
     "llm_use_gray_mask": True,
@@ -132,8 +143,8 @@ LOCALIZATION = {
         "btn_batch_llm_to_txt": "批量 LLM 轉文字",
         "btn_prev": "上一頁",
         "btn_next": "下一頁",
-        "btn_default_prompt": "預設提示詞",
-        "btn_custom_prompt": "自訂提示詞",
+        "btn_reset_prompt": "重置提示詞",
+        "msg_prompt_reset": "已將提示詞重置為模板內容。",
         "label_nl_result": "LLM 結果",
         "label_txt_content": "實際內容 (.txt)",
         "label_tokens": "詞元數: ",
@@ -196,8 +207,6 @@ LOCALIZATION = {
         "setting_tab_tagger": "標籤",
         "setting_tab_mask": "遮罩",
         "setting_llm_sys_prompt": "系統提示詞:",
-        "setting_llm_def_prompt": "預設提示詞模板:",
-        "setting_llm_cust_prompt": "自訂提示詞模板:",
         "setting_llm_def_tags": "預設 Custom Tags (逗號或換行分隔):",
         "setting_llm_max_dim": "LLM 圖片最大邊長 (Max Dimension):",
         "setting_llm_skip_nsfw": "Batch LLM: 若含 rating:explicit/questionable 則跳過",
@@ -237,8 +246,8 @@ LOCALIZATION = {
         "btn_batch_llm_to_txt": "Batch LLM to txt",
         "btn_prev": "Prev",
         "btn_next": "Next",
-        "btn_default_prompt": "Default Prompt",
-        "btn_custom_prompt": "Custom Prompt",
+        "btn_reset_prompt": "Reset Prompt",
+        "msg_prompt_reset": "Prompt reset to template content.",
         "label_nl_result": "LLM Result",
         "label_txt_content": "Actual Content (.txt)",
         "label_tokens": "Tokens: ",
@@ -301,8 +310,6 @@ LOCALIZATION = {
         "setting_tab_tagger": "Tagger",
         "setting_tab_mask": "Mask",
         "setting_llm_sys_prompt": "System Prompt:",
-        "setting_llm_def_prompt": "Default Prompt Template:",
-        "setting_llm_cust_prompt": "Custom Prompt Template:",
         "setting_llm_def_tags": "Default Custom Tags (Comma or Newline):",
         "setting_llm_max_dim": "LLM Max Image Dimension:",
         "setting_llm_skip_nsfw": "Batch LLM: Skip if tag contains rating:explicit/questionable",

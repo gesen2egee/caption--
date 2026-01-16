@@ -48,7 +48,33 @@ class AppSettings:
     
     @property
     def user_prompt_template(self) -> str:
-        return self._data.get("llm_user_prompt_template", "")
+        # 取得目前啟用的 Template Key
+        key = self._data.get("llm_active_seed_template", "標準完整模式 (Standard)")
+        # 從 Dict 中取得內容，若找不到則回傳預設（避免 Key Error）
+        templates = self._data.get("llm_prompt_templates", {})
+        return templates.get(key, "")
+
+    @property
+    def prompt_templates(self) -> Dict[str, str]:
+        return self._data.get("llm_prompt_templates", {})
+    
+    @property
+    def active_template_key(self) -> str:
+        return self._data.get("llm_active_seed_template", "")
+
+    def set_active_template(self, key: str):
+        if key in self.prompt_templates:
+            self._data["llm_active_seed_template"] = key
+
+    def add_template(self, name: str, content: str):
+        if "llm_prompt_templates" not in self._data:
+            self._data["llm_prompt_templates"] = {}
+        self._data["llm_prompt_templates"][name] = content
+
+    def remove_template(self, name: str):
+        if "llm_prompt_templates" in self._data:
+            self._data["llm_prompt_templates"].pop(name, None)
+
 
     # --- Tagger Shortcuts ---
     @property
