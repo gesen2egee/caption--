@@ -18,8 +18,9 @@ from .vision_mixin import VisionMixin
 from .tagger_mixin import TaggerMixin
 from .llm_mixin import LLMMixin
 from .app_core_mixin import AppCoreMixin
+from .batch_export_mixin import BatchExportMixin
 
 __all__ = ['ShortcutsMixin', 'ThemeMixin', 'NLMixin', 'DialogsMixin', 'ProgressMixin',
            'FileMixin', 'FilterMixin', 'NavigationMixin', 'TextEditMixin', 'TagsMixin',
            'ImageMixin', 'BatchBaseMixin', 'VisionMixin', 'TaggerMixin', 'LLMMixin',
-           'AppCoreMixin']
+           'BatchExportMixin', 'AppCoreMixin']

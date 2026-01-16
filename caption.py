@@ -76,10 +76,6 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
     print("transformers not found, falling back to regex token counting.")
 
-
-
-
-
 # [Refactor Imports]
 from lib.data import AppSettings, ImageContext, load_app_settings, save_app_settings
 from lib.const import (
@@ -113,7 +109,6 @@ try:
 except ImportError:
     CLIPTokenizer = None
 
-
 os.environ['ONNX_MODE'] = 'gpu'
 
 # ==========================================
@@ -121,10 +116,7 @@ os.environ['ONNX_MODE'] = 'gpu'
 # Note: Utility functions (load_app_settings, call_wd14, etc.) 
 # have been moved to lib.utils, lib.services, and lib.data.
 
-
-
 # Danbooru filter and Utilities have been moved to lib.utils
-
 
 # ==========================================
 #  Main Window
@@ -149,11 +141,12 @@ from lib.ui.main_window.mixins.vision_mixin import VisionMixin
 from lib.ui.main_window.mixins.tagger_mixin import TaggerMixin
 from lib.ui.main_window.mixins.llm_mixin import LLMMixin
 from lib.ui.main_window.mixins.app_core_mixin import AppCoreMixin
+from lib.ui.main_window.mixins.batch_export_mixin import BatchExportMixin
 
 class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, 
                  FileMixin, FilterMixin, NavigationMixin, TextEditMixin, TagsMixin,
                  ImageMixin, BatchBaseMixin, VisionMixin, TaggerMixin, LLMMixin, 
-                 AppCoreMixin, QMainWindow):
+                 BatchExportMixin, AppCoreMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -205,7 +198,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.tagger_thread = None # Add missing single threads
         self.llm_thread = None
 
-
         self.init_ui()
         self.apply_theme()
         self.setup_shortcuts()
@@ -230,21 +222,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         except ImportError:
             pass
 
-    # tr() moved to ThemeMixin
-
-    # apply_theme() moved to ThemeMixin
-
     def init_ui(self):
         self.setup_ui_components()
-
-
-    def make_hline(self):
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        return line
-
-    # setup_shortcuts() moved to ShortcutsMixin
 
     def wheelEvent(self, event):
         pos = event.position().toPoint()
@@ -262,12 +241,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
     # ==========================
     # Logic: Storage & Init
     # ==========================
-    # refresh_file_list() moved to Mixin
-
-
-    # load_image() moved to Mixin
-
-
     def _get_image_content_for_filter(self, image_path: str) -> str:
         """Get combined content (tags + text) for filtering."""
         content_parts = []
@@ -290,15 +263,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         
         return " ".join(content_parts)
 
-    # apply_filter() moved to Mixin
-
-
-    # clear_filter() moved to Mixin
-
-
-    # next_image() moved to Mixin
-
-
     def jump_to_index(self):
         try:
             val = int(self.index_input.text())
@@ -319,9 +283,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
                     self.load_image() # Reset to current
         except Exception:
             self.load_image()
-
-    # update_image_display() moved to Mixin
-
 
     def _get_processed_pixmap(self) -> QPixmap:
         """
@@ -385,9 +346,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         
         return self.current_pixmap
 
-    # on_view_mode_changed() moved to Mixin
-
-
     def show_image_context_menu(self, pos: QPoint):
         if not self.current_image_path:
             return
@@ -434,12 +392,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
         QTimer.singleShot(10, self.update_image_display)
 
-    # delete_current_image() moved to Mixin
-
-
-    # on_text_changed() moved to TextEditMixin
-
-
     def _get_clip_tokenizer(self):
         if CLIPTokenizer is None:
             return None
@@ -450,38 +402,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
                 self._clip_tokenizer = None
         return self._clip_tokenizer
 
-    # _get_tokenizer() moved to TextEditMixin
-
-
-    # build_top_tags_for_current_image() moved to Mixin
-
-
     def folder_custom_tags_path(self, folder_path):
         return os.path.join(folder_path, ".custom_tags.json")
-
-    # load_folder_custom_tags() moved to Mixin
-
-
-    # save_folder_custom_tags() moved to Mixin
-
-
-    # add_custom_tag_dialog() moved to Mixin
-
-
-    # load_tagger_tags_for_current_image() moved to Mixin
-
-
-    # save_tagger_tags_for_image() moved to Mixin
-
-
-    # load_nl_pages_for_image() moved to Mixin
-
-
-    # load_nl_for_current_image() moved to Mixin
-
-
-    # save_nl_for_image() moved to Mixin
-
 
     def run_tagger(self):
         if not self.current_image_path:
@@ -557,8 +479,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.refresh_tags_tab()
         self.on_text_changed()
 
-
-
     def build_llm_tags_context_for_image(self, image_path: str) -> str:
         top_tags = []
         try:
@@ -605,8 +525,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
                 all_tags.append(t)
 
         return "\n".join(all_tags)
-
-
 
     @staticmethod
     def extract_llm_content_and_postprocess(full_text: str, force_lowercase: bool = True) -> str:
@@ -661,48 +579,9 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self.btn_run_llm.setText("Run LLM")
         self.statusBar().showMessage(f"LLM Error: {err}", 8000)
 
-
     # ==========================
     # Tools: Unmask (Remove BG) / Stroke Eraser
     # ==========================
-    def _unique_path(self, path: str) -> str:
-        if not os.path.exists(path):
-            return path
-        base, ext = os.path.splitext(path)
-        for i in range(1, 9999):
-            p2 = f"{base}_{i}{ext}"
-            if not os.path.exists(p2):
-                return p2
-        return path
-
-    # _replace_image_path_in_list() moved to Mixin
-
-
-    def _tagger_has_background(self, image_path: str) -> bool:
-        """檢查 tagger_tags 是否含有 background"""
-        sidecar = load_image_sidecar(image_path)
-        raw = sidecar.get("tagger_tags", "")
-        if not raw:
-            return False
-        return re.search(r"background", raw, re.IGNORECASE) is not None
-
-    # unmask_current_image() moved to Mixin
-
-
-    # mask_text_current_image() moved to Mixin
-
-
-    # restore_current_image() moved to Mixin
-
-
-    def on_batch_unmask_done(self):
-        if hasattr(self, 'action_batch_unmask'):
-            self.action_batch_unmask.setEnabled(True)
-        self.hide_progress()
-        self.load_image()
-        self.statusBar().showMessage("Batch Unmask 完成", 5000)
-
-    @staticmethod
     def _qimage_to_pil_l(qimg: QImage) -> Image.Image:
         # 轉換格式
         q = qimg.convertToFormat(QImage.Format.Format_Grayscale8)
@@ -717,274 +596,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         # 使用 PIL 從記憶體中讀取
         return Image.open(BytesIO(ba.data()))
 
-    # stroke_erase_to_webp() moved to DialogsMixin
-
-
-    # show_progress() moved to ProgressMixin
-
-
-    # hide_progress() moved to ProgressMixin
-
-
-    # on_batch_done() moved to Mixin
-
-
-    # run_batch_tagger() moved to Mixin
-
-
-    def run_batch_tagger_to_txt(self):
-        if not self.image_files:
-            return
-        
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
-            
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_tagger_to_txt.setEnabled(False)
-
-        # 1. Check Sidecar for cache
-        files_to_process = []
-        already_done_count = 0
-
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                tags_str = sidecar.get("tagger_tags", "")
-
-                if tags_str:
-                    # Cache hit: Write directly
-                    self.write_batch_result_to_txt(img_path, tags_str, is_tagger=True)
-                    already_done_count += 1
-                else:
-                    # Cache miss: Add to queue
-                    files_to_process.append(img_path)
-
-            if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 Tagger 結果至 txt", 5000)
-
-            # 2. Process missing files
-            if not files_to_process:
-                self.btn_batch_tagger_to_txt.setEnabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch Tagger to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
-                return
-
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 Tagger...", 5000)
-
-            # [Refactor] Use GenericBatchWorker + TaggerProcessor
-            contexts = [ImageContext(p) for p in files_to_process]
-            proc = TaggerProcessor(self.app_settings)
-
-            self.batch_tagger_thread = GenericBatchWorker(contexts, proc)
-            self.batch_tagger_thread.progress.connect(self.show_progress)
-            self.batch_tagger_thread.item_done.connect(self.on_batch_tagger_per_image)
-            self.batch_tagger_thread.finished_all.connect(self.on_batch_tagger_done)
-            self.batch_tagger_thread.error.connect(self.on_batch_error)
-            self.batch_tagger_thread.start()
-
-        except Exception as e:
-            self.btn_batch_tagger_to_txt.setEnabled(True)
-            self._is_batch_to_txt = False
-            QMessageBox.warning(self, "Error", f"Batch Processing Error: {e}")
-
-    def run_batch_llm_to_txt(self):
-        if not self.image_files:
-            return
-            
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
-            
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_llm_to_txt.setEnabled(False)
-
-        # 1. 檢查 Sidecar，將已有結果者直接寫入 txt
-        files_to_process = []
-        already_done_count = 0
-        
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                nl = sidecar.get("nl_pages", [])
-                
-                content = ""
-                # 使用最後一次結果 (User request: "LLM用最後一次結果")
-                if nl and isinstance(nl, list):
-                    content = nl[-1]
-                
-                if content:
-                    # 已有結果 -> 直接寫入
-                    self.write_batch_result_to_txt(img_path, content, is_tagger=False)
-                    already_done_count += 1
-                else:
-                    # 無結果 -> 加入待處理清單
-                    files_to_process.append(img_path)
-            
-            if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 LLM 結果至 txt", 5000)
-
-            # 2. 針對無結果的檔案，執行 Batch LLM
-            if not files_to_process:
-                # 全部都有結果，直接結束
-                self.btn_batch_llm_to_txt.setEnabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch LLM to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
-                return
-
-            # 有缺漏 -> 跑 Batch LLM
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 LLM...", 5000)
-            
-            user_prompt = self.prompt_edit.toPlainText()
-
-            # 建立 Worker，只針對 files_to_process
-            # [Refactor] Use GenericBatchWorker + LLMProcessor
-            contexts = [ImageContext(p) for p in files_to_process]
-            # Batch mode implies using template or stored prompt. 
-            # The legacy code passed `user_prompt` from editor.
-            # LLMProcessor supports override_user_prompt.
-            proc = LLMProcessor(self.app_settings, override_user_prompt=user_prompt)
-
-            self.batch_llm_thread = GenericBatchWorker(contexts, proc)
-            self.batch_llm_thread.progress.connect(self.show_progress)
-            self.batch_llm_thread.item_done.connect(self.on_batch_llm_per_image)
-            self.batch_llm_thread.finished_all.connect(self.on_batch_llm_done)
-            self.batch_llm_thread.error.connect(self.on_batch_error)
-            self.batch_llm_thread.start()
-
-        except Exception as e:
-            self.btn_batch_llm_to_txt.setEnabled(True)
-            self._is_batch_to_txt = False
-            QMessageBox.warning(self, "Error", f"Batch Processing Error: {e}")
-            return
-
-    def prompt_delete_chars(self) -> bool:
-        """回傳 True=刪除, False=保留, None=取消"""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Batch to txt")
-        msg.setText("是否自動刪除特徵標籤 (Character Tags)？")
-        msg.setInformativeText("將根據設定中的黑白名單過濾標籤或句子。")
-        btn_yes = msg.addButton("自動刪除", QMessageBox.ButtonRole.YesRole)
-        btn_no = msg.addButton("保留", QMessageBox.ButtonRole.NoRole)
-        btn_cancel = msg.addButton(QMessageBox.StandardButton.Cancel)
-        
-        msg.exec()
-        if msg.clickedButton() == btn_yes:
-            return True
-        elif msg.clickedButton() == btn_no:
-            return False
-        return None
-
-    def write_batch_result_to_txt(self, image_path, content, is_tagger: bool):
-        cfg = self.settings
-        delete_chars = getattr(self, "_batch_delete_chars", False)
-        mode = cfg.get("batch_to_txt_mode", "append")
-        folder_trigger = cfg.get("batch_to_txt_folder_trigger", False)
-        
-        items = []
-        if is_tagger:
-            raw_list = [x.strip() for x in content.split(",") if x.strip()]
-            if delete_chars:
-                raw_list = [t for t in raw_list if not is_basic_character_tag(t, cfg)]
-            items = raw_list
-        else:
-            # nl_content from LLMworker has \n, possibly translation lines in ()
-            raw_lines = content.splitlines()
-            sentences = []
-            for line in raw_lines:
-                line = line.strip()
-                if not line: continue
-                # Skip lines that are entirely in parentheses (translations)
-                if (line.startswith("(") and line.endswith(")")) or (line.startswith("（") and line.endswith("）")):
-                    continue
-                # Remove any remaining content in parentheses/brackets just in case
-                line = re.sub(r"[\(（].*?[\)）]", "", line).strip()
-                # Remove trailing period and normalize
-                line = line.rstrip(".").strip()
-                if line:
-                    sentences.append(line)
-            
-            if delete_chars:
-                sentences = [s for s in sentences if not is_basic_character_tag(s, cfg)]
-            items = sentences
-
-        if folder_trigger:
-            trigger = os.path.basename(os.path.dirname(image_path)).strip()
-            if trigger and trigger not in items:
-                items.insert(0, trigger)
-
-        txt_path = os.path.splitext(image_path)[0] + ".txt"
-        existing_content = ""
-        if mode == "append" and os.path.exists(txt_path):
-            try:
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    existing_content = f.read().strip()
-            except Exception: pass
-
-        # Deduplication: 若內容已存在於文中 (Word Boundary Check)，則不附加
-        if mode == "append" and existing_content and items:
-            # Normalize search text
-            search_text = existing_content.lower().replace("_", " ").replace("\n", " ")
-            search_text = re.sub(r"\s+", " ", search_text)
-            
-            unique_items = []
-            for item in items:
-                t_norm = item.strip().lower().replace("_", " ")
-                t_norm = re.sub(r"\s+", " ", t_norm)
-                if not t_norm: 
-                    continue
-                
-                # Strict whole word check using regex lookbehind/lookahead
-                # e.g. "hair" won't match "chair", but "blonde hair" matches "blonde hair girl"
-                try:
-                    pattern = r"(?<!\w)" + re.escape(t_norm) + r"(?!\w)"
-                    if not re.search(pattern, search_text):
-                        unique_items.append(item)
-                except Exception:
-                    # Fallback if regex fails (rare)
-                    if t_norm not in search_text:
-                        unique_items.append(item)
-            
-            items = unique_items
-            # 如果全部都重複，items 為空，下面邏輯會寫入空字串或變成只寫入分隔符?
-            # 最好直接 return 避免寫入多餘的逗號或空行
-            if not items:
-                return
-        
-        if is_tagger:
-            new_part = ", ".join(items)
-            force_lower = cfg.get("english_force_lowercase", True)
-            if mode == "append" and existing_content:
-                final = cleanup_csv_like_text(existing_content + ", " + new_part, force_lower)
-            else:
-                final = cleanup_csv_like_text(new_part, force_lower)
-        else:
-            # For LLM results, now joining with comma and no trailing period
-            new_part = ", ".join(items)
-            if mode == "append" and existing_content:
-                # Use comma or space-comma as separator
-                sep = ", "
-                if existing_content.endswith(",") or existing_content.endswith("."):
-                    sep = " "
-                final = existing_content + sep + new_part
-            else:
-                final = new_part
-                
-        try:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(final)
-            if image_path == self.current_image_path:
-                self.txt_edit.setPlainText(final)
-        except Exception as e:
-            print(f"[BatchWriter] 寫入失敗 {txt_path}: {e}")
-
-    # on_batch_tagger_per_image() moved to Mixin
-
-
     def on_batch_tagger_done(self):
         self.btn_batch_tagger.setEnabled(True)
         self.btn_batch_tagger_to_txt.setEnabled(True)
@@ -995,13 +606,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
 
     
 
-
-    # run_batch_llm() moved to Mixin
-
-
-    # on_batch_llm_per_image() moved to Mixin
-
-
     def on_batch_llm_done(self):
         self.btn_batch_llm.setEnabled(True)
         self.btn_batch_llm_to_txt.setEnabled(True)
@@ -1009,9 +613,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
         self._is_batch_to_txt = False
         self.hide_progress()
         self.statusBar().showMessage("Batch LLM 完成", 5000)
-
-    # on_batch_error() moved to Mixin
-
 
     def _image_has_background_tag(self, image_path: str) -> bool:
         """
@@ -1036,18 +637,12 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             pass
         return False
 
-    # on_batch_mask_text_per_image() moved to Mixin
-
-
     def on_batch_restore_per_image(self, old_path, new_path):
         if old_path != new_path:
             self._replace_image_path_in_list(old_path, new_path)
             # Reload if current image is affected
             if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(new_path):
                 self.load_image()
-
-    # run_batch_restore() moved to Mixin
-
 
     def on_reset_prompt(self):
         """Reset prompt editor to the currently active template."""
@@ -1058,11 +653,6 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixi
             self.statusBar().showMessage(self.tr("msg_prompt_reset"), 2000)
         except Exception:
             pass
-
-    # retranslate_ui() moved to ThemeMixin
-
-    # _setup_menus() moved to ThemeMixin
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
