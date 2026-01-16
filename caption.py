@@ -3529,7 +3529,7 @@ class MainWindow(QMainWindow):
         self.btn_batch_unmask_thread = GenericBatchWorker([ctx], proc)
         self.btn_batch_unmask_thread.progress.connect(self.show_progress)
         self.btn_batch_unmask_thread.item_done.connect(self.on_batch_unmask_per_image)
-        self.btn_batch_unmask_thread.finished_all.connect(self.on_unmask_single_done)
+        self.btn_batch_unmask_thread.finished_all.connect(lambda: self.on_batch_done("單圖去背完成"))
         self.btn_batch_unmask_thread.error.connect(lambda e: QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}"))
         self.btn_batch_unmask_thread.start()
 
