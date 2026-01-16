@@ -136,8 +136,10 @@ os.environ['ONNX_MODE'] = 'gpu'
 from lib.ui.main_window.mixins.shortcuts_mixin import ShortcutsMixin
 from lib.ui.main_window.mixins.theme_mixin import ThemeMixin
 from lib.ui.main_window.mixins.nl_mixin import NLMixin
+from lib.ui.main_window.mixins.dialogs_mixin import DialogsMixin
+from lib.ui.main_window.mixins.progress_mixin import ProgressMixin
 
-class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, QMainWindow):
+class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, DialogsMixin, ProgressMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -1643,93 +1645,15 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, QMainWindow):
         # 使用 PIL 從記憶體中讀取
         return Image.open(BytesIO(ba.data()))
 
-    def stroke_erase_to_webp(self, image_path: str, mask_qimg: QImage) -> str:
-        if not image_path:
-            return ""
+    # stroke_erase_to_webp() moved to DialogsMixin
 
-        src_dir = os.path.dirname(image_path)
-        unmask_dir = os.path.join(src_dir, "unmask")
-        os.makedirs(unmask_dir, exist_ok=True)
 
-        ext = os.path.splitext(image_path)[1].lower()
-        base_no_ext = os.path.splitext(image_path)[0]
+    # show_progress() moved to ProgressMixin
 
-        target_file = base_no_ext + ".webp"
-        if os.path.exists(target_file) and os.path.abspath(target_file) != os.path.abspath(image_path):
-            target_file = self._unique_path(target_file)
 
-        moved_original = ""
-        if ext == ".webp":
-            moved_original = self._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
-            shutil.move(image_path, moved_original)
-            src_for_processing = moved_original
-            target_file = image_path
-        else:
-            src_for_processing = image_path
+    # hide_progress() moved to ProgressMixin
 
-        from PIL import ImageChops
 
-        with Image.open(src_for_processing) as img:
-            img_rgba = img.convert("RGBA")
-            mask_pil = self._qimage_to_pil_l(mask_qimg)
-            # resize to original size (dialog is scaled)
-            mask_pil = mask_pil.resize(img_rgba.size, Image.Resampling.NEAREST)
-
-            alpha = img_rgba.getchannel("A")
-            keep = Image.eval(mask_pil, lambda v: 0 if v > 0 else 255)  # painted => transparent
-            new_alpha = ImageChops.multiply(alpha, keep)
-            img_rgba.putalpha(new_alpha)
-            img_rgba.save(target_file, "WEBP")
-
-        if ext != ".webp":
-            moved_original = self._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
-            shutil.move(image_path, moved_original)
-
-        return target_file
-
-    def open_stroke_eraser(self):
-        if not self.current_image_path:
-            return
-        try:
-            dlg = StrokeEraseDialog(self.current_image_path, self)
-        except Exception as e:
-            QMessageBox.warning(self, "Stroke Eraser", f"無法載入圖片: {e}")
-            return
-
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        mask_qimg, _w = dlg.get_result()
-        try:
-            old_path = self.current_image_path
-            new_path = self.stroke_erase_to_webp(old_path, mask_qimg)
-            if not new_path:
-                return
-            self._replace_image_path_in_list(old_path, new_path)
-            self.load_image()
-            self.statusBar().showMessage("Stroke Eraser 完成", 5000)
-        except Exception as e:
-            QMessageBox.warning(self, "Stroke Eraser", f"失敗: {e}")
-
-    # ==========================
-    # Batch: Tagger / LLM
-    # ==========================
-    def show_progress(self, current, total, name):
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(current)
-        self.progress_bar.setFormat(f"{name} ({current}/{total})")
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(True)
-            self.btn_cancel_batch.setEnabled(True)
-
-    def hide_progress(self):
-        self.progress_bar.setVisible(False)
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(False)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("")
-        
     def on_batch_done(self, msg="Batch Process Completed"):
         self.hide_progress()
         if hasattr(self, "btn_cancel_batch"):
@@ -2102,72 +2026,9 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, QMainWindow):
     # ==========================
     # Find/Replace
     # ==========================
-    def open_find_replace(self):
-        dlg = AdvancedFindReplaceDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            settings = dlg.get_settings()
-            find_str = settings['find']
-            rep_str = settings['replace']
-            if not find_str:
-                return
-            target_files = self.image_files if settings['scope_all'] else [self.current_image_path]
-            count = 0
-            for img_path in target_files:
-                if not img_path:
-                    continue
-                txt_path = os.path.splitext(img_path)[0] + ".txt"
-                if os.path.exists(txt_path):
-                    with open(txt_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    
-                    new_content = content
-                    flags = 0 if settings['case_sensitive'] else re.IGNORECASE
-                    try:
-                        # 1. 先執行取代
-                        if settings['regex']:
-                            new_content, n = re.subn(find_str, rep_str, content, flags=flags)
-                            count += n
-                        else:
-                            if not settings['case_sensitive']:
-                                pattern = re.compile(re.escape(find_str), re.IGNORECASE)
-                                new_content, n = pattern.subn(rep_str, content)
-                                count += n
-                            else:
-                                n = content.count(find_str)
-                                if n > 0:
-                                    new_content = content.replace(find_str, rep_str)
-                                    count += n
-                        
-                        # 2. 如果有變動，執行自動格式化 (Format Refresh)
-                        if new_content != content:
-                            # === 修改重點開始：格式重整 ===
-                            # 用逗號分割 -> 去除前後空白 -> 過濾空字串 -> 用 ", " 接回
-                            parts = [p.strip() for p in new_content.split(",") if p.strip()]
-                            new_content = ", ".join(parts)
-                            # === 修改重點結束 ===
-
-                            with open(txt_path, 'w', encoding='utf-8') as f:
-                                f.write(new_content)
-
-                    except Exception as e:
-                        print(f"Replace error in {img_path}: {e}")
-
-            self.load_image() # 重新載入當前圖片以顯示結果
-            
-            # 嘗試將焦點放回編輯框並捲動到底部 (非必要，但體驗較好)
-            try:
-                self.txt_edit.moveCursor(QTextCursor.MoveOperation.End)
-                self.txt_edit.setFocus()
-                self.txt_edit.ensureCursorVisible()
-            except Exception:
-                pass
-                
-            QMessageBox.information(self, "Result", f"Replaced {count} occurrences and reformatted.")
+    # open_find_replace() moved to DialogsMixin
 
 
-    # ==========================
-    # Tools: Batch Mask Text (OCR)
-    # ==========================
     def _image_has_background_tag(self, image_path: str) -> bool:
         """
         判斷是否為「背景圖」。
@@ -2251,50 +2112,8 @@ class MainWindow(ShortcutsMixin, ThemeMixin, NLMixin, QMainWindow):
         self.batch_restore_thread.error.connect(lambda e: self.on_batch_error("Batch Restore", e))
         self.batch_restore_thread.start()
 
-    def cancel_batch(self):
-        self.statusBar().showMessage("正在中止...", 2000)
-        thread_names = [
-            'batch_unmask_thread', 'batch_mask_text_thread', 
-            'batch_restore_thread', 'batch_tagger_thread', 
-            'batch_llm_thread', 'tagger_thread', 'llm_thread'
-        ]
-        for attr in thread_names:
-            thread = getattr(self, attr, None)
-            if thread is not None and thread.isRunning():
-                thread.stop()
+    # cancel_batch() moved to ProgressMixin
 
-
-    # ==========================
-    # Settings
-    # ==========================
-    def open_settings(self):
-        dlg = SettingsDialog(self.settings, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            new_cfg = dlg.get_cfg()
-            self.settings = new_cfg
-            save_app_settings(new_cfg)
-
-            # apply immediately
-            self.apply_theme()
-            self.retranslate_ui()
-
-            # update LLM props
-            self.llm_base_url = str(new_cfg.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
-            self.api_key = str(new_cfg.get("llm_api_key", ""))
-            self.model_name = str(new_cfg.get("llm_model", DEFAULT_APP_SETTINGS["llm_model"]))
-            self.llm_system_prompt = str(new_cfg.get("llm_system_prompt", DEFAULT_APP_SETTINGS["llm_system_prompt"]))
-            
-            # [Refactor] Use AppSettings to get active template
-            self.app_settings = AppSettings(self.settings)
-            self.default_user_prompt_template = self.app_settings.user_prompt_template
-            
-            self.default_custom_tags_global = list(new_cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
-            self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
-
-            if hasattr(self, "prompt_edit") and self.prompt_edit:
-                self.prompt_edit.setPlainText(self.default_user_prompt_template)
-
-            self.statusBar().showMessage(self.tr("status_ready"), 4000)
 
     def on_reset_prompt(self):
         """Reset prompt editor to the currently active template."""
