@@ -181,10 +181,22 @@ class BatchExportMixin:
             return False
         return None
 
-    def write_batch_result_to_txt(self, image_path, content, is_tagger: bool):
-        """將結果寫入 txt"""
+    def write_batch_result_to_txt(self, image_path: str, content: str, is_tagger: bool = True, delete_chars_override=None):
+        """
+        將打標或 LLM 結果寫入 txt。
+        同時包含：
+        1. Character Tags 過濾
+        2. 格式化處理 (底線、大小寫)
+        3. 寫入模式 (append/prepend/overwrite)
+        4. Folder Trigger 處理
+        """
         cfg = self.settings
-        delete_chars = getattr(self, "_batch_delete_chars", False)
+        
+        # 決定是否刪除特徵標籤
+        if delete_chars_override is not None:
+            delete_chars = delete_chars_override
+        else:
+            delete_chars = getattr(self, "_batch_delete_chars", False)
         mode = cfg.get("batch_to_txt_mode", "append")
         folder_trigger = cfg.get("batch_to_txt_folder_trigger", False)
         

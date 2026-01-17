@@ -112,7 +112,12 @@ class LLMMixin:
                 latest = pages[-1]
                 # 使用統一的寫入方法，包含解析和格式化
                 if hasattr(self, 'write_batch_result_to_txt'):
-                    self.write_batch_result_to_txt(new_path, latest, is_tagger=False)
+                    # 獲取是否要刪除特徵標籤的設定
+                    delete_chars = getattr(self, "_batch_delete_chars", False)
+                    if not delete_chars and hasattr(self, 'settings'):
+                        delete_chars = bool(self.settings.get("batch_to_txt_delete_chars", False))
+                        
+                    self.write_batch_result_to_txt(new_path, latest, is_tagger=False, delete_chars_override=delete_chars)
                 else:
                     # Fallback: 直接寫入
                     txt_path = os.path.splitext(new_path)[0] + ".txt"

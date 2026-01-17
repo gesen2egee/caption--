@@ -40,47 +40,50 @@ class ImageMixin:
         if not self.current_image_path:
             return
         
+        # 確定資料夾路徑以判斷是否需要刷新自定義標籤
+        folder_path = os.path.dirname(self.current_image_path)
+        
         # 載入文本
         txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
+        content = ""
         if os.path.exists(txt_path):
             try:
                 with open(txt_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                self.txt_edit.blockSignals(True)
-                self.txt_edit.setPlainText(content)
-                self.txt_edit.blockSignals(False)
             except:
-                self.txt_edit.setPlainText("")
-        else:
-            self.txt_edit.setPlainText("")
+                pass
+        self.txt_edit.blockSignals(True)
+        self.txt_edit.setPlainText(content)
+        self.txt_edit.blockSignals(False)
         
-        # 設定當前資料夾路徑
-        self.current_folder_path = os.path.dirname(self.current_image_path)
+        # 僅在資料夾變更時載入資料夾自定義標籤
+        if not hasattr(self, 'current_folder_path') or self.current_folder_path != folder_path:
+            self.current_folder_path = folder_path
+            if hasattr(self, 'load_folder_custom_tags'):
+                self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
         
-        # 載入資料夾自定義標籤
-        if hasattr(self, 'load_folder_custom_tags'):
-            self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
-        
-        # 載入標籤
+        # 載入標籤數據 (此處僅讀取數據，不刷新 UI)
         if hasattr(self, 'build_top_tags_for_current_image'):
             self.top_tags = self.build_top_tags_for_current_image()
         if hasattr(self, 'load_tagger_tags_for_current_image'):
             self.tagger_tags = self.load_tagger_tags_for_current_image()
         
-        # 載入 NL
+        # 載入 NL 數據 (此處僅讀取數據，不刷新 UI)
         if hasattr(self, 'load_nl_for_current_image'):
             self.nl_pages = self.load_nl_pages_for_image(self.current_image_path)
             self.nl_latest = self.load_nl_for_current_image()
             self.nl_page_index = len(self.nl_pages) - 1 if self.nl_pages else 0
         
-        # 刷新 UI
+        # 集中刷新 UI 標籤流 (放在最後一次性完成)
         if hasattr(self, 'refresh_tags_tab'):
             self.refresh_tags_tab()
         if hasattr(self, 'refresh_nl_tab'):
             self.refresh_nl_tab()
         
-        # 更新圖片顯示 (Load pixmap first)
+        # 更新圖片顯示 (Load pixmap)
         self.current_pixmap = QPixmap(self.current_image_path)
+        # 快取 sidecar 避免在 _get_processed_pixmap 中重複讀取
+        self._current_sidecar = load_image_sidecar(self.current_image_path)
         self.update_image_display()
         
         # 更新頂部導航欄 (Top Info Bar)
@@ -133,7 +136,10 @@ class ImageMixin:
 
         # 0: Original (+Mask overlay)
         if mode == 0:
-            sidecar = load_image_sidecar(self.current_image_path)
+            sidecar = getattr(self, '_current_sidecar', {})
+            if not sidecar:
+                sidecar = load_image_sidecar(self.current_image_path)
+            
             rel_mask = sidecar.get("mask_map_rel_path", "")
             if rel_mask:
                 mask_abs = os.path.normpath(os.path.join(os.path.dirname(self.current_image_path), rel_mask))

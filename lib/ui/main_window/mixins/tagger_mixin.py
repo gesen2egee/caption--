@@ -100,7 +100,13 @@ class TaggerMixin:
             if tags:
                 # 使用統一的寫入方法，包含過濾和格式化
                 if hasattr(self, 'write_batch_result_to_txt'):
-                    self.write_batch_result_to_txt(new_path, tags, is_tagger=True)
+                    # 獲取是否要刪除特徵標籤的設定 (預設從屬性取得)
+                    delete_chars = getattr(self, "_batch_delete_chars", False)
+                    # 如果屬性沒設定，檢查設定檔
+                    if not delete_chars and hasattr(self, 'settings'):
+                        delete_chars = bool(self.settings.get("batch_to_txt_delete_chars", False))
+                        
+                    self.write_batch_result_to_txt(new_path, tags, is_tagger=True, delete_chars_override=delete_chars)
                 else:
                     # Fallback: 直接寫入
                     if self.english_force_lowercase:
