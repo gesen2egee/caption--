@@ -63,21 +63,30 @@ class DialogsMixin:
             # 備份原圖
             backup_raw_image(self.current_image_path)
             
-            # 載入原圖
+            # 載入原圖並確保遮罩尺寸匹配
             img = Image.open(self.current_image_path).convert("RGBA")
+            orig_w, orig_h = img.size
+            
+            # 視需要縮放遮罩 QImage
+            if mask_qimage.width() != orig_w or mask_qimage.height() != orig_h:
+                from PyQt6.QtCore import Qt
+                mask_qimage = mask_qimage.scaled(orig_w, orig_h, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
             
             # 轉換 QImage 遮罩為 numpy array
             w, h = mask_qimage.width(), mask_qimage.height()
+            # 確保為 Grayscale8 格式，每像素 1 byte
+            mask_qimage = mask_qimage.convertToFormat(mask_qimage.Format.Format_Grayscale8)
             ptr = mask_qimage.bits()
-            ptr.setsize(w * h)
-            mask_arr = np.frombuffer(ptr, np.uint8).reshape((h, w))
+            # Grayscale8: bytesPerLine * height is safest
+            ptr.setsize(mask_qimage.bytesPerLine() * h)
+            mask_arr = np.frombuffer(ptr, np.uint8).reshape((h, mask_qimage.bytesPerLine()))
+            # 取得原始寬度部分（排除 padding）
+            if mask_qimage.bytesPerLine() > w:
+                mask_arr = mask_arr[:, :w]
             
             # 應用遮罩
             img_arr = np.array(img)
-            alpha = img_arr[:, :, 3]
-            # 將遮罩區域的 alpha 設為 0
-            alpha[mask_arr > 127] = 0
-            img_arr[:, :, 3] = alpha
+            img_arr[mask_arr > 127, 3] = 0
             
             # 儲存為 WebP
             result = Image.fromarray(img_arr, "RGBA")
