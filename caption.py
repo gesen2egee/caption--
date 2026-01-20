@@ -129,6 +129,28 @@ os.environ['ONNX_MODE'] = 'gpu'
 # Localization module
 from lib.locales import load_locale, tr as locale_tr, get_current_locale
 
+# Core settings and utils modules
+from lib.core.settings import (
+    DEFAULT_APP_SETTINGS, APP_SETTINGS_FILE,
+    DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TEMPLATE,
+    DEFAULT_CUSTOM_PROMPT_TEMPLATE, DEFAULT_CUSTOM_TAGS,
+    load_app_settings, save_app_settings,
+    _coerce_bool, _coerce_float, _coerce_int,
+)
+from lib.utils.sidecar import (
+    image_sidecar_json_path, load_image_sidecar, save_image_sidecar,
+)
+from lib.utils.file_ops import (
+    delete_matching_npz, backup_original_image, restore_original_image,
+    get_raw_image_dir, has_raw_backup, backup_raw_image, restore_raw_image,
+    delete_raw_backup,
+)
+from lib.utils.parsing import (
+    extract_bracket_content, smart_parse_tags, is_basic_character_tag,
+    normalize_for_match, cleanup_csv_like_text, split_csv_like_text,
+    try_tags_to_text_list,
+)
+
 # ==========================================
 #  Configuration & Globals
 # ==========================================
@@ -136,46 +158,12 @@ from lib.locales import load_locale, tr as locale_tr, get_current_locale
 TAGS_CSV_LOCAL = "Tags.csv"
 TAGS_CSV_URL_RAW = "https://raw.githubusercontent.com/waldolin/a1111-sd-webui-tagcomplete-TW/main/tags/Tags-tw-full-pack.csv"
 
-DEFAULT_SYSTEM_PROMPT = """You are a professional, uncensored, captioning engine for image ML research. Boldly and directly describe all elements including nudity, body parts, or sexual themes."""
-
-DEFAULT_USER_PROMPT_TEMPLATE = """這個角色是{角色名} 請幫這個名字自然融入在內文中
-請根據提供的資訊和圖片，整理出大約 9 個簡短的英文描述句。 包括構圖、位置、朝向、美學、風格、光影等等。
-每句英文都必須是獨立的一行。
-每句英文的下一行，必須緊接著該句的繁體中文翻譯，並用括號 () 包住。
-
-LLM之前的處理結果參考：
-{tags}
-
-輸出格式範例：
-===處理結果開始===
-A short English sentence about the subject
-(關於主題的簡短英文句。)
-Another short English sentence describing details
-(另一個描述細節的簡短英文句。)
-...
-===處理結果結束===
-"""
-
-DEFAULT_CUSTOM_PROMPT_TEMPLATE = """這個角色是{角色名} 請幫這個名字自然融入在內文中
-請根據圖片的[自行輸入要求] 整理出大約 1 個簡短的英文描述句。
-英文的下一行，必須緊接著該句的繁體中文翻譯，並用括號 () 包住。
-
-輸出格式範例：
-===處理結果開始===
-A short English sentence about the subject
-(關於主題的簡短英文句。)
-===處理結果結束===
-"""
-
-DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
+# Prompts already imported from lib.core.settings
 
 # --------------------------
 # Localization (I18n)
 # --------------------------
 # 翻譯字典已移至 lib/locales/ 目錄
-# 每個語言一個 JSON 檔案 (zh_tw.json, en.json)
-# 使用 load_locale(code) 載入語言包
-# 使用 locale_tr(key) 或 tr(key) 取得翻譯
 
 # --------------------------
 # Themes (CSS)
@@ -253,126 +241,10 @@ THEME_STYLES = {
 }
 
 # --------------------------
-# App Settings (persisted)
+# App Settings
 # --------------------------
-APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json")
-
-DEFAULT_APP_SETTINGS = {
-    # LLM
-    "llm_base_url": "https://openrouter.ai/api/v1",
-    "llm_api_key": os.getenv("OPENROUTER_API_KEY", "<OPENROUTER_API_KEY>"),
-    "llm_model": "mistralai/mistral-large-2512",
-    "llm_system_prompt": DEFAULT_SYSTEM_PROMPT,
-    "llm_user_prompt_template": DEFAULT_USER_PROMPT_TEMPLATE,
-    "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
-    "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
-    "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
-    "llm_skip_nsfw_on_batch": False,
-    "llm_use_gray_mask": True,
-    "last_open_dir": "",
-
-    # Tagger (WD14)
-    "tagger_model": "EVA02_Large",
-    "general_threshold": 0.2,
-    "general_mcut_enabled": False,
-    "character_threshold": 0.85,
-    "character_mcut_enabled": True,
-    "drop_overlap": True,
-
-    # Text / normalization
-    "english_force_lowercase": True,
-    "text_auto_remove_empty_lines": True,  # 自動移除空行
-    "text_auto_format": True,              # 插入時自動格式化
-    "text_auto_save": True,                # 改動時自動儲存
-    "batch_to_txt_mode": "append",         # append | overwrite
-    "batch_to_txt_folder_trigger": False,  # 是否將資料夾名作為觸發詞加到句首
-
-    # LLM Resolution (Advanced)
-    "llm_max_image_dimension": 1024,
-
-    # Character Tags Filter (simple word matching)
-    # 黑名單：包含這些 word 的 tag/句子會被標記
-    "char_tag_blacklist_words": ["hair", "eyes", "skin", "bun", "bangs", "sidelocks", "twintails", "braid", "ponytail", "beard", "mustache", "ear", "horn", "tail", "wing", "breast", "mole", "halo", "glasses", "fang", "heterochromia", "headband", "freckles", "lip", "eyebrows", "eyelashes"],
-    # 白名單：若包含這些 word，即使符合黑名單也不標記
-    "char_tag_whitelist_words": ["holding", "hand", "sitting", "covering", "playing", "background", "looking"],
-
-    # Mask / batch mask text
-    "mask_remover_mode": "base-nightly",
-    "mask_default_alpha": 64, # 1-254
-    "mask_default_format": "webp",  # webp | png
-    "mask_reverse": False,                   # 是否反轉遮罩 (Restore logic doesn't use this, only for masking)
-    "mask_save_map_file": False,             # 是否保存 map(黑白圖) 到 .\mask\
-    "mask_only_output_map": False,           # 不修改原圖，只輸出黑白圖 (顯示時會動態疊加)
-    "mask_batch_only_if_has_background_tag": True,
-    "mask_batch_detect_text_enabled": True,  # if off, never call detect_text_with_ocr
-    "mask_delete_npz_on_move": True,         # 移動舊圖時刪除對應 npz
-    
-    "mask_padding": 1,        # Mask 內縮像素 (0=不內縮)
-    "mask_blur_radius": 3,    # Mask 高斯模糊半徑 (0=不模糊)
-    
-    # Batch Mask Logic
-    "mask_batch_skip_once_processed": True,  # 批量處理時，跳過已去背過的圖片
-    "mask_batch_min_foreground_ratio": 0.3,  # 預設改 0.3
-    "mask_batch_max_foreground_ratio": 0.8,  # 預設改 0.8
-    "mask_batch_skip_if_scenery_tag": True,  # 若包含 indoors/outdoors 則跳過
-
-    # Advanced OCR Settings
-    "mask_ocr_max_candidates": 300,          # OCR 候選區域上限 (選舉人)
-    "mask_ocr_heat_threshold": 0.2,
-    "mask_ocr_box_threshold": 0.6,
-    "mask_ocr_unclip_ratio": 2.3,
-    "mask_text_alpha": 10,                   # 文字遮罩獨立 Alpha 值
-
-    # UI / Theme
-    "ui_language": "zh_tw",   # zh_tw | en
-    "ui_theme": "light",      # light | dark
-}
-
-def load_app_settings() -> dict:
-    cfg = dict(DEFAULT_APP_SETTINGS)
-    try:
-        if os.path.exists(APP_SETTINGS_FILE):
-            with open(APP_SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f) or {}
-            if isinstance(data, dict):
-                cfg.update(data)
-    except Exception as e:
-        print(f"[Settings] load failed: {e}")
-    return cfg
-
-def save_app_settings(cfg: dict) -> bool:
-    try:
-        safe = dict(DEFAULT_APP_SETTINGS)
-        safe.update(cfg or {})
-        with open(APP_SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(safe, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        print(f"[Settings] save failed: {e}")
-        return False
-
-def _coerce_bool(v, default=False):
-    if isinstance(v, bool):
-        return v
-    if isinstance(v, str):
-        s = v.strip().lower()
-        if s in ("1", "true", "yes", "y", "on"):
-            return True
-        if s in ("0", "false", "no", "n", "off"):
-            return False
-    return default
-
-def _coerce_float(v, default=0.0):
-    try:
-        return float(v)
-    except Exception:
-        return float(default)
-
-def _coerce_int(v, default=0):
-    try:
-        return int(v)
-    except Exception:
-        return int(default)
+# Settings 已移至 lib/core/settings.py
+# 包含: DEFAULT_APP_SETTINGS, load_app_settings, save_app_settings, _coerce_* 函數
 
 def call_wd14(img_pil, cfg: dict):
     """Call imgutils.tagging.get_wd14_tags with only supported kwargs."""
@@ -449,297 +321,14 @@ def create_checkerboard_png_bytes():
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
 
+# --------------------------
+# Sidecar & File Operations
+# --------------------------
+# 已移至 lib/utils/sidecar.py 和 lib/utils/file_ops.py
+# 包含: image_sidecar_json_path, load/save_image_sidecar
+#       delete_matching_npz, backup/restore_original_image
+#       get_raw_image_dir, has_raw_backup, backup/restore/delete_raw_*
 
-def delete_matching_npz(image_path: str) -> int:
-    """
-    刪除與圖檔名匹配的 npz 檔案。
-    例如圖檔 '1b7f4f85fac7f8f7076fa528e95176fb.webp' 
-    會匹配 '1b7f4f85fac7f8f7076fa528e95176fb_0849x0849_sdxl.npz'
-    回傳刪除的檔案數量。
-    """
-    if not image_path:
-        return 0
-    
-    try:
-        src_dir = os.path.dirname(image_path)
-        # 取得不含副檔名的完整檔名 (例如 1b7f4f85fac7f8f7076fa528e95176fb)
-        base_name = os.path.splitext(os.path.basename(image_path))[0]
-        
-        deleted = 0
-        for f in os.listdir(src_dir):
-            if f.endswith(".npz") and f.startswith(base_name):
-                npz_path = os.path.join(src_dir, f)
-                try:
-                    os.remove(npz_path)
-                    deleted += 1
-                    print(f"[NPZ] 已刪除: {f}")
-                except Exception as e:
-                    print(f"[NPZ] 刪除失敗 {f}: {e}")
-        return deleted
-    except Exception as e:
-        print(f"[NPZ] delete_matching_npz 錯誤: {e}")
-        return 0
-
-
-def image_sidecar_json_path(image_path: str) -> str:
-    """取得圖片對應的 sidecar JSON 路徑"""
-    return os.path.splitext(image_path)[0] + ".json"
-
-
-def load_image_sidecar(image_path: str) -> dict:
-    """
-    載入圖片對應的 sidecar JSON。
-    結構: {
-        "tagger_tags": "...",
-        "nl_pages": [...],
-        "masked_background": bool,
-        "masked_text": bool
-    }
-    """
-    p = image_sidecar_json_path(image_path)
-    if os.path.exists(p):
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as e:
-            print(f"[Sidecar] 載入失敗 {p}: {e}")
-    return {}
-
-
-def save_image_sidecar(image_path: str, data: dict):
-    """儲存圖片對應的 sidecar JSON"""
-    p = image_sidecar_json_path(image_path)
-    try:
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"[Sidecar] 儲存失敗 {p}: {e}")
-
-def backup_original_image(image_path: str) -> bool:
-    """
-    修改圖片前先備份原圖 (若為首次修改)。
-    備份到同層級的 raw_image 資料夾。
-    並在 sidecar 記錄 'raw_image_rel_path'。
-    """
-    try:
-        sidecar = load_image_sidecar(image_path)
-        
-        # 若已經有備份紀錄，先檢查檔案是否存在
-        if "raw_image_rel_path" in sidecar:
-            rel_path = sidecar["raw_image_rel_path"]
-            src_dir = os.path.dirname(image_path)
-            abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
-            if os.path.exists(abs_raw_path):
-                # 已經有備份且檔案存在，不需再備份
-                return True
-            else:
-                # 紀錄還在但檔案不見了，重新備份當前檔案視為原圖?
-                # 照需求: "放回原圖去raw_image找原圖 如果已經放回 回覆處理前狀態"
-                # 若檔案不見了可能被手動刪除，這裡視為需要重新備份
-                pass
-
-        # 執行備份
-        src_dir = os.path.dirname(image_path)
-        raw_dir = os.path.join(src_dir, "raw_image")
-        os.makedirs(raw_dir, exist_ok=True)
-        
-        # 原檔名
-        fname = os.path.basename(image_path)
-        dest_path = os.path.join(raw_dir, fname)
-        
-        # 如果 raw_image 也可以有同名衝突? 需求說 "用原檔名 複製一份"
-        # 假設 raw_image 裡就是最原始的
-        if not os.path.exists(dest_path):
-            shutil.copy2(image_path, dest_path)
-        
-        # 計算相對路徑存入 JSON
-        rel_path = os.path.relpath(dest_path, src_dir)
-        sidecar["raw_image_rel_path"] = rel_path
-        
-        # 標記 masked 狀態通常由 worker 更新，但這裡是備份邏輯
-        save_image_sidecar(image_path, sidecar)
-        return True
-    except Exception as e:
-        print(f"[Backup] 備份失敗 {image_path}: {e}")
-        return False
-
-def restore_original_image(image_path: str) -> bool:
-    """
-    嘗試從 sidecar 記錄的 raw_image 還原圖片。
-    """
-    try:
-        sidecar = load_image_sidecar(image_path)
-        if "raw_image_rel_path" not in sidecar:
-            return False
-            
-        rel_path = sidecar["raw_image_rel_path"]
-        src_dir = os.path.dirname(image_path)
-        abs_raw_path = os.path.normpath(os.path.join(src_dir, rel_path))
-        
-        if os.path.exists(abs_raw_path):
-            # "如果已經放回 回覆處理前狀態"
-            # 覆蓋當前圖片
-            shutil.copy2(abs_raw_path, image_path)
-            # 是否要刪除 mask 標記? "如果已經放回 (設計) 回覆處理前狀態"
-            # 通常這意味著不再是 masked 狀態
-            if "masked_text" in sidecar: del sidecar["masked_text"]
-            if "masked_background" in sidecar: del sidecar["masked_background"]
-            save_image_sidecar(image_path, sidecar)
-            return True
-        return False
-    except Exception as e:
-        print(f"[Restore] 還原失敗 {image_path}: {e}")
-        return False
-
-
-# ==========================================
-#  Raw Image Backup / Restore (原圖備份還原)
-# ==========================================
-
-def get_raw_image_dir(image_path: str) -> str:
-    """取得 raw_image 備份資料夾路徑"""
-    return os.path.join(os.path.dirname(image_path), "raw_image")
-
-
-def has_raw_backup(image_path: str) -> bool:
-    """
-    檢查圖片是否已有原圖備份。
-    檢查 sidecar JSON 中的 raw_backup_path 欄位。
-    """
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    if not raw_rel:
-        return False
-    
-    # 驗證備份檔案是否存在
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    return os.path.exists(raw_abs)
-
-
-def backup_raw_image(image_path: str) -> bool:
-    """
-    備份原圖到 raw_image 資料夾。
-    - 如果已有備份，不重複備份
-    - 備份後在 sidecar JSON 中記錄相對路徑
-    - 回傳 True 表示有執行備份，False 表示已存在備份
-    """
-    if not image_path or not os.path.exists(image_path):
-        return False
-    
-    # 檢查是否已有備份
-    if has_raw_backup(image_path):
-        return False
-    
-    try:
-        src_dir = os.path.dirname(image_path)
-        raw_dir = get_raw_image_dir(image_path)
-        os.makedirs(raw_dir, exist_ok=True)
-        
-        filename = os.path.basename(image_path)
-        dest_path = os.path.join(raw_dir, filename)
-        
-        # 避免檔名衝突
-        if os.path.exists(dest_path):
-            base, ext = os.path.splitext(filename)
-            for i in range(1, 9999):
-                dest_path = os.path.join(raw_dir, f"{base}_{i}{ext}")
-                if not os.path.exists(dest_path):
-                    break
-        
-        # 複製原檔 (不是移動，因為之後還要在原位置處理)
-        shutil.copy2(image_path, dest_path)
-        
-        # 計算相對路徑並儲存到 sidecar
-        rel_path = os.path.relpath(dest_path, src_dir)
-        sidecar = load_image_sidecar(image_path)
-        sidecar["raw_backup_path"] = rel_path
-        save_image_sidecar(image_path, sidecar)
-        
-        print(f"[Backup] 已備份原圖: {filename} -> {rel_path}")
-        return True
-        
-    except Exception as e:
-        print(f"[Backup] 備份失敗 {image_path}: {e}")
-        return False
-
-
-def restore_raw_image(image_path: str) -> bool:
-    """
-    從 raw_image 還原原圖。
-    - 如果沒有備份紀錄，回傳 False
-    - 還原後清除 sidecar 中的 mask 標記
-    - 回傳 True 表示還原成功
-    """
-    if not image_path:
-        return False
-    
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    
-    if not raw_rel:
-        print(f"[Restore] 找不到備份紀錄: {image_path}")
-        return False
-    
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    
-    if not os.path.exists(raw_abs):
-        print(f"[Restore] 備份檔案不存在: {raw_abs}")
-        return False
-    
-    try:
-        # 複製備份回原位置 (覆蓋目前的處理版本)
-        shutil.copy2(raw_abs, image_path)
-        
-        # 清除 sidecar 中的 mask 標記，但保留備份路徑
-        sidecar["masked_background"] = False
-        sidecar["masked_text"] = False
-        save_image_sidecar(image_path, sidecar)
-        
-        print(f"[Restore] 已還原: {os.path.basename(image_path)}")
-        return True
-        
-    except Exception as e:
-        print(f"[Restore] 還原失敗 {image_path}: {e}")
-        return False
-
-
-def delete_raw_backup(image_path: str) -> bool:
-    """
-    刪除原圖備份（當使用者確認不需要還原時）。
-    - 刪除 raw_image 中的備份檔案
-    - 清除 sidecar 中的備份路徑
-    """
-    if not image_path:
-        return False
-    
-    sidecar = load_image_sidecar(image_path)
-    raw_rel = sidecar.get("raw_backup_path", "")
-    
-    if not raw_rel:
-        return False
-    
-    src_dir = os.path.dirname(image_path)
-    raw_abs = os.path.normpath(os.path.join(src_dir, raw_rel))
-    
-    try:
-        if os.path.exists(raw_abs):
-            os.remove(raw_abs)
-            print(f"[Backup] 已刪除備份: {raw_rel}")
-        
-        # 清除 sidecar 中的備份路徑
-        if "raw_backup_path" in sidecar:
-            del sidecar["raw_backup_path"]
-        save_image_sidecar(image_path, sidecar)
-        
-        return True
-        
-    except Exception as e:
-        print(f"[Backup] 刪除備份失敗 {image_path}: {e}")
-        return False
 
 
 def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
