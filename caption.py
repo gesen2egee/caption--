@@ -137,6 +137,9 @@ from lib.core.settings import (
     load_app_settings, save_app_settings,
     _coerce_bool, _coerce_float, _coerce_int,
 )
+from lib.core.dataclasses import (
+    ImageData, Settings, Prompt, BatchInstruction, FolderMeta,
+)
 from lib.utils.sidecar import (
     image_sidecar_json_path, load_image_sidecar, save_image_sidecar,
 )
@@ -149,6 +152,12 @@ from lib.utils.parsing import (
     extract_bracket_content, smart_parse_tags, is_basic_character_tag,
     normalize_for_match, cleanup_csv_like_text, split_csv_like_text,
     try_tags_to_text_list,
+)
+
+# New Worker/Task architecture (compat layer for gradual migration)
+from lib.workers.compat import (
+    create_image_data, create_settings_from_dict,
+    TaggerWorkerCompat, BatchTaggerWorkerCompat,
 )
 
 # ==========================================
