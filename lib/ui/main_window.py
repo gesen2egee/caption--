@@ -15,10 +15,12 @@ from PyQt6.QtWidgets import (
     QProgressBar, QMessageBox, QFrame, QMenu, QFileDialog, 
     QInputDialog, QApplication, QStyle, QLayout
 )
+from lib.ui.mixins.batch_mixin import BatchMixin
+from lib.ui.mixins.navigation_mixin import NavigationMixin
 from PyQt6.QtCore import Qt, QTimer, QPoint, QSize, QUrl, QBuffer, QIODevice, QByteArray, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QImage, QAction, QKeySequence, QShortcut, QDesktopServices, QPalette, QBrush, QIcon, QTextCursor
 
-from natsort import natsorted
+
 from PIL import Image, ImageChops
 
 from lib.core.settings import (
@@ -36,8 +38,8 @@ from lib.utils.parsing import (
     smart_parse_tags, extract_bracket_content, is_basic_character_tag, 
     try_tags_to_text_list, cleanup_csv_like_text, extract_llm_content_and_postprocess
 )
-from lib.utils.boorutag import parse_boorutag_meta, load_translations
-from lib.utils.query_filter import DanbooruQueryFilter
+from lib.utils.boorutag import load_translations
+
 from lib.workers.compat import BatchMaskTextWorker
 
 from lib.ui.themes import THEME_STYLES
@@ -47,17 +49,11 @@ from lib.ui.dialogs.find_replace import AdvancedFindReplaceDialog
 from lib.ui.dialogs.settings_dialog import SettingsDialog
 
 from lib.pipeline.manager import PipelineManager, create_image_data_from_path, create_image_data_list
+from lib.utils.tag_context import build_llm_tags_context_for_image
+from lib.utils.batch_writer import write_batch_result
 
 
-def unload_all_models():
-    import gc
-    gc.collect()
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:
-        pass
+from lib.utils.memory_utils import unload_all_models
 
 try:
     from transparent_background import Remover
@@ -71,7 +67,7 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
     CLIPTokenizer = None
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, BatchMixin, NavigationMixin):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Captioning Assistant")
@@ -513,343 +509,7 @@ class MainWindow(QMainWindow):
         super().wheelEvent(event)
 
     # ==========================
-    # Logic: Storage & Init
-    # ==========================
-    def refresh_file_list(self, current_path=None): # 改回參數名以支援舊有呼叫
-        if not self.root_dir_path or not os.path.exists(self.root_dir_path):
-            return
-        
-        dir_path = self.root_dir_path
-        # 若無外部傳入路徑，則嘗試保留目前選取的路徑
-        if not current_path:
-            current_path = self.current_image_path
-        
-        self.image_files = []
-        valid_exts = ('.jpg', '.jpeg', '.png', '.webp', '.bmp')
-        ignore_dirs = {"no_used", "unmask"}
 
-        # Copied logic from open_directory scan
-        try:
-            for entry in os.scandir(dir_path):
-                if entry.is_file() and entry.name.lower().endswith(valid_exts):
-                    if any(part.lower() in ignore_dirs for part in Path(entry.path).parts):
-                        continue
-                    self.image_files.append(entry.path)
-        except Exception:
-            pass
-
-        try:
-            for entry in os.scandir(dir_path):
-                if entry.is_dir():
-                    if entry.name.lower() in ignore_dirs:
-                        continue
-                    try:
-                        for sub in os.scandir(entry.path):
-                            if sub.is_file() and sub.name.lower().endswith(valid_exts):
-                                if any(part.lower() in ignore_dirs for part in Path(sub.path).parts):
-                                    continue
-                                self.image_files.append(sub.path)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        self.image_files = natsorted(self.image_files)
-
-        if not self.image_files:
-            self.image_label.clear()
-            self.txt_edit.clear()
-            self.img_info_label.setText("No Images Found")
-            self.current_index = -1
-            self.current_image_path = None
-            return
-
-        # Restore index
-        if current_path and current_path in self.image_files:
-            self.current_index = self.image_files.index(current_path)
-        else:
-            # If current file gone, try to stay at same index or 0
-            if self.current_index >= len(self.image_files):
-                self.current_index = len(self.image_files) - 1
-            if self.current_index < 0:
-                self.current_index = 0
-        
-        self.load_image()
-        self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
-
-    def open_directory(self):
-        default_dir = self.settings.get("last_open_dir", "")
-        dir_path = QFileDialog.getExistingDirectory(self, self.tr("msg_select_dir"), default_dir)
-        if dir_path:
-            self.root_dir_path = dir_path
-            self.settings["last_open_dir"] = dir_path
-            save_app_settings(self.settings)
-
-            # Reset filter state
-            self.filter_active = False
-            self.filter_input.clear()
-            self.all_image_files = []
-            self.filtered_image_files = []
-
-            self.refresh_file_list()
-
-    def load_image(self):
-        if 0 <= self.current_index < len(self.image_files):
-            self.current_image_path = self.image_files[self.current_index]
-            self.current_folder_path = str(Path(self.current_image_path).parent)
-
-            # Update info bar
-            total_count = len(self.filtered_image_files) if self.filter_active else len(self.image_files)
-            current_num = self.filtered_image_files.index(self.current_image_path) + 1 if self.filter_active and self.current_image_path in self.filtered_image_files else self.current_index + 1
-            
-            self.index_input.blockSignals(True)
-            self.index_input.setText(str(current_num))
-            self.index_input.blockSignals(False)
-            
-            if self.filter_active:
-                self.total_info_label.setText(f"<span style='color:red;'> / {total_count}</span>")
-            else:
-                self.total_info_label.setText(f" / {total_count}")
-            
-            self.img_file_label.setText(f" : {os.path.basename(self.current_image_path)}")
-
-            self.current_pixmap = QPixmap(self.current_image_path)
-            if not self.current_pixmap.isNull():
-                self.update_image_display()
-            else:
-                self.image_label.clear()
-
-            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
-            content = ""
-            if os.path.exists(txt_path):
-                with open(txt_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-            self.txt_edit.blockSignals(True)
-            self.txt_edit.setPlainText(content)
-            self.txt_edit.blockSignals(False)
-
-            self.update_txt_token_count()
-
-            self.top_tags = self.build_top_tags_for_current_image()
-            self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
-            self.tagger_tags = self.load_tagger_tags_for_current_image()
-
-            self.nl_pages = self.load_nl_pages_for_image(self.current_image_path)
-            if self.nl_pages:
-                self.nl_page_index = len(self.nl_pages) - 1
-                self.nl_latest = self.nl_pages[self.nl_page_index]
-            else:
-                self.nl_page_index = 0
-                self.nl_latest = ""
-
-            self.refresh_tags_tab()
-            self.refresh_nl_tab()
-            self.update_nl_page_controls()
-
-            self.on_text_changed()
-
-    # ==========================
-    # Filter Logic
-    # ==========================
-    def _get_image_content_for_filter(self, image_path: str) -> str:
-        """Get combined content (tags + text) for filtering."""
-        content_parts = []
-        
-        if self.chk_filter_tags.isChecked():
-            # Get tags from sidecar
-            sidecar = load_image_sidecar(image_path)
-            tags = sidecar.get("tagger_tags", "")
-            content_parts.append(tags)
-        
-        if self.chk_filter_text.isChecked():
-            # Get text from .txt file
-            txt_path = os.path.splitext(image_path)[0] + ".txt"
-            if os.path.exists(txt_path):
-                try:
-                    with open(txt_path, 'r', encoding='utf-8') as f:
-                        content_parts.append(f.read())
-                except Exception:
-                    pass
-        
-        return " ".join(content_parts)
-
-    def apply_filter(self):
-        """Apply Danbooru-style filter to image list."""
-        query = self.filter_input.text().strip()
-        
-        if not query:
-            self.clear_filter()
-            return
-        
-        if not self.image_files and not self.all_image_files:
-            return
-        
-        # Store original list if not already stored
-        if not self.all_image_files:
-            self.all_image_files = list(self.image_files)
-        
-        # Create filter
-        qf = DanbooruQueryFilter(query)
-        
-        # Filter images
-        matched = []
-        for img_path in self.all_image_files:
-            content = self._get_image_content_for_filter(img_path)
-            if qf.matches(content):
-                matched.append(img_path)
-        
-        # Apply ordering
-        matched = qf.sort_images(matched)
-        
-        if not matched:
-            self.statusBar().showMessage("篩選結果為空", 3000)
-            return
-        
-        self.filtered_image_files = matched
-        self.image_files = matched
-        self.filter_active = True
-        self.current_index = 0
-        self.load_image()
-        self.statusBar().showMessage(f"篩選結果: {len(matched)} 張圖片", 3000)
-
-    def clear_filter(self):
-        """Clear filter and restore original image list."""
-        self.filter_input.clear()
-        
-        if self.all_image_files:
-            current_path = self.current_image_path
-            self.image_files = list(self.all_image_files)
-            self.all_image_files = []
-            self.filtered_image_files = []
-            self.filter_active = False
-            
-            # Try to keep current image selected
-            if current_path and current_path in self.image_files:
-                self.current_index = self.image_files.index(current_path)
-            else:
-                self.current_index = 0
-            
-            if self.image_files:
-                self.load_image()
-            self.statusBar().showMessage("已清除篩選", 2000)
-
-    def next_image(self):
-        if self.current_index < len(self.image_files) - 1:
-            self.current_index += 1
-            self.load_image()
-
-    def prev_image(self):
-        if self.current_index > 0:
-            self.current_index -= 1
-            self.load_image()
-
-    def first_image(self):
-        if self.image_files:
-            self.current_index = 0
-            self.load_image()
-
-    def last_image(self):
-        if self.image_files:
-            self.current_index = len(self.image_files) - 1
-            self.load_image()
-
-    def jump_to_index(self):
-        try:
-            val = int(self.index_input.text())
-            target_idx = val - 1
-            
-            if self.filter_active:
-                if 0 <= target_idx < len(self.filtered_image_files):
-                    target_path = self.filtered_image_files[target_idx]
-                    self.current_index = self.image_files.index(target_path)
-                    self.load_image()
-                else:
-                    self.load_image() # Reset to current
-            else:
-                if 0 <= target_idx < len(self.image_files):
-                    self.current_index = target_idx
-                    self.load_image()
-                else:
-                    self.load_image() # Reset to current
-        except Exception:
-            self.load_image()
-
-    def update_image_display(self):
-        """用於 Resize 或初次加載時更新圖片顯示"""
-        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
-            return
-        scaled = self._get_processed_pixmap().scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled)
-
-    def _get_processed_pixmap(self) -> QPixmap:
-        """
-        根據目前的檢視模式 (Original/RGB/Alpha) 回傳對應的 QPixmap。
-        優先順序: 
-        1. 暫時按鍵 (temp_view_mode: N/M)
-        2. 下拉選單 (current_view_mode)
-        """
-        if not hasattr(self, 'current_pixmap') or self.current_pixmap.isNull():
-            return QPixmap()
-
-        # 決定要用的模式 (0=Orig, 1=RGB, 2=Alpha)
-        mode = self.current_view_mode
-        if self.temp_view_mode is not None:
-            mode = self.temp_view_mode
-
-        # 如果是「原圖模式」，檢查是否有外部遮罩 (mask/*.png)
-        if mode == 0:
-            sidecar = load_image_sidecar(self.current_image_path)
-            rel_mask = sidecar.get("mask_map_rel_path", "")
-            if rel_mask:
-                mask_abs = os.path.normpath(os.path.join(os.path.dirname(self.current_image_path), rel_mask))
-                if os.path.exists(mask_abs):
-                    # 動態合成
-                    img_q = self.current_pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
-                    mask_q = QImage(mask_abs).convertToFormat(QImage.Format.Format_Alpha8)
-                    if img_q.size() == mask_q.size():
-                        img_q.setAlphaChannel(mask_q)
-                        return QPixmap.fromImage(img_q)
-
-            return self.current_pixmap
-        
-        # 轉換處理
-        img = self.current_pixmap.toImage()
-        
-        if mode == 1: # RGB Only (Force Opaque)
-            # 轉換為 RGB888 (丟棄 Alpha)
-            img = img.convertToFormat(QImage.Format.Format_RGB888)
-            return QPixmap.fromImage(img)
-            
-        elif mode == 2: # Alpha Only
-            if img.hasAlphaChannel():
-                # Convert to Alpha8 (data is 8-bit alpha)
-                alpha_img = img.convertToFormat(QImage.Format.Format_Alpha8)
-                # Interpret the data as Grayscale8
-                # Note: We must ensure the data persists or is copied.
-                # Constructing QImage from inputs shares memory? 
-                # Safe way: Convert Alpha8 to RGBA, then fill RGB with Alpha? No.
-                
-                # Using PIL is robust and easy if we can convert.
-                ptr = alpha_img.constBits()
-                ptr.setsize(alpha_img.sizeInBytes())
-                # Create Grayscale QImage from the bytes
-                gray_img = QImage(ptr, alpha_img.width(), alpha_img.height(), alpha_img.bytesPerLine(), QImage.Format.Format_Grayscale8)
-                return QPixmap.fromImage(gray_img.copy()) # copy to detach
-            else:
-                # No Alpha -> White
-                white = QPixmap(img.size())
-                white.fill(Qt.GlobalColor.white)
-                return white
-        
-        return self.current_pixmap
-
-    def on_view_mode_changed(self, index):
-        self.current_view_mode = index
-        self.update_image_display()
 
     def keyPressEvent(self, event):
         if event.isAutoRepeat():
@@ -880,85 +540,14 @@ class MainWindow(QMainWindow):
         else:
             super().keyReleaseEvent(event)
 
-    def show_image_context_menu(self, pos: QPoint):
-        if not self.current_image_path:
-            return
 
-        menu = QMenu(self)
-        
-        # 1. 複製圖片
-        action_copy_img = QAction("複製圖片 (Copy Image)", self)
-        action_copy_img.triggered.connect(self._ctx_copy_image)
-        menu.addAction(action_copy_img)
-        
-        # 2. 複製路徑
-        action_copy_path = QAction("複製路徑 (Copy Path)", self)
-        action_copy_path.triggered.connect(self._ctx_copy_path)
-        menu.addAction(action_copy_path)
-        
-        menu.addSeparator()
-        
-        # 3. 開啟檔案位置
-        action_open_dir = QAction("打開檔案所在目錄 (Open Folder)", self)
-        action_open_dir.triggered.connect(self._ctx_open_folder)
-        menu.addAction(action_open_dir)
-        
-        menu.exec(self.image_label.mapToGlobal(pos))
-
-    def _ctx_copy_image(self):
-        if hasattr(self, 'current_pixmap') and not self.current_pixmap.isNull():
-            QApplication.clipboard().setPixmap(self.current_pixmap)
-            self.statusBar().showMessage("圖片已複製到剪貼簿", 2000)
-
-    def _ctx_copy_path(self):
-        if self.current_image_path:
-            QApplication.clipboard().setText(os.path.abspath(self.current_image_path))
-            self.statusBar().showMessage("路徑已複製到剪貼簿", 2000)
-    
-    def _ctx_open_folder(self):
-        if self.current_image_path:
-            folder = os.path.dirname(self.current_image_path)
-            # 使用 QDesktopServices 開啟目錄
-            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
         QTimer.singleShot(10, self.update_image_display)
 
-    def delete_current_image(self):
-        if not self.current_image_path:
-            return
-        reply = QMessageBox.question(
-            self, "Confirm", self.tr("msg_delete_confirm"),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            src_dir = os.path.dirname(self.current_image_path)
-            no_used_dir = os.path.join(src_dir, "no_used")
-            if not os.path.exists(no_used_dir):
-                os.makedirs(no_used_dir)
 
-            files_to_move = [self.current_image_path]
-            for ext in [".txt", ".npz", ".boorutag", ".pool.json", ".json"]:
-                p = os.path.splitext(self.current_image_path)[0] + ext
-                if os.path.exists(p):
-                    files_to_move.append(p)
-
-            for f_path in files_to_move:
-                try:
-                    shutil.move(f_path, os.path.join(no_used_dir, os.path.basename(f_path)))
-                except Exception:
-                    pass
-
-            self.image_files.pop(self.current_index)
-            if self.current_index >= len(self.image_files):
-                self.current_index -= 1
-            if self.image_files:
-                self.load_image()
-            else:
-                self.image_label.clear()
-                self.txt_edit.clear()
 
     def on_text_changed(self):
         if not self.current_image_path:
@@ -1077,229 +666,7 @@ class MainWindow(QMainWindow):
 
 
 # ==========================
-    # TAGS sources
-    # ==========================
-    def build_top_tags_for_current_image(self):
-        hints = []
-        tags_from_meta = []
 
-        meta_path = str(self.current_image_path) + ".boorutag"
-        if os.path.isfile(meta_path):
-            tags_meta, hint_info = parse_boorutag_meta(meta_path)
-            tags_from_meta.extend(tags_meta)
-            hints.extend(hint_info)
-
-        parent = Path(self.current_image_path).parent.name
-        if "_" in parent:
-            folder_hint = parent.split("_", 1)[1]
-            if "{" not in folder_hint:
-                folder_hint = f"{{{folder_hint}}}"
-            hints.append(folder_hint)
-
-        initial_keywords = []
-        for h in hints:
-            initial_keywords.extend(extract_bracket_content(h))
-
-        combined = initial_keywords + tags_from_meta
-        seen = set()
-        final_list = [x for x in combined if not (x in seen or seen.add(x))]
-        final_list = [str(t).replace("_", " ").strip() for t in final_list if str(t).strip()]
-        if self.english_force_lowercase:
-            final_list = [t.lower() for t in final_list]
-        return final_list
-
-    def folder_custom_tags_path(self, folder_path):
-        return os.path.join(folder_path, ".custom_tags.json")
-
-    def load_folder_custom_tags(self, folder_path):
-        p = self.folder_custom_tags_path(folder_path)
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                tags = data.get("custom_tags", [])
-                tags = [str(t).strip() for t in tags if str(t).strip()]
-                if not tags:
-                    tags = list(self.default_custom_tags_global)
-                return tags
-            except Exception:
-                return list(self.default_custom_tags_global)
-        else:
-            tags = list(self.default_custom_tags_global)
-            try:
-                with open(p, "w", encoding="utf-8") as f:
-                    json.dump({"custom_tags": tags}, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-            return tags
-
-    def save_folder_custom_tags(self, folder_path, tags):
-        p = self.folder_custom_tags_path(folder_path)
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump({"custom_tags": tags}, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    def add_custom_tag_dialog(self):
-        if not self.current_folder_path:
-            return
-        tag, ok = QInputDialog.getText(self, self.tr("dialog_add_tag_title"), self.tr("dialog_add_tag_label"))
-        if not ok:
-            return
-        tag = str(tag).strip()
-        if not tag:
-            return
-        tag = tag.replace("_", " ").strip()
-        if self.english_force_lowercase:
-            tag = tag.lower()
-
-        tags = list(self.custom_tags)
-        if tag not in tags:
-            tags.append(tag)
-            self.custom_tags = tags
-            self.save_folder_custom_tags(self.current_folder_path, tags)
-            self.refresh_tags_tab()
-            self.on_text_changed()
-
-    def load_tagger_tags_for_current_image(self):
-        """從 JSON sidecar 載入 tagger_tags"""
-        sidecar = load_image_sidecar(self.current_image_path)
-        raw = sidecar.get("tagger_tags", "")
-        if not raw:
-            return []
-        parts = [x.strip() for x in raw.split(",") if x.strip()]
-        parts = [t.replace("_", " ").strip() for t in parts]
-        if self.english_force_lowercase:
-            parts = [t.lower() for t in parts]
-        return parts
-
-    def save_tagger_tags_for_image(self, image_path, raw_tags_str):
-        """儲存 tagger_tags 到 JSON sidecar"""
-        sidecar = load_image_sidecar(image_path)
-        sidecar["tagger_tags"] = raw_tags_str
-        save_image_sidecar(image_path, sidecar)
-
-    def load_nl_pages_for_image(self, image_path):
-        """從 JSON sidecar 載入 nl_pages"""
-        sidecar = load_image_sidecar(image_path)
-        pages = sidecar.get("nl_pages", [])
-        if isinstance(pages, list):
-            return [p for p in pages if p and str(p).strip()]
-        return []
-
-    def load_nl_for_current_image(self):
-        pages = self.load_nl_pages_for_image(self.current_image_path)
-        return pages[-1] if pages else ""
-
-    def save_nl_for_image(self, image_path, content):
-        """Append nl content 到 JSON sidecar"""
-        if not content:
-            return
-        content = str(content).strip()
-        if not content:
-            return
-
-        sidecar = load_image_sidecar(image_path)
-        pages = sidecar.get("nl_pages", [])
-        if not isinstance(pages, list):
-            pages = []
-        pages.append(content)
-        sidecar["nl_pages"] = pages
-        save_image_sidecar(image_path, sidecar)
-
-    def refresh_tags_tab(self):
-        active_text = self.txt_edit.toPlainText()
-
-        self.flow_top.render_tags_flow(
-            smart_parse_tags(", ".join(self.top_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_custom.render_tags_flow(
-            smart_parse_tags(", ".join(self.custom_tags)),
-            active_text,
-            self.settings
-        )
-        self.flow_tagger.render_tags_flow(
-            smart_parse_tags(", ".join(self.tagger_tags)),
-            active_text,
-            self.settings
-        )
-
-    def refresh_nl_tab(self):
-        active_text = self.txt_edit.toPlainText()
-        self.flow_nl.render_tags_flow(
-            smart_parse_tags(self.nl_latest),
-            active_text,
-            self.settings
-        )
-
-
-    # ==========================
-    # NL paging / dynamic sizing
-    # ==========================
-    def set_current_nl_page(self, idx: int):
-        if not self.nl_pages:
-            self.nl_page_index = 0
-            self.nl_latest = ""
-            self.refresh_nl_tab()
-            self.update_nl_page_controls()
-            return
-
-        idx = max(0, min(int(idx), len(self.nl_pages) - 1))
-        self.nl_page_index = idx
-        self.nl_latest = self.nl_pages[self.nl_page_index]
-
-        self.refresh_nl_tab()
-        self.update_nl_page_controls()
-        self.on_text_changed()
-
-    def update_nl_page_controls(self):
-        total = len(self.nl_pages)
-        if total <= 0:
-            if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText(f"{self.tr('label_page')} 0/0")
-            if hasattr(self, "btn_prev_nl"):
-                self.btn_prev_nl.setEnabled(False)
-            if hasattr(self, "btn_next_nl"):
-                self.btn_next_nl.setEnabled(False)
-        else:
-            self.nl_page_index = max(0, min(self.nl_page_index, total - 1))
-            if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText(f"Page {self.nl_page_index + 1}/{total}")
-            if hasattr(self, "btn_prev_nl"):
-                self.btn_prev_nl.setEnabled(self.nl_page_index > 0)
-            if hasattr(self, "btn_next_nl"):
-                self.btn_next_nl.setEnabled(self.nl_page_index < total - 1)
-
-        self.update_nl_result_height()
-
-    def prev_nl_page(self):
-        if self.nl_pages and self.nl_page_index > 0:
-            self.set_current_nl_page(self.nl_page_index - 1)
-
-    def next_nl_page(self):
-        if self.nl_pages and self.nl_page_index < len(self.nl_pages) - 1:
-            self.set_current_nl_page(self.nl_page_index + 1)
-
-    def update_nl_result_height(self):
-        # make RESULT taller when content is long, and shrink prompt area accordingly
-        try:
-            lines = [l for l in (self.nl_latest or "").splitlines() if l.strip()]
-            n = len(lines)
-
-            if n >= 16:
-                self.flow_nl.setMinimumHeight(760)
-                self.prompt_edit.setMaximumHeight(220)
-            elif n >= 10:
-                self.flow_nl.setMinimumHeight(660)
-                self.prompt_edit.setMaximumHeight(280)
-            else:
-                self.flow_nl.setMinimumHeight(520)
-                self.prompt_edit.setMaximumHeight(9999)
-        except Exception:
-            pass
 
     # ==========================
     # Logic: Insert / Remove to txt at cursor
@@ -1401,52 +768,6 @@ class MainWindow(QMainWindow):
     def reset_prompt(self):
         self.prompt_edit.setPlainText(DEFAULT_USER_PROMPT_TEMPLATE)
 
-    def build_llm_tags_context_for_image(self, image_path: str) -> str:
-        top_tags = []
-        try:
-            hints = []
-            tags_from_meta = []
-
-            meta_path = str(image_path) + ".boorutag"
-            if os.path.isfile(meta_path):
-                tags_meta, hint_info = parse_boorutag_meta(meta_path)
-                tags_from_meta.extend(tags_meta)
-                hints.extend(hint_info)
-
-            parent = Path(image_path).parent.name
-            if "_" in parent:
-                folder_hint = parent.split("_", 1)[1]
-                if "{" not in folder_hint:
-                    folder_hint = f"{{{folder_hint}}}"
-                hints.append(folder_hint)
-
-            initial_keywords = []
-            for h in hints:
-                initial_keywords.extend(extract_bracket_content(h))
-
-            combined = initial_keywords + tags_from_meta
-            seen = set()
-            top_tags = [x for x in combined if not (x in seen or seen.add(x))]
-            top_tags = [str(t).replace("_", " ").strip() for t in top_tags if str(t).strip()]
-        except Exception:
-            top_tags = []
-
-        tagger_parts = []
-        sidecar = load_image_sidecar(image_path)
-        raw = sidecar.get("tagger_tags", "")
-        if raw:
-            parts = [x.strip() for x in raw.split(",") if x.strip()]
-            parts = try_tags_to_text_list(parts)
-            tagger_parts = [t.replace("_", " ").strip() for t in parts if t.strip()]
-
-        all_tags = []
-        seen2 = set()
-        for t in (top_tags + tagger_parts):
-            if t and t not in seen2:
-                seen2.add(t)
-                all_tags.append(t)
-
-        return "\n".join(all_tags)
 
     def run_llm_generation(self):
         if not self.current_image_path:
@@ -1456,7 +777,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "已有任務正在執行中")
             return
 
-        tags_text = self.build_llm_tags_context_for_image(self.current_image_path)
+        tags_text = build_llm_tags_context_for_image(self.current_image_path)
         user_prompt = self.prompt_edit.toPlainText()
 
         if "{tags}" in user_prompt and not tags_text.strip():
@@ -1501,25 +822,7 @@ class MainWindow(QMainWindow):
         self.btn_run_llm.setText(self.tr("btn_run_llm"))
         self.set_batch_ui_enabled(True) 
 
-    def on_pipeline_done(self, name, results):
-        self.statusBar().showMessage(f"Task '{name}' completed.", 5000)
-        self.progress_bar.setVisible(False)
-        self.btn_cancel_batch.setVisible(False)
-        self.set_batch_ui_enabled(True)
-        
-        self.btn_auto_tag.setEnabled(True)
-        self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
-        self.btn_run_llm.setEnabled(True)
-        self.btn_run_llm.setText(self.tr("btn_run_llm"))
 
-    def cancel_batch(self):
-        self.pipeline_manager.stop()
-
-    def set_batch_ui_enabled(self, enabled):
-        self.btn_batch_tagger.setEnabled(enabled)
-        self.btn_batch_tagger_to_txt.setEnabled(enabled)
-        self.btn_batch_llm.setEnabled(enabled)
-        self.btn_batch_llm_to_txt.setEnabled(enabled)
 
     def on_pipeline_image_done(self, image_path: str, output: WorkerOutput):
         if not output.success:
@@ -1581,41 +884,7 @@ class MainWindow(QMainWindow):
     # ==========================
     # Tools: Unmask (Remove BG) / Stroke Eraser
     # ==========================
-    def _unique_path(self, path: str) -> str:
-        if not os.path.exists(path):
-            return path
-        base, ext = os.path.splitext(path)
-        for i in range(1, 9999):
-            p2 = f"{base}_{i}{ext}"
-            if not os.path.exists(p2):
-                return p2
-        return path
 
-    def _replace_image_path_in_list(self, old_path: str, new_path: str):
-        if not old_path or not new_path or os.path.abspath(old_path) == os.path.abspath(new_path):
-            return
-        
-        # Update current path first if match
-        if self.current_image_path and os.path.abspath(self.current_image_path) == os.path.abspath(old_path):
-            self.current_image_path = new_path
-
-        found = False
-        abs_old = os.path.abspath(old_path)
-        for i, p in enumerate(self.image_files):
-            if os.path.abspath(p) == abs_old:
-                self.image_files[i] = new_path
-                found = True
-                break
-        
-        # If not found (rare), append? No, just ignore.
-
-    def _tagger_has_background(self, image_path: str) -> bool:
-        """檢查 tagger_tags 是否含有 background"""
-        sidecar = load_image_sidecar(image_path)
-        raw = sidecar.get("tagger_tags", "")
-        if not raw:
-            return False
-        return re.search(r"background", raw, re.IGNORECASE) is not None
 
     def unmask_current_image(self):
         if not self.current_image_path:
@@ -1676,33 +945,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"還原失敗: {e}")
 
 
-    def run_batch_unmask_background(self):
-        if not self.image_files:
-            return
 
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-
-        # ✅ 修正：根據設定決定是否過濾
-        only_bg = bool(self.settings.get("mask_batch_only_if_has_background_tag", False))
-        targets = []
-        if only_bg:
-            targets = [p for p in self.image_files if self._image_has_background_tag(p)]
-            if not targets:
-                QMessageBox.information(self, "Batch Unmask", "找不到含有 'background' 標籤的圖片")
-                return
-        else:
-            targets = self.image_files
-
-        if hasattr(self, 'action_batch_unmask'):
-            self.action_batch_unmask.setEnabled(False)
-            
-        try:
-             images = create_image_data_list(targets)
-             self.pipeline_manager.run_batch_unmask(images)
-        except Exception as e:
-             self.on_pipeline_error(str(e))
 
 
 
@@ -1793,283 +1036,7 @@ class MainWindow(QMainWindow):
     # ==========================
     # Batch: Tagger / LLM
     # ==========================
-    def show_progress(self, current, total, name):
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(current)
-        self.progress_bar.setFormat(f"{name} ({current}/{total})")
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(True)
-            self.btn_cancel_batch.setEnabled(True)
 
-    def hide_progress(self):
-        self.progress_bar.setVisible(False)
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(False)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("")
-        
-    def on_batch_done(self, msg="Batch Process Completed"):
-        self.hide_progress()
-        if hasattr(self, "btn_cancel_batch"):
-            self.btn_cancel_batch.setVisible(False)
-            self.btn_cancel_batch.setEnabled(False)
-        QMessageBox.information(self, "Batch", msg)
-        unload_all_models()
-
-    def run_batch_tagger(self):
-        if not self.image_files:
-            return
-            
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-            
-        self.btn_batch_tagger.setEnabled(False)
-        self.btn_auto_tag.setEnabled(False)
-        self.btn_batch_tagger_to_txt.setEnabled(False)
-        self._is_batch_to_txt = False
-
-        try:
-             images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_tagger(images)
-        except Exception as e:
-             self.on_pipeline_error(str(e))
-
-    def run_batch_tagger_to_txt(self):
-        if not self.image_files:
-            return
-            
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-        
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
-            
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_tagger_to_txt.setEnabled(False)
-        self.btn_batch_tagger.setEnabled(False)
-
-        # 1. Check Sidecar for cache
-        files_to_process = []
-        already_done_count = 0
-
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                tags_str = sidecar.get("tagger_tags", "")
-
-                if tags_str:
-                    # Cache hit: Write directly
-                    self.write_batch_result_to_txt(img_path, tags_str, is_tagger=True)
-                    already_done_count += 1
-                else:
-                    # Cache miss: Add to queue
-                    files_to_process.append(img_path)
-
-            if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 Tagger 結果至 txt", 5000)
-
-            # 2. Process missing files
-            if not files_to_process:
-                self.btn_batch_tagger_to_txt.setEnabled(True)
-                self.btn_batch_tagger.setEnabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch Tagger to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
-                return
-
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 Tagger...", 5000)
-
-            images = create_image_data_list(files_to_process)
-            self.pipeline_manager.run_batch_tagger(images)
-
-        except Exception as e:
-            self.on_pipeline_error(str(e))
-
-
-    def run_batch_llm_to_txt(self):
-        if not self.image_files:
-            return
-            
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-            
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
-            
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_llm_to_txt.setEnabled(False)
-        self.btn_batch_llm.setEnabled(False)
-
-        # 1. 檢查 Sidecar
-        files_to_process = []
-        already_done_count = 0
-        
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                nl = sidecar.get("nl_pages", [])
-                content = nl[-1] if nl and isinstance(nl, list) else ""
-                
-                if content:
-                    self.write_batch_result_to_txt(img_path, content, is_tagger=False)
-                    already_done_count += 1
-                else:
-                    files_to_process.append(img_path)
-            
-            if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 LLM 結果至 txt", 5000)
-
-            # 2. Process missing
-            if not files_to_process:
-                self.btn_batch_llm_to_txt.setEnabled(True)
-                self.btn_batch_llm.setEnabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch LLM to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
-                return
-
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 LLM...", 5000)
-            
-            user_prompt = self.prompt_edit.toPlainText()
-            
-            images = create_image_data_list(files_to_process)
-            self.pipeline_manager.run_batch_llm(
-                 images,
-                 prompt_mode=self.current_prompt_mode,
-                 user_prompt=user_prompt
-            )
-
-        except Exception as e:
-            self.on_pipeline_error(str(e))
-
-
-    def prompt_delete_chars(self) -> bool:
-        """回傳 True=刪除, False=保留, None=取消"""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Batch to txt")
-        msg.setText("是否自動刪除特徵標籤 (Character Tags)？")
-        msg.setInformativeText("將根據設定中的黑白名單過濾標籤或句子。")
-        btn_yes = msg.addButton("自動刪除", QMessageBox.ButtonRole.YesRole)
-        btn_no = msg.addButton("保留", QMessageBox.ButtonRole.NoRole)
-        btn_cancel = msg.addButton(QMessageBox.StandardButton.Cancel)
-        
-        msg.exec()
-        if msg.clickedButton() == btn_yes:
-            return True
-        elif msg.clickedButton() == btn_no:
-            return False
-        return None
-
-    def write_batch_result_to_txt(self, image_path, content, is_tagger: bool):
-        cfg = self.settings
-        delete_chars = getattr(self, "_batch_delete_chars", False)
-        mode = cfg.get("batch_to_txt_mode", "append")
-        folder_trigger = cfg.get("batch_to_txt_folder_trigger", False)
-        
-        items = []
-        if is_tagger:
-            raw_list = [x.strip() for x in content.split(",") if x.strip()]
-            if delete_chars:
-                raw_list = [t for t in raw_list if not is_basic_character_tag(t, cfg)]
-            items = raw_list
-        else:
-            # nl_content from LLMworker has \n, possibly translation lines in ()
-            raw_lines = content.splitlines()
-            sentences = []
-            for line in raw_lines:
-                line = line.strip()
-                if not line: continue
-                # Skip lines that are entirely in parentheses (translations)
-                if (line.startswith("(") and line.endswith(")")) or (line.startswith("（") and line.endswith("）")):
-                    continue
-                # Remove any remaining content in parentheses/brackets just in case
-                line = re.sub(r"[\(（].*?[\)）]", "", line).strip()
-                # Remove trailing period and normalize
-                line = line.rstrip(".").strip()
-                if line:
-                    sentences.append(line)
-            
-            if delete_chars:
-                sentences = [s for s in sentences if not is_basic_character_tag(s, cfg)]
-            items = sentences
-
-        if folder_trigger:
-            trigger = os.path.basename(os.path.dirname(image_path)).strip()
-            if trigger and trigger not in items:
-                items.insert(0, trigger)
-
-        txt_path = os.path.splitext(image_path)[0] + ".txt"
-        existing_content = ""
-        if mode == "append" and os.path.exists(txt_path):
-            try:
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    existing_content = f.read().strip()
-            except Exception: pass
-
-        # Deduplication: 若內容已存在於文中 (Word Boundary Check)，則不附加
-        if mode == "append" and existing_content and items:
-            # Normalize search text
-            search_text = existing_content.lower().replace("_", " ").replace("\n", " ")
-            search_text = re.sub(r"\s+", " ", search_text)
-            
-            unique_items = []
-            for item in items:
-                t_norm = item.strip().lower().replace("_", " ")
-                t_norm = re.sub(r"\s+", " ", t_norm)
-                if not t_norm: 
-                    continue
-                
-                # Strict whole word check using regex lookbehind/lookahead
-                # e.g. "hair" won't match "chair", but "blonde hair" matches "blonde hair girl"
-                try:
-                    pattern = r"(?<!\w)" + re.escape(t_norm) + r"(?!\w)"
-                    if not re.search(pattern, search_text):
-                        unique_items.append(item)
-                except Exception:
-                    # Fallback if regex fails (rare)
-                    if t_norm not in search_text:
-                        unique_items.append(item)
-            
-            items = unique_items
-            # 如果全部都重複，items 為空，下面邏輯會寫入空字串或變成只寫入分隔符?
-            # 最好直接 return 避免寫入多餘的逗號或空行
-            if not items:
-                return
-        
-        if is_tagger:
-            new_part = ", ".join(items)
-            force_lower = cfg.get("english_force_lowercase", True)
-            if mode == "append" and existing_content:
-                final = cleanup_csv_like_text(existing_content + ", " + new_part, force_lower)
-            else:
-                final = cleanup_csv_like_text(new_part, force_lower)
-        else:
-            # For LLM results, now joining with comma and no trailing period
-            new_part = ", ".join(items)
-            if mode == "append" and existing_content:
-                # Use comma or space-comma as separator
-                sep = ", "
-                if existing_content.endswith(",") or existing_content.endswith("."):
-                    sep = " "
-                final = existing_content + sep + new_part
-            else:
-                final = new_part
-                
-        try:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(final)
-            if image_path == self.current_image_path:
-                self.txt_edit.setPlainText(final)
-        except Exception as e:
-            print(f"[BatchWriter] 寫入失敗 {txt_path}: {e}")
 
 
 
@@ -2090,48 +1057,7 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def run_batch_llm(self):
-        if not self.image_files:
-            return
 
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-
-        user_prompt = self.prompt_edit.toPlainText()
-        if "{角色名}" in user_prompt:
-             reply = QMessageBox.question(self, "Warning", "Prompt 包含未替換的 '{角色名}'。\n這可能會導致生成結果不正確。\n請手動輸入角色名或調整提示。\n\n確定要繼續嗎？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-             if reply == QMessageBox.StandardButton.No:
-                 return
-
-        self.btn_batch_llm.setEnabled(False)
-        self.btn_batch_llm_to_txt.setEnabled(False)
-        self.btn_run_llm.setEnabled(False)
-        self._is_batch_to_txt = False
-        
-        try:
-             images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_llm(
-                 images,
-                 prompt_mode=self.current_prompt_mode,
-                 user_prompt=user_prompt
-             )
-        except Exception as e:
-             self.on_pipeline_error(str(e))
-
-
-
-
-    def on_batch_error(self, err):
-        self.btn_batch_tagger.setEnabled(True)
-        self.btn_batch_tagger_to_txt.setEnabled(True)
-        self.btn_auto_tag.setEnabled(True)
-        self.btn_batch_llm.setEnabled(True)
-        self.btn_batch_llm_to_txt.setEnabled(True)
-        self.btn_run_llm.setEnabled(True)
-        self._is_batch_to_txt = False
-        self.hide_progress()
-        self.statusBar().showMessage(f"Batch Error: {err}", 8000)
 
     # ==========================
     # Find/Replace
@@ -2202,79 +1128,7 @@ class MainWindow(QMainWindow):
     # ==========================
     # Tools: Batch Mask Text (OCR)
     # ==========================
-    def _image_has_background_tag(self, image_path: str) -> bool:
-        """
-        判斷是否為「背景圖」。
-        檢查 .txt 分類以及 sidecar JSON 標籤。
-        """
-        try:
-            # 1. 優先檢查 Sidecar JSON (如果有 Tagger 結果就抓得到)
-            sidecar = load_image_sidecar(image_path)
-            # 檢查 tagger_tags (標籤器結果) 或 tags_context (原本的標籤)
-            tags_all = (sidecar.get("tagger_tags", "") + " " + sidecar.get("tags_context", "")).lower()
-            if "background" in tags_all:
-                return True
 
-            # 2. 檢查 .txt 檔案 (後備方案)
-            txt_path = os.path.splitext(image_path)[0] + ".txt"
-            if os.path.exists(txt_path):
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    content = f.read().lower()
-                return "background" in content
-        except Exception:
-            pass
-        return False
-
-    def run_batch_mask_text(self):
-        if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
-            return
-
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-
-        try:
-             images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_mask_text(images)
-        except Exception as e:
-             self.on_pipeline_error(str(e))
-
-
-    def run_batch_restore(self):
-        if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
-            return
-
-        if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
-            return
-
-        reply = QMessageBox.question(
-            self, "Batch Restore",
-            "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        try:
-             images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_restore(images)
-        except Exception as e:
-             self.on_pipeline_error(str(e))
-
-    def cancel_batch(self):
-        self.statusBar().showMessage("正在中止...", 2000)
-        # Stop Pipeline
-        if self.pipeline_manager.is_running():
-            self.pipeline_manager.stop()
-            
-        # Stop legacy threads
-        for attr in ['batch_mask_text_thread']:
-             thread = getattr(self, attr, None)
-             if thread is not None and thread.isRunning():
-                 thread.stop()
 
 
 
