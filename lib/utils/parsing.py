@@ -142,3 +142,30 @@ def try_tags_to_text_list(tags_list) -> List[str]:
             return [t.strip() for t in tags_list if str(t).strip()]
     except Exception:
         return [t.strip() for t in tags_list if str(t).strip()]
+
+def extract_llm_content_and_postprocess(full_text: str, force_lowercase: bool = True) -> str:
+    """提取 LLM 輸出中的有效內容並後處理"""
+    pattern = r"===處理結果開始===(.*?)===處理結果結束==="
+    match = re.search(pattern, full_text, re.DOTALL)
+    if match:
+        s = match.group(1).strip()
+    else:
+        s = full_text.strip()
+        
+    lines = s.splitlines()
+    out_lines = []
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("(") or s.startswith("（"):
+            out_lines.append(s)
+            continue
+
+        s = s.replace(", ", " ")
+        s = s.rstrip(".").strip()
+        if force_lowercase:
+            s = s.lower()
+        out_lines.append(s)
+
+    return "\n".join(out_lines)

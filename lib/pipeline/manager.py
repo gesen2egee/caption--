@@ -59,14 +59,20 @@ class PipelineManager(QObject):
         """執行單圖標籤"""
         self._run_single(TaskType.TAGGER, image)
     
-    def run_llm(self, image: ImageData, prompt_mode: str = "default"):
+    def run_llm(self, image: ImageData, prompt_mode: str = "default", user_prompt: str = None, system_prompt: str = None):
         """執行單圖 LLM"""
         options = {"prompt_mode": prompt_mode}
+        if user_prompt: options["user_prompt"] = user_prompt
+        if system_prompt: options["system_prompt"] = system_prompt
         self._run_single(TaskType.LLM, image, options=options)
     
     def run_unmask(self, image: ImageData):
         """執行單圖去背"""
         self._run_single(TaskType.UNMASK, image)
+    
+    def run_mask_text(self, image: ImageData):
+        """執行單圖去文字"""
+        self._run_single(TaskType.MASK_TEXT, image)
     
     def run_restore(self, image: ImageData):
         """執行單圖還原"""
@@ -80,14 +86,20 @@ class PipelineManager(QObject):
         """執行批量標籤"""
         self._run_batch(TaskType.TAGGER, images)
     
-    def run_batch_llm(self, images: List[ImageData], prompt_mode: str = "default"):
+    def run_batch_llm(self, images: List[ImageData], prompt_mode: str = "default", user_prompt: str = None, system_prompt: str = None):
         """執行批量 LLM"""
         options = {"prompt_mode": prompt_mode}
+        if user_prompt: options["user_prompt"] = user_prompt
+        if system_prompt: options["system_prompt"] = system_prompt
         self._run_batch(TaskType.LLM, images, options=options)
     
     def run_batch_unmask(self, images: List[ImageData]):
         """執行批量去背"""
         self._run_batch(TaskType.UNMASK, images)
+    
+    def run_batch_mask_text(self, images: List[ImageData]):
+        """執行批量去文字"""
+        self._run_batch(TaskType.MASK_TEXT, images)
     
     def run_batch_restore(self, images: List[ImageData]):
         """執行批量還原"""

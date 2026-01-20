@@ -125,6 +125,19 @@ class Batch(QObject):
                 }
             return DetectImgutilsOCRLocalWorker(config)
         
+        elif self.task_type == TaskType.MASK_TEXT:
+            from lib.workers.mask_text_local import MaskTextLocalWorker
+            config = {}
+            if self.settings:
+                config = {
+                    "mask_ocr_max_candidates": self.settings.mask_ocr_max_candidates,
+                    "mask_ocr_heat_threshold": self.settings.mask_ocr_heat_threshold,
+                    "mask_ocr_box_threshold": self.settings.mask_ocr_box_threshold,
+                    "mask_ocr_unclip_ratio": self.settings.mask_ocr_unclip_ratio,
+                    "mask_default_format": self.settings.mask_default_format,
+                }
+            return MaskTextLocalWorker(config)
+        
         else:
             raise ValueError(f"未知的任務類型: {self.task_type}")
     
@@ -160,6 +173,15 @@ class Batch(QObject):
                 if "explicit" in tags or "questionable" in tags:
                     return False, "NSFW 內容"
         
+        elif self.task_type == TaskType.MASK_TEXT and self.settings:
+            if self.settings.mask_batch_skip_once_processed and image.masked_text:
+                return False, "已去字"
+            
+            if self.settings.mask_batch_only_if_has_background_tag:
+                 tags = (image.tagger_tags or "").lower()
+                 if "background" not in tags:
+                     return False, "無 background 標籤"
+                     
         return True, ""
     
     def run(self):

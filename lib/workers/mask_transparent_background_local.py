@@ -81,6 +81,10 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
             
             # 載入圖片
             img = Image.open(image_path).convert("RGBA")
+
+            # 備份原圖
+            from lib.utils.file_ops import backup_raw_image
+            backup_raw_image(image_path)
             
             # 取得 Remover
             remover = self._get_remover()
@@ -133,9 +137,13 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
             return WorkerOutput(
                 success=True,
                 image=image_data,
-                result_path=new_path,
-                metadata={"foreground_ratio": fg_ratio}
+                result_data={
+                    "original_path": image_path,
+                    "result_path": new_path,
+                    "foreground_ratio": fg_ratio
+                }
             )
+
             
         except Exception as e:
             traceback.print_exc()
