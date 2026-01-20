@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 import os
 
-from lib.workers.base import WorkerOutput
+from lib.pipeline.context import TaskResult
 from lib.utils.parsing import extract_llm_content_and_postprocess
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ class PipelineHandlerMixin:
         self.btn_run_llm.setText(self.tr("btn_run_llm"))
         self.set_batch_ui_enabled(True) 
 
-    def on_pipeline_image_done(self, image_path: str, output: WorkerOutput):
+    def on_pipeline_image_done(self, image_path: str, output: TaskResult):
         if not output.success:
             print(f"Error for {image_path}: {output.error}")
             return

@@ -2,174 +2,124 @@
 """
 Pipeline 類別
 
-Pipeline 定義執行哪些 Batch，管理整體流程。
-每個功能按鈕都是一個 Pipeline。
+Pipeline 負責在背景執行緒中遍歷圖片列表並執行 Task。
+統一處理單張和批量，不再區分。
 """
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Type
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from lib.core.dataclasses import ImageData, Settings
-from lib.pipeline.batch import Batch, TaskType
-from lib.workers.base import WorkerOutput
+from lib.core.dataclasses import ImageData, Settings, Prompt, FolderMeta
+from lib.pipeline.context import TaskContext, TaskResult
+from lib.pipeline.tasks.base_task import BaseTask
 
 
 class Pipeline(QThread):
     """
     Pipeline 類別
     
-    管理多個 Batch 的執行流程。
-    繼承 QThread 以便在背景執行。
+    在背景執行緒中遍歷圖片列表，對每張圖片執行指定的 Task。
+    不區分單張/批量，統一處理。
     """
     
     # 信號
-    batch_progress = pyqtSignal(int, int, str)    # Batch 內進度 (current, total, filename)
-    batch_done = pyqtSignal(int, int)              # Batch 完成 (batch_index, total_batches)
-    image_done = pyqtSignal(str, object)           # 單圖完成 (image_path, WorkerOutput)
-    pipeline_done = pyqtSignal(list)               # Pipeline 完成 (all_results)
-    error = pyqtSignal(str)                        # 錯誤
+    progress = pyqtSignal(int, int, str)       # 進度 (current, total, filename)
+    image_done = pyqtSignal(str, object)       # 單圖完成 (image_path, TaskResult)
+    pipeline_done = pyqtSignal(list)           # Pipeline 完成 (all_results)
+    error = pyqtSignal(str)                    # 錯誤
     
     def __init__(self, 
-                 name: str,
-                 batches: List[Batch],
-                 settings: Settings = None,
+                 task: BaseTask,
+                 images: List[ImageData],
+                 settings: Settings,
+                 prompt: Optional[Prompt] = None,
+                 folder: Optional[FolderMeta] = None,
+                 extra: Optional[Dict[str, Any]] = None,
                  parent=None):
         super().__init__(parent)
-        self.name = name
-        self.batches = batches
+        self.task = task
+        self.images = images
         self.settings = settings
+        self.prompt = prompt
+        self.folder = folder
+        self.extra = extra or {}
         self._stop = False
-        self._all_results: List[WorkerOutput] = []
+        self._all_results: List[TaskResult] = []
+    
+    @property
+    def name(self) -> str:
+        """Pipeline 名稱（來自 Task）"""
+        return self.task.name
     
     def stop(self):
-        """請求中止所有 Batch"""
+        """請求中止"""
         self._stop = True
-        for batch in self.batches:
-            batch.stop()
     
     def is_stopped(self) -> bool:
         """是否已中止"""
         return self._stop
     
     @property
-    def all_results(self) -> List[WorkerOutput]:
+    def all_results(self) -> List[TaskResult]:
         """取得所有結果"""
         return self._all_results
     
     def run(self):
         """執行 Pipeline"""
         try:
-            total_batches = len(self.batches)
+            total = len(self.images)
             
-            for i, batch in enumerate(self.batches):
+            for i, image in enumerate(self.images):
                 if self._stop:
                     break
                 
-                # 連接 Batch 信號
-                batch.progress.connect(
-                    lambda c, t, f: self.batch_progress.emit(c, t, f)
+                # 發送進度
+                self.progress.emit(i + 1, total, image.filename)
+                
+                # 建立上下文
+                context = TaskContext(
+                    image=image,
+                    settings=self.settings,
+                    prompt=self.prompt,
+                    folder=self.folder,
+                    extra=self.extra,
                 )
-                batch.image_done.connect(
-                    lambda p, o: self._on_image_done(p, o)
-                )
                 
-                # 執行 Batch（同步）
-                batch.run()
+                # 執行 Task
+                result = self.task.execute(context)
+                self._all_results.append(result)
                 
-                # 收集結果
-                self._all_results.extend(batch.results)
-                
-                # 發送 Batch 完成信號
-                self.batch_done.emit(i + 1, total_batches)
+                # 發送單圖完成信號
+                self.image_done.emit(image.path, result)
             
             self.pipeline_done.emit(self._all_results)
             
         except Exception as e:
             self.error.emit(str(e))
-    
-    def _on_image_done(self, image_path: str, output: WorkerOutput):
-        """處理單圖完成"""
-        self.image_done.emit(image_path, output)
 
 
 # ============================================================
 # 便捷工廠方法
 # ============================================================
 
-def create_single_image_pipeline(
-    task_type: TaskType,
-    image: ImageData,
-    settings: Settings = None,
-    options: Dict[str, Any] = None,
-    name: str = None,
-) -> Pipeline:
-    """
-    建立單圖 Pipeline
-    
-    這是最常見的使用情境：對當前圖片執行一個任務。
-    """
-    batch = Batch(
-        task_type=task_type,
-        images=[image],
-        settings=settings,
-        options=options,
-    )
-    return Pipeline(
-        name=name or f"single_{task_type.value}",
-        batches=[batch],
-        settings=settings,
-    )
-
-
-def create_batch_pipeline(
-    task_type: TaskType,
+def create_pipeline(
+    task: BaseTask,
     images: List[ImageData],
-    settings: Settings = None,
-    options: Dict[str, Any] = None,
-    name: str = None,
+    settings: Settings,
+    prompt: Optional[Prompt] = None,
+    folder: Optional[FolderMeta] = None,
+    extra: Optional[Dict[str, Any]] = None,
 ) -> Pipeline:
     """
-    建立批量 Pipeline
+    建立 Pipeline
     
-    對所有圖片執行一個任務。
+    統一的建立方法，不區分單張/批量。
     """
-    batch = Batch(
-        task_type=task_type,
+    return Pipeline(
+        task=task,
         images=images,
         settings=settings,
-        options=options,
-    )
-    return Pipeline(
-        name=name or f"batch_{task_type.value}",
-        batches=[batch],
-        settings=settings,
-    )
-
-
-def create_multi_task_pipeline(
-    task_types: List[TaskType],
-    images: List[ImageData],
-    settings: Settings = None,
-    options: Dict[str, Any] = None,
-    name: str = None,
-) -> Pipeline:
-    """
-    建立多任務 Pipeline
-    
-    對所有圖片依序執行多個任務（例如：先標籤後 LLM）。
-    """
-    batches = [
-        Batch(
-            task_type=task_type,
-            images=images,
-            settings=settings,
-            options=options,
-        )
-        for task_type in task_types
-    ]
-    return Pipeline(
-        name=name or f"multi_{'_'.join(t.value for t in task_types)}",
-        batches=batches,
-        settings=settings,
+        prompt=prompt,
+        folder=folder,
+        extra=extra,
     )

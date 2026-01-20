@@ -37,7 +37,7 @@ class ProcessingMixin:
         
         try:
             image_data = create_image_data_from_path(self.current_image_path)
-            self.pipeline_manager.run_tagger(image_data)
+            self.pipeline_manager.run_tagger([image_data])
         except Exception as e:
             self.on_pipeline_error(str(e))
 
@@ -67,8 +67,7 @@ class ProcessingMixin:
         try:
             image_data = create_image_data_from_path(self.current_image_path)
             self.pipeline_manager.run_llm(
-                image_data, 
-                prompt_mode=self.current_prompt_mode, 
+                [image_data], 
                 user_prompt=user_prompt
             )
         except Exception as e:
@@ -83,7 +82,7 @@ class ProcessingMixin:
              return
 
         try:
-            self.pipeline_manager.run_unmask(create_image_data_from_path(self.current_image_path))
+            self.pipeline_manager.run_unmask([create_image_data_from_path(self.current_image_path)])
             self.statusBar().showMessage(self.tr("status_unmasking"), 2000)
         except Exception as e:
             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_unmask_failed')}{e}")
@@ -100,7 +99,7 @@ class ProcessingMixin:
              return
 
         try:
-             self.pipeline_manager.run_mask_text(create_image_data_from_path(self.current_image_path))
+             self.pipeline_manager.run_mask_text([create_image_data_from_path(self.current_image_path)])
              self.statusBar().showMessage(self.tr("status_masking_text"), 2000)
         except Exception as e:
              QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_failed')}{e}")
@@ -119,7 +118,7 @@ class ProcessingMixin:
              return
 
         try:
-            self.pipeline_manager.run_restore(create_image_data_from_path(self.current_image_path))
+            self.pipeline_manager.run_restore([create_image_data_from_path(self.current_image_path)])
             self.statusBar().showMessage(self.tr("status_restoring"), 2000)
         except Exception as e:
             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_restore_failed')}{e}")

@@ -95,7 +95,7 @@ class BatchMixin:
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_tagger(images)
+             self.pipeline_manager.run_tagger(images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
@@ -142,7 +142,7 @@ class BatchMixin:
             self.statusBar().showMessage(self.tr("status_remaining_tagger").replace("{count}", str(len(files_to_process))), 5000)
 
             images = create_image_data_list(files_to_process)
-            self.pipeline_manager.run_batch_tagger(images)
+            self.pipeline_manager.run_tagger(images)
 
         except Exception as e:
             self.on_pipeline_error(str(e))
@@ -167,9 +167,9 @@ class BatchMixin:
         
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_llm(
+             user_prompt = self.prompt_edit.toPlainText()
+             self.pipeline_manager.run_llm(
                  images,
-                 prompt_mode=self.current_prompt_mode,
                  user_prompt=user_prompt
              )
         except Exception as e:
@@ -219,12 +219,10 @@ class BatchMixin:
 
             self.statusBar().showMessage(self.tr("status_remaining_llm").replace("{count}", str(len(files_to_process))), 5000)
             
-            user_prompt = self.prompt_edit.toPlainText()
-            
             images = create_image_data_list(files_to_process)
-            self.pipeline_manager.run_batch_llm(
+            user_prompt = self.prompt_edit.toPlainText()
+            self.pipeline_manager.run_llm(
                  images,
-                 prompt_mode=self.current_prompt_mode,
                  user_prompt=user_prompt
             )
 
@@ -252,7 +250,7 @@ class BatchMixin:
             
         try:
              images = create_image_data_list(targets)
-             self.pipeline_manager.run_batch_unmask(images)
+             self.pipeline_manager.run_unmask(images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
@@ -267,7 +265,7 @@ class BatchMixin:
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_mask_text(images)
+             self.pipeline_manager.run_mask_text(images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
@@ -290,7 +288,7 @@ class BatchMixin:
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_batch_restore(images)
+             self.pipeline_manager.run_restore(images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
