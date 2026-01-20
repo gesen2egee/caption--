@@ -14,3 +14,11 @@ from lib.core.settings import (
     _coerce_float,
     _coerce_int,
 )
+
+from lib.core.dataclasses import (
+    ImageData,
+    Settings,
+    Prompt,
+    BatchInstruction,
+    FolderMeta,
+)
