@@ -209,3 +209,142 @@ class BatchTaggerWorkerCompat(QThread):
             self.error.emit(str(e))
         finally:
             self.done.emit()
+
+
+class BatchUnmaskWorkerCompat(QThread):
+    """
+    批量去背 Worker 兼容層
+    """
+    progress = pyqtSignal(int, int, str)
+    per_image = pyqtSignal(str, str)
+    done = pyqtSignal()
+    error = pyqtSignal(str)
+    
+    def __init__(self, image_paths: List[str], cfg: dict = None, 
+                 background_tag_checker: Callable = None, is_batch: bool = True):
+        super().__init__()
+        self.image_paths = list(image_paths)
+        self.cfg = dict(cfg or {})
+        self.background_tag_checker = background_tag_checker
+        self.is_batch = is_batch
+        self._stop = False
+    
+    def stop(self):
+        self._stop = True
+    
+    def run(self):
+        try:
+            from lib.workers.mask_transparent_background_local import MaskTransparentBackgroundLocalWorker
+            from lib.workers.base import WorkerInput
+            from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
+            from lib.utils.file_ops import backup_original_image
+            
+            worker = MaskTransparentBackgroundLocalWorker({
+                "mode": self.cfg.get("mask_remover_mode", "base-nightly"),
+                "default_alpha": self.cfg.get("mask_default_alpha", 64),
+                "default_format": self.cfg.get("mask_default_format", "webp"),
+                "padding": self.cfg.get("mask_padding", 1),
+                "blur_radius": self.cfg.get("mask_blur_radius", 3),
+                "min_foreground_ratio": self.cfg.get("mask_batch_min_foreground_ratio", 0.3),
+                "max_foreground_ratio": self.cfg.get("mask_batch_max_foreground_ratio", 0.8),
+            })
+            
+            total = len(self.image_paths)
+            for i, image_path in enumerate(self.image_paths):
+                if self._stop:
+                    break
+                
+                self.progress.emit(i + 1, total, image_path)
+                
+                try:
+                    # 檢查是否需要處理
+                    if self.is_batch:
+                        sidecar = load_image_sidecar(image_path)
+                        if self.cfg.get("mask_batch_skip_once_processed") and sidecar.get("masked_background"):
+                            self.per_image.emit(image_path, "[跳過] 已處理")
+                            continue
+                        
+                        if self.cfg.get("mask_batch_only_if_has_background_tag"):
+                            if self.background_tag_checker and not self.background_tag_checker(image_path):
+                                self.per_image.emit(image_path, "[跳過] 無 background 標籤")
+                                continue
+                    
+                    # 備份原圖
+                    backup_original_image(image_path)
+                    
+                    # 執行去背
+                    image_data = create_image_data(image_path)
+                    input_data = WorkerInput(image=image_data)
+                    output = worker.process(input_data)
+                    
+                    if output.success and not output.skipped:
+                        # 更新 sidecar
+                        sidecar = load_image_sidecar(image_path)
+                        sidecar["masked_background"] = True
+                        save_image_sidecar(output.result_path or image_path, sidecar)
+                        self.per_image.emit(image_path, output.result_path or "完成")
+                    elif output.skipped:
+                        self.per_image.emit(image_path, f"[跳過] {output.skip_reason or ''}")
+                    else:
+                        self.per_image.emit(image_path, f"[錯誤] {output.error or ''}")
+                        
+                except Exception as e:
+                    self.per_image.emit(image_path, f"[錯誤] {e}")
+                    
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            self.done.emit()
+
+
+class BatchRestoreWorkerCompat(QThread):
+    """
+    批量還原 Worker 兼容層
+    """
+    progress = pyqtSignal(int, int, str)
+    per_image = pyqtSignal(str, str)
+    done = pyqtSignal()
+    error = pyqtSignal(str)
+    
+    def __init__(self, image_paths: List[str]):
+        super().__init__()
+        self.image_paths = list(image_paths)
+        self._stop = False
+    
+    def stop(self):
+        self._stop = True
+    
+    def run(self):
+        try:
+            from lib.workers.image_restore_raw import ImageRestoreRawWorker
+            from lib.workers.base import WorkerInput
+            
+            worker = ImageRestoreRawWorker()
+            
+            total = len(self.image_paths)
+            for i, image_path in enumerate(self.image_paths):
+                if self._stop:
+                    break
+                
+                self.progress.emit(i + 1, total, image_path)
+                
+                try:
+                    image_data = create_image_data(image_path)
+                    input_data = WorkerInput(image=image_data)
+                    output = worker.process(input_data)
+                    
+                    if output.success and not output.skipped:
+                        self.per_image.emit(image_path, "已還原")
+                    elif output.skipped:
+                        self.per_image.emit(image_path, f"[跳過] {output.skip_reason or ''}")
+                    else:
+                        self.per_image.emit(image_path, f"[錯誤] {output.error or ''}")
+                        
+                except Exception as e:
+                    self.per_image.emit(image_path, f"[錯誤] {e}")
+                    
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            self.done.emit()
+

@@ -158,6 +158,7 @@ from lib.utils.parsing import (
 from lib.workers.compat import (
     create_image_data, create_settings_from_dict,
     TaggerWorkerCompat, BatchTaggerWorkerCompat,
+    BatchUnmaskWorkerCompat, BatchRestoreWorkerCompat,
 )
 
 # ==========================================
