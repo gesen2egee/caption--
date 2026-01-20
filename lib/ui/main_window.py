@@ -28,7 +28,9 @@ from PyQt6.QtGui import QFont, QPixmap, QImage, QAction, QKeySequence, QShortcut
 from PIL import Image, ImageChops
 
 from lib.core.settings import (
-    load_app_settings
+    load_app_settings, DEFAULT_APP_SETTINGS,
+    DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CUSTOM_PROMPT_TEMPLATE,
+    DEFAULT_CUSTOM_TAGS
 )
 from lib.core.dataclasses import Settings, ImageData
 
@@ -59,14 +61,11 @@ except ImportError:
 
 CLIPTokenizer = None
 
-class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, SettingsMixin, PipelineHandlerMixin):
+class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, PipelineHandlerMixin):
     def __init__(self):
+        self.settings = load_app_settings()
         super().__init__()
         self.setWindowTitle(self.tr("app_title"))
-        self._clip_tokenizer = None
-        self.resize(1600, 1000)
-
-        self.settings = load_app_settings()
 
         # Init PipelineManager
         self.pipeline_manager = PipelineManager(self)
@@ -413,7 +412,10 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
 
         self.btn_txt_undo = QPushButton(self.tr("btn_undo"))
         self.btn_txt_undo.setToolTip(self.tr("tip_undo"))
+        
+        self.btn_txt_redo = QPushButton(self.tr("btn_redo"))
         self.btn_txt_redo.setToolTip(self.tr("tip_redo"))
+        
         bot_toolbar.addWidget(self.btn_txt_undo)
         bot_toolbar.addWidget(self.btn_txt_redo)
 

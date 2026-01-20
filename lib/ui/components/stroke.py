@@ -13,6 +13,30 @@ from PyQt6.QtCore import Qt, QPoint
 from lib.locales import tr as _tr
 
 
+def create_checkerboard_png_bytes(size=16, color1=(200, 200, 200), color2=(150, 150, 150)):
+    """Create a checkerboard pattern as PNG bytes for use as background."""
+    from PyQt6.QtGui import QPainter, QColor
+    from PyQt6.QtCore import QBuffer, QIODevice, QByteArray
+    
+    img = QImage(size * 2, size * 2, QImage.Format.Format_RGB888)
+    painter = QPainter(img)
+    
+    # Draw checkerboard
+    painter.fillRect(0, 0, size, size, QColor(*color1))
+    painter.fillRect(size, 0, size, size, QColor(*color2))
+    painter.fillRect(0, size, size, size, QColor(*color2))
+    painter.fillRect(size, size, size, size, QColor(*color1))
+    painter.end()
+    
+    # Convert to PNG bytes
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    img.save(buf, "PNG")
+    
+    return ba.data()
+
+
 class StrokeCanvas(QLabel):
     def __init__(self, pixmap: QPixmap, parent=None):
         super().__init__(parent)
@@ -118,7 +142,11 @@ class StrokeCanvas(QLabel):
 
 
 class StrokeEraseDialog(QDialog):
-    def tr(self, key):
+    def tr(self, key: str) -> str:
+        lang = "zh_tw"
+        if self.parent() and hasattr(self.parent(), "settings"):
+            lang = self.parent().settings.get("ui_language", "zh_tw")
+        load_locale(lang)
         return _tr(key)
 
     def __init__(self, image_path: str, parent=None):

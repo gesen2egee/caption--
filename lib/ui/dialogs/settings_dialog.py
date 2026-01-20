@@ -75,10 +75,9 @@ class SettingsDialog(QDialog):
         self.ed_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.ed_model = QLineEdit(str(self.cfg.get("llm_model", "")))
 
-        form.addRow("LLM Base URL:", self.ed_base_url)
-        form.addRow("API Key:", self.ed_api_key)
-        # Note: Previous code had duplicate API Key row, removing one.
-        form.addRow("Model:", self.ed_model)
+        form.addRow(self.tr("label_llm_url"), self.ed_base_url)
+        form.addRow(self.tr("label_api_key"), self.ed_api_key)
+        form.addRow(self.tr("label_model"), self.ed_model)
         
         self.spin_llm_dim = QSpinBox()
         self.spin_llm_dim.setRange(256, 4096)

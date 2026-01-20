@@ -78,7 +78,6 @@
     "setting_wl_words": "白名單關鍵字:",
     "setting_tab_filter": "過濾",
     "msg_select_dir": "選擇圖片目錄",
-    "msg_no_images": "在此目錄下找不到圖片。",
     "msg_unmask_done": "去背處理完成。",
     "setting_tab_text": "文字",
     "setting_tab_llm": "模型",
@@ -225,7 +224,7 @@
     "title_batch": "批量處理",
     "title_batch_tagger_txt": "批量標籤轉文字",
     "title_batch_llm_txt": "批量 LLM 轉文字",
-    "title_batch_unmask": "批量去背",
+    "title_batch_unmask": "批量去背景",
     "title_batch_restore": "批量還原",
     "title_batch_to_txt": "批量轉文字確認",
     "title_info": "提示",
@@ -250,5 +249,12 @@
     "msg_restore_sidecar_llm": "已從 Sidecar 還原 {count} 筆 LLM 結果至 txt",
     "status_remaining_llm": "尚有 {count} 檔案無記錄，開始執行 LLM...",
     "msg_no_bg_tag_found": "找不到含有 'background' 標籤的圖片",
-    "msg_batch_restore_confirm": "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。"
+    "msg_batch_restore_confirm": "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
+    "msg_no_images": "未載入圖片。",
+    "msg_unmask_failed": "Unmask 失敗: ",
+    "msg_failed": "失敗: ",
+    "msg_restore_failed": "還原失敗: ",
+    "label_llm_url": "LLM Base URL:",
+    "label_api_key": "API Key:",
+    "label_model": "模型 (Model):"
 }

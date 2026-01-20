@@ -78,7 +78,6 @@
     "setting_wl_words": "Whitelist Keywords:",
     "setting_tab_filter": "Filter",
     "msg_select_dir": "Select Image Directory",
-    "msg_no_images": "No images found in this directory.",
     "msg_unmask_done": "Unmask processing complete.",
     "setting_tab_text": "Text",
     "setting_tab_llm": "Model",
@@ -250,5 +249,12 @@
     "msg_restore_sidecar_llm": "Restored {count} LLM results from sidecar to txt",
     "status_remaining_llm": "{count} files remaining, starting LLM...",
     "msg_no_bg_tag_found": "No images with 'background' tag found",
-    "msg_batch_restore_confirm": "Are you sure you want to restore all images to original (if exists)?\nThis will overwrite/delete the current unmasked version."
+    "msg_batch_restore_confirm": "Are you sure you want to restore all images to original (if exists)?\nThis will overwrite/delete the current unmasked version.",
+    "msg_no_images": "No images loaded.",
+    "msg_unmask_failed": "Unmask failed: ",
+    "msg_failed": "Failed: ",
+    "msg_restore_failed": "Restore failed: ",
+    "label_llm_url": "LLM Base URL:",
+    "label_api_key": "API Key:",
+    "label_model": "Model:"
 }

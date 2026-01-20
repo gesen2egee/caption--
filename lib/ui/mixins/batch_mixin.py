@@ -273,7 +273,7 @@ class BatchMixin:
 
     def run_batch_restore(self):
         if not self.image_files:
-            QMessageBox.information(self, self.tr("title_info"), "No images loaded.")
+            QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
 
         if self.pipeline_manager.is_running():

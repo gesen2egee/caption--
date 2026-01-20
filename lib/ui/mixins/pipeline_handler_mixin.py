@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 import os
 
-from lib.workers.worker import WorkerOutput
+from lib.workers.base import WorkerOutput
 from lib.utils.parsing import extract_llm_content_and_postprocess
 
 if TYPE_CHECKING:

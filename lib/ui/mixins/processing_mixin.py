@@ -4,8 +4,8 @@ import shutil
 from io import BytesIO
 
 from PyQt6.QtWidgets import QMessageBox, QDialog
-from PyQt6.QtGui import QImage, QBuffer, QIODevice, QByteArray
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QImage
+from PyQt6.QtCore import Qt, QBuffer, QIODevice, QByteArray
 
 from PIL import Image, ImageChops
 
@@ -53,7 +53,7 @@ class ProcessingMixin:
         user_prompt = self.prompt_edit.toPlainText()
 
         if "{tags}" in user_prompt and not tags_text.strip():
-             reply = QMessageBox.question(
+            reply = QMessageBox.question(
                 self, self.tr("title_warning"), 
                 self.tr("msg_confirm_prompt_tags"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -86,7 +86,7 @@ class ProcessingMixin:
             self.pipeline_manager.run_unmask(create_image_data_from_path(self.current_image_path))
             self.statusBar().showMessage(self.tr("status_unmasking"), 2000)
         except Exception as e:
-            QMessageBox.warning(self, self.tr("title_error"), f"Unmask 失敗: {e}")
+            QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_unmask_failed')}{e}")
 
     def mask_text_current_image(self):
         if not self.current_image_path:
@@ -103,7 +103,7 @@ class ProcessingMixin:
              self.pipeline_manager.run_mask_text(create_image_data_from_path(self.current_image_path))
              self.statusBar().showMessage(self.tr("status_masking_text"), 2000)
         except Exception as e:
-             QMessageBox.warning(self, self.tr("title_error"), f"失敗: {e}")
+             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_failed')}{e}")
 
     def restore_current_image(self):
         """還原當前圖片為原始備份 (從 raw_image 資料夾)"""
@@ -122,7 +122,7 @@ class ProcessingMixin:
             self.pipeline_manager.run_restore(create_image_data_from_path(self.current_image_path))
             self.statusBar().showMessage(self.tr("status_restoring"), 2000)
         except Exception as e:
-            QMessageBox.warning(self, self.tr("title_error"), f"還原失敗: {e}")
+            QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_restore_failed')}{e}")
 
     @staticmethod
     def _qimage_to_pil_l(qimg: QImage) -> Image.Image:

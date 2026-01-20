@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
-from PyQt6.QtWidgets import QDialog, QAction, QMessageBox, QApplication
-from PyQt6.QtGui import QKeySequence
+from PyQt6.QtWidgets import QDialog, QMessageBox, QApplication
+from PyQt6.QtGui import QKeySequence, QAction
 
 from lib.core.settings import (
     save_app_settings, DEFAULT_APP_SETTINGS, DEFAULT_CUSTOM_TAGS, 
@@ -8,7 +8,7 @@ from lib.core.settings import (
 )
 from lib.ui.dialogs.settings_dialog import SettingsDialog
 from lib.ui.themes import THEME_STYLES
-from lib.locales import load_locale, locale_tr
+from lib.locales import load_locale, tr as _tr
 from lib.ui.components.tag_flow import TagButton
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ class SettingsMixin:
     def tr(self, key: str) -> str:
         lang = self.settings.get("ui_language", "zh_tw")
         load_locale(lang)
-        return locale_tr(key)
+        return _tr(key)
 
     def apply_theme(self):
         theme = self.settings.get("ui_theme", "light")
