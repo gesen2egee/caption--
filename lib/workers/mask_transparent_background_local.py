@@ -79,8 +79,8 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
             image_data = input_data.image
             image_path = image_data.path
             
-            # 載入圖片
-            img = Image.open(image_path).convert("RGBA")
+            # 載入圖片 (Remover 需要 RGB 格式)
+            img = Image.open(image_path).convert("RGB")
 
             # 備份原圖
             from lib.utils.file_ops import backup_raw_image
