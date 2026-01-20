@@ -17,6 +17,11 @@ def extract_bracket_content(text: str) -> List[str]:
     return re.findall(r'\{(.*?)\}', text)
 
 
+def remove_underline(s: str) -> str:
+    """去底線 helper"""
+    return s.replace("_", " ") if s else ""
+
+
 def smart_parse_tags(text: str) -> List[Dict[str, Optional[str]]]:
     """
     Parses text into a list of dictionaries {'text': str, 'trans': str}.

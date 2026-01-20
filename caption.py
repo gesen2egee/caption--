@@ -143,6 +143,11 @@ from lib.core.dataclasses import (
 from lib.utils.sidecar import (
     image_sidecar_json_path, load_image_sidecar, save_image_sidecar,
 )
+from lib.ui.themes import THEME_STYLES, get_theme_style
+from lib.ui.components import (
+    StrokeCanvas, StrokeEraseDialog,
+    TagButton, TagFlowWidget
+)
 from lib.utils.file_ops import (
     delete_matching_npz, backup_original_image, restore_original_image,
     get_raw_image_dir, has_raw_backup, backup_raw_image, restore_raw_image,
@@ -165,8 +170,8 @@ from lib.pipeline import (
 #  Configuration & Globals
 # ==========================================
 
-TAGS_CSV_LOCAL = "Tags.csv"
-TAGS_CSV_URL_RAW = "https://raw.githubusercontent.com/waldolin/a1111-sd-webui-tagcomplete-TW/main/tags/Tags-tw-full-pack.csv"
+
+# Prompts already imported from lib.core.settings
 
 # Prompts already imported from lib.core.settings
 
@@ -178,77 +183,9 @@ TAGS_CSV_URL_RAW = "https://raw.githubusercontent.com/waldolin/a1111-sd-webui-ta
 # --------------------------
 # Themes (CSS)
 # --------------------------
-THEME_STYLES = {
-    "light": "",  # Use system default
-    "dark": """
-        QMainWindow, QDialog {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-        }
-        QWidget {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-        }
-        QPlainTextEdit, QLineEdit, QTextEdit {
-            background-color: #252526;
-            color: #cccccc;
-            border: 1px solid #3e3e42;
-        }
-        QPushButton {
-            background-color: #333333;
-            color: #d4d4d4;
-            border: 1px solid #444444;
-            padding: 5px;
-            border-radius: 4px;
-        }
-        QPushButton:hover {
-            background-color: #444444;
-            border: 1px solid #666666;
-        }
-        QPushButton:pressed {
-            background-color: #222222;
-        }
-        QTabWidget::pane {
-            border: 1px solid #3e3e42;
-            background-color: #1e1e1e;
-        }
-        QTabBar::tab {
-            background-color: #2d2d2d;
-            color: #969696;
-            padding: 8px 15px;
-            border: 1px solid #3e3e42;
-            border-bottom: none;
-        }
-        QTabBar::tab:selected {
-            background-color: #1e1e1e;
-            color: #ffffff;
-        }
-        QScrollArea {
-            border: 1px solid #3e3e42;
-            background-color: #1e1e1e;
-        }
-        QLabel {
-            color: #d4d4d4;
-        }
-        QGroupBox {
-            border: 1px solid #3e3e42;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 3px 0 3px;
-        }
-        QStatusBar {
-            background-color: #007acc;
-            color: white;
-        }
-        QSplitter::handle {
-            background-color: #3e3e42;
-        }
-    """
-}
+# 已移至 lib/ui/themes.py
+from lib.ui.themes import THEME_STYLES, get_theme_style
+
 
 # --------------------------
 # App Settings
@@ -339,73 +276,14 @@ def create_checkerboard_png_bytes():
 #       delete_matching_npz, backup/restore_original_image
 #       get_raw_image_dir, has_raw_backup, backup/restore/delete_raw_*
 
-
-
-def ensure_tags_csv(csv_path=TAGS_CSV_LOCAL):
-    if os.path.exists(csv_path):
-        return True
-    try:
-        req = Request(TAGS_CSV_URL_RAW, headers={"User-Agent": "Mozilla/5.0"})
-        with urlopen(req, timeout=20) as resp:
-            data = resp.read()
-        with open(csv_path, "wb") as f:
-            f.write(data)
-        return True
-    except Exception as e:
-        print(f"[Tags.csv] 下載失敗: {e}")
-        return False
-
-
-def load_translations(csv_path=TAGS_CSV_LOCAL):
-    translations = {}
-    if not os.path.exists(csv_path):
-        ensure_tags_csv(csv_path)
-
-    if os.path.exists(csv_path):
-        try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if len(row) >= 2:
-                        # 使用 remove_underline 統一格式
-                        key = remove_underline(row[0].strip())
-                        translations[key] = row[1].strip()
-        except Exception as e:
-            print(f"Error loading translations: {e}")
-    return translations
-
-
-def parse_boorutag_meta(meta_path):
-    tags_meta = []
-    hint_info = []
-    try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f.readlines()]
-            lines += [''] * (20 - len(lines))
-
-            if len(lines) >= 19 and lines[18]:
-                tags_meta = [t.strip() for t in lines[18].split(',') if t.strip()]
-
-            if len(lines) >= 7 and lines[6] != "by artstyle" and lines[6]:
-                artist_val = lines[6].replace('by ', '').replace(' artstyle', '')
-                hint_info.append(f"the artist of this image: {{{artist_val}}}")
-
-            if len(lines) >= 10 and lines[9]:
-                sources = [s.strip() for s in lines[9].split(',') if s.strip()]
-                if len(sources) >= 3:
-                    hint_info.append("the copyright of this image: {{crossover}}")
-                else:
-                    hint_info.append("the copyright of this image: {{" + ', '.join(sources) + '}}')
-
-            if len(lines) >= 13 and lines[12]:
-                characters = [c.strip() for c in lines[12].split(',') if c.strip()]
-                if characters and len(characters) < 4:
-                    hint_info.append("the characters of this image: {{" + ', '.join(characters) + '}}')
-
-    except Exception as e:
-        print(f"[boorutag] 解析出錯 {meta_path}: {e}")
-    return tags_meta, hint_info
-
+# --------------------------
+# Boorutag & Tags
+# --------------------------
+# 已移至 lib/utils/boorutag.py
+from lib.utils.boorutag import (
+    TAGS_CSV_LOCAL, TAGS_CSV_URL_RAW,
+    ensure_tags_csv, load_translations, parse_boorutag_meta,
+)
 
 # ==========================================
 #  Danbooru-style Query Filter
@@ -1294,396 +1172,15 @@ class BatchRestoreWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class StrokeCanvas(QLabel):
-    def __init__(self, pixmap: QPixmap, parent=None):
-        super().__init__(parent)
-        self.base_pixmap = pixmap
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.mask = QImage(self.base_pixmap.size(), QImage.Format.Format_Grayscale8)
-        self.mask.fill(0)
+# --------------------------
+# UI Components
+# --------------------------
+# 已移至 lib/ui/components/stroke.py 和 lib/ui/components/tag_flow.py
+# 包含: StrokeCanvas, StrokeEraseDialog, TagButton, TagFlowWidget
 
-        self.preview = QPixmap(self.base_pixmap.size())
-        self.preview.fill(Qt.GlobalColor.transparent)
 
-        self.pen_width = 30
-        self.drawing = False
-        self.last_pos = None
 
-        self._update_display()
-
-    def set_pen_width(self, w: int):
-        self.pen_width = max(1, int(w))
-
-    def clear_mask(self):
-        self.mask.fill(0)
-        self.preview.fill(Qt.GlobalColor.transparent)
-        self._update_display()
-
-    def _draw_line(self, p1, p2):
-        # draw to mask
-        painter = QPainter(self.mask)
-        pen = QPen(QColor(255, 255, 255))
-        pen.setWidth(self.pen_width)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.drawLine(p1, p2)
-        painter.end()
-
-        # draw preview overlay
-        painter2 = QPainter(self.preview)
-        pen2 = QPen(QColor(255, 0, 0, 160))
-        pen2.setWidth(self.pen_width)
-        pen2.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen2.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter2.setPen(pen2)
-        painter2.drawLine(p1, p2)
-        painter2.end()
-
-    def _update_display(self):
-        pm = QPixmap(self.base_pixmap)
-        painter = QPainter(pm)
-        painter.drawPixmap(0, 0, self.preview)
-        painter.end()
-        self.setPixmap(pm)
-
-    def _to_image_pos(self, widget_pos: QPoint):
-        """Map a widget (label) position to image pixel coords, respecting centered pixmap."""
-        pm_w = self.base_pixmap.width()
-        pm_h = self.base_pixmap.height()
-        off_x = int((self.width() - pm_w) / 2)
-        off_y = int((self.height() - pm_h) / 2)
-        x = int(widget_pos.x() - off_x)
-        y = int(widget_pos.y() - off_y)
-        if x < 0 or y < 0 or x >= pm_w or y >= pm_h:
-            return None
-        return QPoint(x, y)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            p = self._to_image_pos(event.position().toPoint())
-            if p is None:
-                event.ignore()
-                return
-            self.drawing = True
-            self.last_pos = p
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.drawing and (event.buttons() & Qt.MouseButton.LeftButton):
-            p = self._to_image_pos(event.position().toPoint())
-            if p is None:
-                event.ignore()
-                return
-            if self.last_pos is not None:
-                self._draw_line(self.last_pos, p)
-                self.last_pos = p
-                self._update_display()
-            event.accept()
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.drawing:
-            self.drawing = False
-            self.last_pos = None
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def get_mask(self) -> QImage:
-        return QImage(self.mask)
-
-class StrokeEraseDialog(QDialog):
-    def __init__(self, image_path: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Stroke Eraser")
-        self.image_path = image_path
-        self._mask = None
-
-        layout = QVBoxLayout(self)
-
-        # load image (fit to a reasonable size)
-        pm = QPixmap(image_path)
-        if pm.isNull():
-            raise RuntimeError("Cannot load image")
-
-        max_w, max_h = 1200, 800
-        if pm.width() > max_w or pm.height() > max_h:
-            pm = pm.scaled(max_w, max_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-
-        self.canvas = StrokeCanvas(pm)
-        layout.addWidget(self.canvas, 1)
-
-        ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("筆畫粗細:"))
-
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setMinimum(5)
-        self.slider.setMaximum(120)
-        self.slider.setValue(30)
-        self.slider.valueChanged.connect(lambda v: self.canvas.set_pen_width(v))
-        ctrl.addWidget(self.slider, 1)
-
-        self.btn_clear = QPushButton("Clear")
-        self.btn_clear.clicked.connect(self.canvas.clear_mask)
-        ctrl.addWidget(self.btn_clear)
-
-        layout.addLayout(ctrl)
-
-        btns = QHBoxLayout()
-        btns.addStretch(1)
-        self.btn_apply = QPushButton("Apply")
-        self.btn_cancel = QPushButton("Cancel")
-        self.btn_apply.clicked.connect(self.accept)
-        self.btn_cancel.clicked.connect(self.reject)
-        btns.addWidget(self.btn_apply)
-        btns.addWidget(self.btn_cancel)
-        layout.addLayout(btns)
-
-    def get_result(self):
-        return self.canvas.get_mask(), int(self.slider.value())
-
-# ==========================================
-#  UI Components
-# ==========================================
-
-class TagButton(QPushButton):
-    toggled_tag = pyqtSignal(str, bool)
-
-    def __init__(self, text, translation=None, parent=None):
-        super().__init__(parent)
-        self.raw_text = text
-        self.translation = translation
-        self.setCheckable(True)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
-
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 8, 8, 8)
-        self.layout.setSpacing(2)
-
-        self.label = QLabel()
-        self.label.setWordWrap(True)
-        self.label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.label.setStyleSheet("background: none; border: none;")
-
-        self.layout.addWidget(self.label)
-
-        self.update_label()
-
-        self.is_character = False
-        self.update_style()
-        self.clicked.connect(self.on_click)
-
-    def set_is_character(self, val: bool):
-        self.is_character = val
-        self.update_style()
-
-    def update_style(self):
-        # 嘗試從 Parent 鏈取得主題
-        theme = "light"
-        p = self.parent()
-        while p:
-            if hasattr(p, "settings"):
-                theme = p.settings.get("ui_theme", "light")
-                break
-            p = p.parent()
-        
-        is_dark = (theme == "dark")
-        # 紅框僅在未點選時顯示，點選後統一為藍色
-        border_color = "red" if self.is_character else ("#555" if is_dark else "#ccc")
-        border_width = "2px" if self.is_character else "1px"
-        # 點選後一律變藍色
-        checked_border = "#007acc" if is_dark else "#0055aa"
-        bg_color = "#333" if is_dark else "#f0f0f0"
-        checked_bg = "#444" if is_dark else "#d0e8ff"
-        text_color = "#d4d4d4" if is_dark else "#333"
-
-        self.setStyleSheet(f"""
-            QPushButton {{
-                border: {border_width} solid {border_color};
-                border-radius: 4px;
-                background-color: {bg_color};
-                color: {text_color};
-            }}
-            QPushButton:checked {{
-                background-color: {checked_bg};
-                border: 2px solid {checked_border};
-            }}
-            QPushButton:hover {{
-                border: {border_width} solid {"#777" if is_dark else "#999"};
-            }}
-        """)
-
-    def update_label(self):
-        # 取得主題以決定顏色
-        theme = "light"
-        p = self.parent()
-        while p:
-            if hasattr(p, "settings"):
-                theme = p.settings.get("ui_theme", "light")
-                break
-            p = p.parent()
-        text_color = "#d4d4d4" if theme == "dark" else "#000"
-        trans_color = "#999" if theme == "dark" else "#666"
-
-        safe_text = str(self.raw_text).replace("<", "&lt;").replace(">", "&gt;")
-        content = f"<span style='font-size:13px; font-weight:bold; color:{text_color};'>{safe_text}</span>"
-
-        if self.translation:
-            safe_trans = str(self.translation).replace("<", "&lt;").replace(">", "&gt;")
-            content += f"<br><span style='color:{trans_color}; font-size:11px;'>{safe_trans}</span>"
-
-        self.label.setText(content)
-
-    def on_click(self):
-        self.toggled_tag.emit(self.raw_text, self.isChecked())
-
-
-class TagFlowWidget(QWidget):
-    tag_clicked = pyqtSignal(str, bool)
-
-    def __init__(self, parent=None, use_scroll=True):
-        super().__init__(parent)
-        self.use_scroll = use_scroll
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-
-        self.translations_csv = {}
-        self.buttons = {}
-
-        if self.use_scroll:
-            self.scroll = QScrollArea()
-            self.scroll.setWidgetResizable(True)
-            self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-            self.container = QWidget()
-            self.container_layout = QVBoxLayout(self.container)
-            self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-            self.container_layout.setSpacing(0)
-
-            self.scroll.setWidget(self.container)
-            self.layout.addWidget(self.scroll)
-        else:
-            self.scroll = None
-            self.container = QWidget()
-            self.container_layout = QVBoxLayout(self.container)
-            self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-            self.container_layout.setSpacing(0)
-            self.layout.addWidget(self.container)
-
-    def set_translations_csv(self, trans):
-        self.translations_csv = trans
-
-    def render_tags_flow(self, parsed_items, active_text_content, cfg=None):
-        while self.container_layout.count():
-            child = self.container_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
-        self.buttons = {}
-
-        is_long_text_mode = False
-        for item in parsed_items:
-            if len(item['text']) > 40 or (" " in item['text'] and "." in item['text']):
-                is_long_text_mode = True
-                break
-
-        MAX_ITEMS_PER_ROW = 1 if is_long_text_mode else 4
-
-        wrapper = QWidget()
-        wrapper_layout = QVBoxLayout(wrapper)
-        wrapper_layout.setContentsMargins(0, 0, 0, 0)
-        wrapper_layout.setSpacing(2)
-
-        current_row_widget = QWidget()
-        current_row_layout = QHBoxLayout(current_row_widget)
-        current_row_layout.setContentsMargins(0, 0, 0, 0)
-        current_row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-
-        wrapper_layout.addWidget(current_row_widget)
-
-        item_count_in_row = 0
-
-        for item in parsed_items:
-            text = item['text']
-            trans = item['trans']
-            if not trans:
-                # 使用 remove_underline 進行統一匹配
-                lookup_key = remove_underline(text)
-                trans = self.translations_csv.get(lookup_key)
-
-            btn = TagButton(text, trans)
-
-            if is_long_text_mode:
-                btn.setMinimumHeight(65)
-            else:
-                btn.setFixedHeight(55 if trans else 35)
-
-            btn.toggled_tag.connect(self.handle_tag_toggle)
-            self.buttons[text] = btn
-            # 特徵標籤標記
-            if cfg:
-                if is_basic_character_tag(text, cfg):
-                    btn.set_is_character(True)
-            elif is_basic_character_tag(text, DEFAULT_APP_SETTINGS):
-                btn.set_is_character(True)
-            
-            current_row_layout.addWidget(btn)
-            item_count_in_row += 1
-
-            if item_count_in_row >= MAX_ITEMS_PER_ROW:
-                current_row_widget = QWidget()
-                current_row_layout = QHBoxLayout(current_row_widget)
-                current_row_layout.setContentsMargins(0, 0, 0, 0)
-                current_row_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-                wrapper_layout.addWidget(current_row_widget)
-                item_count_in_row = 0
-
-        self.container_layout.addWidget(wrapper)
-
-        self.sync_state(active_text_content)
-
-    def handle_tag_toggle(self, tag, checked):
-        self.tag_clicked.emit(tag, checked)
-
-    def sync_state(self, active_text_content: str):
-        # 1. CSV split matching (exact full match of segments)
-        current_tokens = split_csv_like_text(active_text_content)
-        current_norm = set(normalize_for_match(t) for t in current_tokens)
-        
-        # 2. Text search (Word boundary regex match)
-        # 用於處理 LLM 產生的自然語言句子
-        search_text = active_text_content.lower()
-
-        for tag, btn in self.buttons.items():
-            btn.blockSignals(True)
-            
-            # Check 1: CSV match
-            is_active = normalize_for_match(tag) in current_norm
-            
-            # Check 2: Regex match if not found yet
-            if not is_active:
-                try:
-                    # Escape tag for regex, add word boundaries
-                    esc = re.escape(tag.lower())
-                    # allow matching "tag" inside "tag," or "tag." but not "tagging"
-                    # \b matches word boundary.
-                    # Note: traditional \b might fail on non-ascii if not configured?
-                    # Python's re handles unicode word boundaries by default? 
-                    # Actually standard \w in python 3 re matches unicode.
-                    if re.search(rf"\b{esc}\b", search_text):
-                        is_active = True
-                except Exception:
-                    pass
-            
-            btn.setChecked(is_active)
-            btn.blockSignals(False)
 
 
 class AdvancedFindReplaceDialog(QDialog):
