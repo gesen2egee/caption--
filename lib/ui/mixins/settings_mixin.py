@@ -118,42 +118,42 @@ class SettingsMixin:
         tools_menu = menubar.addMenu(self.tr("menu_tools"))
         
         unmask_action = QAction(self.tr("btn_unmask"), self)
-        unmask_action.setStatusTip("用 AI 自動去除當前圖片的背景，原圖會備份到 unmask 資料夾")
+        unmask_action.setStatusTip(self.tr("tip_unmask"))
         unmask_action.triggered.connect(self.unmask_current_image)
         tools_menu.addAction(unmask_action)
 
         mask_text_action = QAction(self.tr("btn_mask_text"), self)
-        mask_text_action.setStatusTip("用 OCR 自動偵測並遮蔽當前圖片中的文字區域")
+        mask_text_action.setStatusTip(self.tr("tip_mask_text"))
         mask_text_action.triggered.connect(self.mask_text_current_image)
         tools_menu.addAction(mask_text_action)
 
         restore_action = QAction(self.tr("btn_restore_original"), self)
-        restore_action.setStatusTip("從 unmask 資料夾還原原圖，覆蓋目前的去背版本")
+        restore_action.setStatusTip(self.tr("tip_restore"))
         restore_action.triggered.connect(self.restore_current_image)
         tools_menu.addAction(restore_action)
 
         tools_menu.addSeparator()
         
         self.action_batch_unmask = QAction(self.tr("btn_batch_unmask"), self)
-        self.action_batch_unmask.setStatusTip("對所有圖片執行批量去背，可在設定中調整過濾條件")
+        self.action_batch_unmask.setStatusTip(self.tr("tip_batch_unmask"))
         self.action_batch_unmask.triggered.connect(self.run_batch_unmask_background)
         tools_menu.addAction(self.action_batch_unmask)
 
         self.action_batch_mask_text = QAction(self.tr("btn_batch_mask_text"), self)
-        self.action_batch_mask_text.setStatusTip("對所有圖片執行批量 OCR 去文字")
+        self.action_batch_mask_text.setStatusTip(self.tr("tip_batch_mask_text"))
         self.action_batch_mask_text.triggered.connect(self.run_batch_mask_text)
         tools_menu.addAction(self.action_batch_mask_text)
 
         tools_menu.addSeparator()
 
         self.action_batch_restore = QAction(self.tr("btn_batch_restore"), self)
-        self.action_batch_restore.setStatusTip("批量還原所有圖片的原圖 (從 unmask 資料夾)")
+        self.action_batch_restore.setStatusTip(self.tr("tip_batch_restore"))
         self.action_batch_restore.triggered.connect(self.run_batch_restore)
         tools_menu.addAction(self.action_batch_restore)
 
         tools_menu.addSeparator()
 
         stroke_action = QAction(self.tr("btn_stroke_eraser"), self)
-        stroke_action.setStatusTip("手動用滑鼠繪製要擦除的區域，適合精細去除")
+        stroke_action.setStatusTip(self.tr("tip_stroke_eraser"))
         stroke_action.triggered.connect(self.open_stroke_eraser)
         tools_menu.addAction(stroke_action)

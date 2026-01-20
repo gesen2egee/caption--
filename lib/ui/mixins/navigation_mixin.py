@@ -105,7 +105,7 @@ class NavigationMixin:
         if not self.image_files:
             self.image_label.clear()
             self.txt_edit.clear()
-            self.img_file_label.setText(": No Image")
+            self.img_file_label.setText(self.tr("label_no_image"))
             self.current_index = -1
             self.current_image_path = None
             return
@@ -119,7 +119,7 @@ class NavigationMixin:
                 self.current_index = 0
         
         self.load_image()
-        self.statusBar().showMessage(f"已重新整理列表: 共 {len(self.image_files)} 張圖片", 3000)
+        self.statusBar().showMessage(self.tr("msg_refreshed").replace("{count}", str(len(self.image_files))), 3000)
 
     def open_directory(self):
         default_dir = self.settings.get("last_open_dir", "")
@@ -228,7 +228,7 @@ class NavigationMixin:
         matched = qf.sort_images(matched)
         
         if not matched:
-            self.statusBar().showMessage("篩選結果為空", 3000)
+            self.statusBar().showMessage(self.tr("msg_filter_empty"), 3000)
             return
         
         self.filtered_image_files = matched
@@ -236,7 +236,7 @@ class NavigationMixin:
         self.filter_active = True
         self.current_index = 0
         self.load_image()
-        self.statusBar().showMessage(f"篩選結果: {len(matched)} 張圖片", 3000)
+        self.statusBar().showMessage(self.tr("msg_filter_result").replace("{count}", str(len(matched))), 3000)
 
     def clear_filter(self):
         self.filter_input.clear()
@@ -254,7 +254,7 @@ class NavigationMixin:
             
             if self.image_files:
                 self.load_image()
-            self.statusBar().showMessage("已清除篩選", 2000)
+            self.statusBar().showMessage(self.tr("msg_filter_cleared"), 2000)
 
     def next_image(self):
         if self.current_index < len(self.image_files) - 1:
@@ -355,17 +355,17 @@ class NavigationMixin:
             return
         menu = QMenu(self)
         
-        action_copy_img = QAction("複製圖片 (Copy Image)", self)
+        action_copy_img = QAction(self.tr("ctx_copy_image"), self)
         action_copy_img.triggered.connect(self._ctx_copy_image)
         menu.addAction(action_copy_img)
         
-        action_copy_path = QAction("複製路徑 (Copy Path)", self)
+        action_copy_path = QAction(self.tr("ctx_copy_path"), self)
         action_copy_path.triggered.connect(self._ctx_copy_path)
         menu.addAction(action_copy_path)
         
         menu.addSeparator()
         
-        action_open_dir = QAction("打開檔案所在目錄 (Open Folder)", self)
+        action_open_dir = QAction(self.tr("ctx_open_folder"), self)
         action_open_dir.triggered.connect(self._ctx_open_folder)
         menu.addAction(action_open_dir)
         
@@ -374,12 +374,12 @@ class NavigationMixin:
     def _ctx_copy_image(self):
         if hasattr(self, 'current_pixmap') and not self.current_pixmap.isNull():
             QApplication.clipboard().setPixmap(self.current_pixmap)
-            self.statusBar().showMessage("圖片已複製到剪貼簿", 2000)
+            self.statusBar().showMessage(self.tr("msg_copied_image"), 2000)
 
     def _ctx_copy_path(self):
         if self.current_image_path:
             QApplication.clipboard().setText(os.path.abspath(self.current_image_path))
-            self.statusBar().showMessage("路徑已複製到剪貼簿", 2000)
+            self.statusBar().showMessage(self.tr("msg_copied_path"), 2000)
     
     def _ctx_open_folder(self):
         if self.current_image_path:
@@ -390,7 +390,7 @@ class NavigationMixin:
         if not self.current_image_path:
             return
         reply = QMessageBox.question(
-            self, "Confirm", self.tr("msg_delete_confirm"),
+            self, self.tr("title_confirm"), self.tr("msg_delete_confirm"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -602,7 +602,8 @@ class NavigationMixin:
         else:
             self.nl_page_index = max(0, min(self.nl_page_index, total - 1))
             if hasattr(self, "nl_page_label"):
-                self.nl_page_label.setText(f"Page {self.nl_page_index + 1}/{total}")
+                txt = self.tr("label_page_fmt").replace("{current}", str(self.nl_page_index + 1)).replace("{total}", str(total))
+                self.nl_page_label.setText(txt)
             if hasattr(self, "btn_prev_nl"):
                 self.btn_prev_nl.setEnabled(self.nl_page_index > 0)
             if hasattr(self, "btn_next_nl"):

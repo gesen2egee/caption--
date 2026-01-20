@@ -28,12 +28,12 @@ class ProcessingMixin:
             return
         
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
         self.btn_auto_tag.setEnabled(False)
-        self.btn_auto_tag.setText("Tagging...")
-        self.statusBar().showMessage(f"正在分析標籤: {os.path.basename(self.current_image_path)}...")
+        self.btn_auto_tag.setText(self.tr("btn_txt_tagging"))
+        self.statusBar().showMessage(f"{self.tr('status_tagging')} {os.path.basename(self.current_image_path)}...")
         
         try:
             image_data = create_image_data_from_path(self.current_image_path)
@@ -46,23 +46,23 @@ class ProcessingMixin:
             return
             
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
         tags_text = build_llm_tags_context_for_image(self.current_image_path)
         user_prompt = self.prompt_edit.toPlainText()
 
         if "{tags}" in user_prompt and not tags_text.strip():
-            reply = QMessageBox.question(
-                self, "Warning", 
-                "Prompt 包含 {tags} 但目前沒有標籤資料。\n確定要繼續嗎？",
+             reply = QMessageBox.question(
+                self, self.tr("title_warning"), 
+                self.tr("msg_confirm_prompt_tags"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.No:
                 return
 
         self.btn_run_llm.setEnabled(False)
-        self.btn_run_llm.setText("Running LLM...")
+        self.btn_run_llm.setText(self.tr("btn_txt_running_llm"))
         
         try:
             image_data = create_image_data_from_path(self.current_image_path)
@@ -79,31 +79,31 @@ class ProcessingMixin:
             return
             
         if self.pipeline_manager.is_running():
-             QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
             self.pipeline_manager.run_unmask(create_image_data_from_path(self.current_image_path))
-            self.statusBar().showMessage("開始去背...", 2000)
+            self.statusBar().showMessage(self.tr("status_unmasking"), 2000)
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Unmask 失敗: {e}")
+            QMessageBox.warning(self, self.tr("title_error"), f"Unmask 失敗: {e}")
 
     def mask_text_current_image(self):
         if not self.current_image_path:
             return
         if not self.settings.get("mask_batch_detect_text_enabled", True):
-             QMessageBox.information(self, "Info", "設定中已停用 OCR 偵測。")
+             QMessageBox.information(self, self.tr("title_info"), self.tr("msg_ocr_disabled"))
              return
              
         if self.pipeline_manager.is_running():
-             QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
              self.pipeline_manager.run_mask_text(create_image_data_from_path(self.current_image_path))
-             self.statusBar().showMessage("正在去字...", 2000)
+             self.statusBar().showMessage(self.tr("status_masking_text"), 2000)
         except Exception as e:
-             QMessageBox.warning(self, "Mask Text Error", f"失敗: {e}")
+             QMessageBox.warning(self, self.tr("title_error"), f"失敗: {e}")
 
     def restore_current_image(self):
         """還原當前圖片為原始備份 (從 raw_image 資料夾)"""
@@ -111,18 +111,18 @@ class ProcessingMixin:
             return
         
         if not has_raw_backup(self.current_image_path):
-            QMessageBox.information(self, "Restore", "找不到原圖備份紀錄\n(可能尚未進行任何去背/去文字處理)")
+            QMessageBox.information(self, self.tr("title_restore"), self.tr("msg_restore_no_backup"))
             return
             
         if self.pipeline_manager.is_running():
-             QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
             self.pipeline_manager.run_restore(create_image_data_from_path(self.current_image_path))
-            self.statusBar().showMessage("正在還原...", 2000)
+            self.statusBar().showMessage(self.tr("status_restoring"), 2000)
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"還原失敗: {e}")
+            QMessageBox.warning(self, self.tr("title_error"), f"還原失敗: {e}")
 
     @staticmethod
     def _qimage_to_pil_l(qimg: QImage) -> Image.Image:
@@ -189,7 +189,7 @@ class ProcessingMixin:
         try:
             dlg = StrokeEraseDialog(self.current_image_path, self)
         except Exception as e:
-            QMessageBox.warning(self, "Stroke Eraser", f"無法載入圖片: {e}")
+            QMessageBox.warning(self, self.tr("title_stroke_eraser"), f"{self.tr('msg_stroke_load_err')}{e}")
             return
 
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -203,6 +203,6 @@ class ProcessingMixin:
                 return
             self._replace_image_path_in_list(old_path, new_path)
             self.load_image()
-            self.statusBar().showMessage("Stroke Eraser 完成", 5000)
+            self.statusBar().showMessage(self.tr("status_stroke_done"), 5000)
         except Exception as e:
-            QMessageBox.warning(self, "Stroke Eraser", f"失敗: {e}")
+            QMessageBox.warning(self, self.tr("title_stroke_eraser"), f"失敗: {e}")

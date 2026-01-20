@@ -15,11 +15,12 @@ class PipelineHandlerMixin:
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(current)
-        self.progress_bar.setFormat(f"Processing... {current}/{total} : {filename}")
+        msg = self.tr("status_batch_progress_fmt").replace("{current}", str(current)).replace("{total}", str(total)).replace("{filename}", filename)
+        self.progress_bar.setFormat(msg)
         self.btn_cancel_batch.setVisible(True)
 
     def on_pipeline_error(self, err_msg):
-        self.statusBar().showMessage(f"Error: {err_msg}", 8000)
+        self.statusBar().showMessage(self.tr("msg_error_fmt").replace("{msg}", str(err_msg)), 8000)
         self.progress_bar.setVisible(False)
         self.btn_auto_tag.setEnabled(True)
         self.btn_auto_tag.setText(self.tr("btn_auto_tag"))

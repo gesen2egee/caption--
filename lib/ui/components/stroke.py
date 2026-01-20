@@ -10,6 +10,7 @@ from PyQt6.QtGui import (
     QPixmap, QImage, QPainter, QPen, QColor
 )
 from PyQt6.QtCore import Qt, QPoint
+from lib.locales import tr as _tr
 
 
 class StrokeCanvas(QLabel):
@@ -117,9 +118,12 @@ class StrokeCanvas(QLabel):
 
 
 class StrokeEraseDialog(QDialog):
+    def tr(self, key):
+        return _tr(key)
+
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Stroke Eraser")
+        self.setWindowTitle(self.tr("title_stroke_eraser"))
         self.image_path = image_path
         self._mask = None
 
@@ -138,7 +142,7 @@ class StrokeEraseDialog(QDialog):
         layout.addWidget(self.canvas, 1)
 
         ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("筆畫粗細:"))
+        ctrl.addWidget(QLabel(self.tr("label_pen_width")))
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(5)
@@ -147,7 +151,7 @@ class StrokeEraseDialog(QDialog):
         self.slider.valueChanged.connect(lambda v: self.canvas.set_pen_width(v))
         ctrl.addWidget(self.slider, 1)
 
-        self.btn_clear = QPushButton("Clear")
+        self.btn_clear = QPushButton(self.tr("btn_clear_action"))
         self.btn_clear.clicked.connect(self.canvas.clear_mask)
         ctrl.addWidget(self.btn_clear)
 
@@ -155,8 +159,8 @@ class StrokeEraseDialog(QDialog):
 
         btns = QHBoxLayout()
         btns.addStretch(1)
-        self.btn_apply = QPushButton("Apply")
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_apply = QPushButton(self.tr("btn_apply_action"))
+        self.btn_cancel = QPushButton(self.tr("setting_cancel"))
         self.btn_apply.clicked.connect(self.accept)
         self.btn_cancel.clicked.connect(self.reject)
         btns.addWidget(self.btn_apply)

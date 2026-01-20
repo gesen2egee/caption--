@@ -17,7 +17,7 @@ class BatchMixin:
     """
 
     def on_pipeline_done(self, name, results):
-        self.statusBar().showMessage(f"Task '{name}' completed.", 5000)
+        self.statusBar().showMessage(self.tr("status_task_completed").replace("{name}", name), 5000)
         self.progress_bar.setVisible(False)
         self.btn_cancel_batch.setVisible(False)
         self.set_batch_ui_enabled(True)
@@ -54,12 +54,14 @@ class BatchMixin:
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("")
 
-    def on_batch_done(self, msg="Batch Process Completed"):
+    def on_batch_done(self, msg=None):
+        if msg is None:
+            msg = self.tr("msg_batch_completed")
         self.hide_progress()
         if hasattr(self, "btn_cancel_batch"):
             self.btn_cancel_batch.setVisible(False)
             self.btn_cancel_batch.setEnabled(False)
-        QMessageBox.information(self, "Batch", msg)
+        QMessageBox.information(self, self.tr("title_batch"), msg)
         unload_all_models()
         
     def on_batch_error(self, err):
@@ -68,10 +70,10 @@ class BatchMixin:
         self.btn_run_llm.setEnabled(True)
         self._is_batch_to_txt = False
         self.hide_progress()
-        self.statusBar().showMessage(f"Batch Error: {err}", 8000)
+        self.statusBar().showMessage(self.tr("status_batch_error").replace("{err}", str(err)), 8000)
 
     def cancel_batch(self):
-        self.statusBar().showMessage("正在中止...", 2000)
+        self.statusBar().showMessage(self.tr("status_aborting"), 2000)
         if self.pipeline_manager.is_running():
             self.pipeline_manager.stop()
         for attr in ['batch_mask_text_thread']:
@@ -83,7 +85,7 @@ class BatchMixin:
         if not self.image_files:
             return
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
         self.btn_batch_tagger.setEnabled(False)
@@ -101,7 +103,7 @@ class BatchMixin:
         if not self.image_files:
             return
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
         
         delete_chars = self.prompt_delete_chars()
@@ -129,15 +131,15 @@ class BatchMixin:
                     files_to_process.append(img_path)
 
             if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 Tagger 結果至 txt", 5000)
+                self.statusBar().showMessage(self.tr("msg_restore_sidecar_tagger").replace("{count}", str(already_done_count)), 5000)
 
             if not files_to_process:
                 self.set_batch_ui_enabled(True)
                 self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch Tagger to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
+                QMessageBox.information(self, self.tr("title_batch_tagger_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
                 return
 
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 Tagger...", 5000)
+            self.statusBar().showMessage(self.tr("status_remaining_tagger").replace("{count}", str(len(files_to_process))), 5000)
 
             images = create_image_data_list(files_to_process)
             self.pipeline_manager.run_batch_tagger(images)
@@ -149,12 +151,12 @@ class BatchMixin:
         if not self.image_files:
             return
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
         user_prompt = self.prompt_edit.toPlainText()
         if "{角色名}" in user_prompt:
-             reply = QMessageBox.question(self, "Warning", "Prompt 包含未替換的 '{角色名}'。\n這可能會導致生成結果不正確。\n請手動輸入角色名或調整提示。\n\n確定要繼續嗎？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+             reply = QMessageBox.question(self, self.tr("title_warning"), self.tr("msg_prompt_char_name_warn"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
              if reply == QMessageBox.StandardButton.No:
                  return
 
@@ -177,7 +179,7 @@ class BatchMixin:
         if not self.image_files:
             return
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
         delete_chars = self.prompt_delete_chars()
@@ -206,16 +208,16 @@ class BatchMixin:
                     files_to_process.append(img_path)
             
             if already_done_count > 0:
-                self.statusBar().showMessage(f"已從 Sidecar 還原 {already_done_count} 筆 LLM 結果至 txt", 5000)
+                self.statusBar().showMessage(self.tr("msg_restore_sidecar_llm").replace("{count}", str(already_done_count)), 5000)
 
             if not files_to_process:
                 self.set_batch_ui_enabled(True)
                 self.btn_run_llm.setEnabled(True)
                 self._is_batch_to_txt = False
-                QMessageBox.information(self, "Batch LLM to txt", f"完成！共處理 {already_done_count} 檔案 (使用現有記錄)。")
+                QMessageBox.information(self, self.tr("title_batch_llm_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
                 return
 
-            self.statusBar().showMessage(f"尚有 {len(files_to_process)} 檔案無記錄，開始執行 LLM...", 5000)
+            self.statusBar().showMessage(self.tr("status_remaining_llm").replace("{count}", str(len(files_to_process))), 5000)
             
             user_prompt = self.prompt_edit.toPlainText()
             
@@ -233,14 +235,14 @@ class BatchMixin:
         if not self.image_files:
             return
         if self.pipeline_manager.is_running():
-             QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         only_bg = bool(self.settings.get("mask_batch_only_if_has_background_tag", False))
         if only_bg:
             targets = [p for p in self.image_files if self._image_has_background_tag(p)]
             if not targets:
-                QMessageBox.information(self, "Batch Unmask", "找不到含有 'background' 標籤的圖片")
+                QMessageBox.information(self, self.tr("title_batch_unmask"), self.tr("msg_no_bg_tag_found"))
                 return
         else:
             targets = self.image_files
@@ -256,11 +258,11 @@ class BatchMixin:
 
     def run_batch_mask_text(self):
         if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
+            QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
 
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
         try:
@@ -271,16 +273,16 @@ class BatchMixin:
 
     def run_batch_restore(self):
         if not self.image_files:
-            QMessageBox.information(self, "Info", "No images loaded.")
+            QMessageBox.information(self, self.tr("title_info"), "No images loaded.")
             return
 
         if self.pipeline_manager.is_running():
-            QMessageBox.warning(self, "Warning", "已有任務正在執行中")
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
         reply = QMessageBox.question(
-            self, "Batch Restore",
-            "是否確定還原所有圖片的原檔 (若存在)？\n這將會覆蓋/刪除目前的去背版本。",
+            self, self.tr("title_batch_restore"),
+            self.tr("msg_batch_restore_confirm"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -309,11 +311,11 @@ class BatchMixin:
 
     def prompt_delete_chars(self) -> bool:
         msg = QMessageBox(self)
-        msg.setWindowTitle("Batch to txt")
-        msg.setText("是否自動刪除特徵標籤 (Character Tags)？")
-        msg.setInformativeText("將根據設定中的黑白名單過濾標籤或句子。")
-        btn_yes = msg.addButton("自動刪除", QMessageBox.ButtonRole.YesRole)
-        btn_no = msg.addButton("保留", QMessageBox.ButtonRole.NoRole)
+        msg.setWindowTitle(self.tr("title_batch_to_txt"))
+        msg.setText(self.tr("msg_batch_delete_char_tags"))
+        msg.setInformativeText(self.tr("msg_batch_delete_info"))
+        btn_yes = msg.addButton(self.tr("btn_auto_delete"), QMessageBox.ButtonRole.YesRole)
+        btn_no = msg.addButton(self.tr("btn_keep"), QMessageBox.ButtonRole.NoRole)
         msg.addButton(QMessageBox.StandardButton.Cancel)
         msg.exec()
         if msg.clickedButton() == btn_yes:

@@ -62,7 +62,7 @@ CLIPTokenizer = None
 class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, SettingsMixin, PipelineHandlerMixin):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI Captioning Assistant")
+        self.setWindowTitle(self.tr("app_title"))
         self._clip_tokenizer = None
         self.resize(1600, 1000)
 
@@ -135,8 +135,8 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
                 # Use singleShot to show message after UI is fully loaded
                 QTimer.singleShot(1000, lambda: QMessageBox.warning(
                     self, 
-                    "CUDA Warning", 
-                    "偵測不到 NVIDIA GPU (CUDA)。\n\n這可能是因為 venv 中的 PyTorch 版本錯誤。\n請執行根目錄下的 'fix_torch_gpu.bat' 來修復。\n\n目前將使用 CPU 執行，速度會非常慢。"
+                    self.tr("msg_cuda_warning_title"), 
+                    self.tr("msg_cuda_warning_content")
                 ))
         except ImportError:
             pass
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
         self.total_info_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         info_layout.addWidget(self.total_info_label)
 
-        self.img_file_label = QLabel(": No Image")
+        self.img_file_label = QLabel(self.tr("label_no_image"))
         self.img_file_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self.img_file_label.setWordWrap(False)
         info_layout.addWidget(self.img_file_label, 1)
@@ -186,30 +186,30 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
         
         self.filter_input = QLineEdit()
         self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
-        self.filter_input.setToolTip("用 Danbooru 語法篩選圖片，輸入後按 Enter\n例如：blonde_hair blue_eyes (同時含)\n-rating:explicit (排除 NSFW)\norder:landscape (橫圖優先)")
+        self.filter_input.setToolTip(self.tr("tip_filter_input"))
         self.filter_input.returnPressed.connect(self.apply_filter)
         filter_bar.addWidget(self.filter_input, 1)
         
         self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
         self.chk_filter_tags.setChecked(True)
-        self.chk_filter_tags.setToolTip("勾選後，會搜尋圖片的標籤 (Sidecar JSON)")
+        self.chk_filter_tags.setToolTip(self.tr("tip_filter_tags"))
         filter_bar.addWidget(self.chk_filter_tags)
         
         self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
         self.chk_filter_text.setChecked(False)
-        self.chk_filter_text.setToolTip("勾選後，會搜尋圖片的 .txt 檔案內容")
+        self.chk_filter_text.setToolTip(self.tr("tip_filter_text"))
         filter_bar.addWidget(self.chk_filter_text)
         
         self.btn_clear_filter = QPushButton("✕")
         self.btn_clear_filter.setFixedWidth(30)
-        self.btn_clear_filter.setToolTip("清除篩選條件，顯示所有圖片")
+        self.btn_clear_filter.setToolTip(self.tr("tip_clear_filter"))
         self.btn_clear_filter.clicked.connect(self.clear_filter)
         filter_bar.addWidget(self.btn_clear_filter)
 
         # === View Mode Selector (RGB/Alpha) ===
         self.cb_view_mode = QComboBox()
-        self.cb_view_mode.addItems(["預覽: 原圖", "預覽: RGB 色版 (N)", "預覽: Alpha 色版 (M)"])
-        self.cb_view_mode.setToolTip("切換圖片預覽模式\n- 原圖: 顯示原始圖片\n- RGB: 強制不透明顯示顏色\n- Alpha: 顯示透明度遮罩 (黑透白不透)\n\n快速鍵: 按住 N (RGB) / 按住 M (Alpha)")
+        self.cb_view_mode.addItems([self.tr("view_mode_original"), self.tr("view_mode_rgb"), self.tr("view_mode_alpha")])
+        self.cb_view_mode.setToolTip(self.tr("tip_view_mode"))
         self.cb_view_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus) # 避免搶走焦點影響快速鍵
         self.cb_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
         filter_bar.addWidget(self.cb_view_mode)
@@ -255,26 +255,26 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
         tags_tab_layout.setContentsMargins(5, 5, 5, 5)
 
         tags_toolbar = QHBoxLayout()
-        tags_label = QLabel("<b>TAGS</b>")
+        tags_label = QLabel(f"<b>{self.tr('sec_tags_header')}</b>")
         tags_toolbar.addWidget(tags_label)
 
         self.btn_auto_tag = QPushButton(self.tr("btn_auto_tag"))
-        self.btn_auto_tag.setToolTip("用 WD14 AI 模型自動識別當前圖片的標籤\n點選標籤可加入下方的文字框")
+        self.btn_auto_tag.setToolTip(self.tr("tip_auto_tag"))
         self.btn_auto_tag.clicked.connect(self.run_tagger)
         tags_toolbar.addWidget(self.btn_auto_tag)
 
         self.btn_batch_tagger = QPushButton(self.tr("btn_batch_tagger"))
-        self.btn_batch_tagger.setToolTip("對資料夾內所有圖片執行自動標籤\n結果儲存在 JSON 中，不會寫入 txt")
+        self.btn_batch_tagger.setToolTip(self.tr("tip_batch_tagger"))
         self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
         tags_toolbar.addWidget(self.btn_batch_tagger)
 
         self.btn_batch_tagger_to_txt = QPushButton(self.tr("btn_batch_tagger_to_txt"))
-        self.btn_batch_tagger_to_txt.setToolTip("對所有圖片執行標籤並寫入 .txt 檔案\n已有標籤記錄的圖片會直接使用快取")
+        self.btn_batch_tagger_to_txt.setToolTip(self.tr("tip_batch_tagger_txt"))
         self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
         tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
 
         self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
-        self.btn_add_custom_tag.setToolTip("新增自定義標籤到當前資料夾\n這些標籤會儲存在 .custom_tags.json 中")
+        self.btn_add_custom_tag.setToolTip(self.tr("tip_add_custom_tag"))
         self.btn_add_custom_tag.clicked.connect(self.add_custom_tag_dialog)
         tags_toolbar.addWidget(self.btn_add_custom_tag)
 
@@ -331,38 +331,38 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
         nl_toolbar.addWidget(self.nl_label)
 
         self.btn_run_llm = QPushButton(self.tr("btn_run_llm"))
-        self.btn_run_llm.setToolTip("用 AI 大型語言模型生成自然語言描述\n結果顯示在上方的 LLM 結果區")
+        self.btn_run_llm.setToolTip(self.tr("tip_run_llm"))
         self.btn_run_llm.clicked.connect(self.run_llm_generation)
         nl_toolbar.addWidget(self.btn_run_llm)
 
         # ✅ Batch 按鍵保留在上方
         self.btn_batch_llm = QPushButton(self.tr("btn_batch_llm"))
-        self.btn_batch_llm.setToolTip("對所有圖片執行 LLM 自然語言生成\n結果儲存在 JSON 中，不會寫入 txt")
+        self.btn_batch_llm.setToolTip(self.tr("tip_batch_llm"))
         self.btn_batch_llm.clicked.connect(self.run_batch_llm)
         nl_toolbar.addWidget(self.btn_batch_llm)
 
         self.btn_batch_llm_to_txt = QPushButton(self.tr("btn_batch_llm_to_txt"))
-        self.btn_batch_llm_to_txt.setToolTip("對所有圖片執行 LLM 並寫入 .txt 檔案\n已有 LLM 結果的圖片會直接使用快取")
+        self.btn_batch_llm_to_txt.setToolTip(self.tr("tip_batch_llm_txt"))
         self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
         nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
 
         self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
-        self.btn_prev_nl.setToolTip("查看上一次的 LLM 生成結果\n每張圖片的所有 LLM 歷史都會保留")
+        self.btn_prev_nl.setToolTip(self.tr("tip_prev_nl"))
         self.btn_prev_nl.clicked.connect(self.prev_nl_page)
         nl_toolbar.addWidget(self.btn_prev_nl)
 
         self.btn_next_nl = QPushButton(self.tr("btn_next"))
-        self.btn_next_nl.setToolTip("查看下一次的 LLM 生成結果")
+        self.btn_next_nl.setToolTip(self.tr("tip_next_nl"))
         self.btn_next_nl.clicked.connect(self.next_nl_page)
         nl_toolbar.addWidget(self.btn_next_nl)
 
         self.btn_default_prompt = QPushButton(self.tr("btn_default_prompt"))
-        self.btn_default_prompt.setToolTip("切換到預設的 Prompt 模板\n適合生成完整的多句式描述")
+        self.btn_default_prompt.setToolTip(self.tr("tip_default_prompt"))
         self.btn_default_prompt.clicked.connect(self.use_default_prompt)
         nl_toolbar.addWidget(self.btn_default_prompt)
 
         self.btn_custom_prompt = QPushButton(self.tr("btn_custom_prompt"))
-        self.btn_custom_prompt.setToolTip("切換到自訂的 Prompt 模板\n可在設定中修改自訂模板的內容")
+        self.btn_custom_prompt.setToolTip(self.tr("tip_custom_prompt"))
         self.btn_custom_prompt.clicked.connect(self.use_custom_prompt)
         nl_toolbar.addWidget(self.btn_custom_prompt)
         self.nl_page_label = QLabel(f"{self.tr('label_page')} 0/0")
@@ -402,19 +402,18 @@ class MainWindow(QMainWindow, BatchMixin, NavigationMixin, EditorMixin, Processi
         bot_toolbar.addWidget(self.bot_label)
         bot_toolbar.addSpacing(10)
         self.txt_token_label = QLabel(f"{self.tr('label_tokens')}0")
-        self.txt_token_label.setToolTip("CLIP Token 計數，SD 建議不超過 225\n超過後文字會變紅色警告")
+        self.txt_token_label.setToolTip(self.tr("tip_token_count"))
         bot_toolbar.addWidget(self.txt_token_label)
         bot_toolbar.addStretch(1)
 
         self.btn_find_replace = QPushButton(self.tr("btn_find_replace"))
-        self.btn_find_replace.setToolTip("在當前圖片或所有圖片的 txt 中\n尋找並取代文字 (支援正則表達式)")
+        self.btn_find_replace.setToolTip(self.tr("tip_find_replace"))
         self.btn_find_replace.clicked.connect(self.open_find_replace)
         bot_toolbar.addWidget(self.btn_find_replace)
 
         self.btn_txt_undo = QPushButton(self.tr("btn_undo"))
-        self.btn_txt_undo.setToolTip("復原上一步的文字編輯 (Ctrl+Z)")
-        self.btn_txt_redo = QPushButton(self.tr("btn_redo"))
-        self.btn_txt_redo.setToolTip("重做下一步的文字編輯 (Ctrl+Y)")
+        self.btn_txt_undo.setToolTip(self.tr("tip_undo"))
+        self.btn_txt_redo.setToolTip(self.tr("tip_redo"))
         bot_toolbar.addWidget(self.btn_txt_undo)
         bot_toolbar.addWidget(self.btn_txt_redo)
 

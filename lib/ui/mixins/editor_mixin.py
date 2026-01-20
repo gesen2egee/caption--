@@ -279,4 +279,4 @@ class EditorMixin:
             except Exception:
                 pass
                 
-            QMessageBox.information(self, "Result", f"Replaced {count} occurrences and reformatted.")
+            QMessageBox.information(self, self.tr("title_info"), self.tr("msg_replace_result").replace("{count}", str(count)))

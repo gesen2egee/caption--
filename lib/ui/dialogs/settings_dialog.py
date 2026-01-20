@@ -84,17 +84,17 @@ class SettingsDialog(QDialog):
         self.spin_llm_dim.setRange(256, 4096)
         self.spin_llm_dim.setSingleStep(128)
         self.spin_llm_dim.setValue(int(self.cfg.get("llm_max_image_dimension", 1024)))
-        self.spin_llm_dim.setToolTip("傳給 LLM 的圖片最大邊長。\n調大：細節更多但 API 費用較高、速度較慢\n調小：處理更快且省費用，但可能遺漏細節")
+        self.spin_llm_dim.setToolTip(self.tr("tip_llm_dim"))
         form.addRow(self.tr("setting_llm_max_dim"), self.spin_llm_dim)
         
         self.chk_llm_skip_nsfw = QCheckBox(self.tr("setting_llm_skip_nsfw"))
         self.chk_llm_skip_nsfw.setChecked(bool(self.cfg.get("llm_skip_nsfw_on_batch", False)))
-        self.chk_llm_skip_nsfw.setToolTip("勾選後，批量 LLM 會自動跳過含 explicit/questionable 標籤的圖片")
+        self.chk_llm_skip_nsfw.setToolTip(self.tr("tip_llm_skip_nsfw"))
         form.addRow("", self.chk_llm_skip_nsfw)
         
         self.chk_llm_use_gray_mask = QCheckBox(self.tr("setting_llm_use_gray_mask"))
         self.chk_llm_use_gray_mask.setChecked(bool(self.cfg.get("llm_use_gray_mask", True)))
-        self.chk_llm_use_gray_mask.setToolTip("勾選後，去背後的透明區域會填灰色再傳給 LLM，\n讓 AI 專注描述主體而不是背景")
+        self.chk_llm_use_gray_mask.setToolTip(self.tr("tip_llm_gray_mask"))
         form.addRow("", self.chk_llm_use_gray_mask)
 
         llm_layout.addLayout(form)
@@ -135,25 +135,25 @@ class SettingsDialog(QDialog):
         tagger_layout = QVBoxLayout(tab_tagger)
         form2 = QFormLayout()
         self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
-        self.ed_tagger_model.setToolTip("WD14 標籤模型名稱。常用: EVA02_Large (最準)、SwinV2 (較快)")
+        self.ed_tagger_model.setToolTip(self.tr("tip_tagger_model"))
         
         self.ed_general_threshold = QLineEdit(str(self.cfg.get("general_threshold", 0.2)))
-        self.ed_general_threshold.setToolTip("一般標籤的信心閾值 (0.0~1.0)\n調低：標籤更多但可能有誤判\n調高：標籤更精準但可能遺漏")
+        self.ed_general_threshold.setToolTip(self.tr("tip_tagger_gen_thresh"))
         
         self.chk_general_mcut = QCheckBox(self.tr("setting_tagger_gen_mcut"))
         self.chk_general_mcut.setChecked(bool(self.cfg.get("general_mcut_enabled", False)))
-        self.chk_general_mcut.setToolTip("啟用 MCut 演算法自動決定閾值，會覆蓋上方的手動閾值設定")
+        self.chk_general_mcut.setToolTip(self.tr("tip_tagger_mcut"))
 
         self.ed_character_threshold = QLineEdit(str(self.cfg.get("character_threshold", 0.85)))
-        self.ed_character_threshold.setToolTip("角色/特徵標籤的信心閾值 (0.0~1.0)\n建議設較高 (0.8+) 以避免誤判角色")
+        self.ed_character_threshold.setToolTip(self.tr("tip_tagger_char_thresh"))
         
         self.chk_character_mcut = QCheckBox(self.tr("setting_tagger_char_mcut"))
         self.chk_character_mcut.setChecked(bool(self.cfg.get("character_mcut_enabled", True)))
-        self.chk_character_mcut.setToolTip("啟用 MCut 演算法自動決定閾值，會覆蓋上方的手動閾值設定")
+        self.chk_character_mcut.setToolTip(self.tr("tip_tagger_mcut"))
 
         self.chk_drop_overlap = QCheckBox(self.tr("setting_tagger_drop_overlap"))
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
-        self.chk_drop_overlap.setToolTip("移除重疊標籤，例如同時有 'long hair' 和 'hair' 時只保留更具體的")
+        self.chk_drop_overlap.setToolTip(self.tr("tip_tagger_drop_overlap"))
 
         form2.addRow(self.tr("setting_tagger_model"), self.ed_tagger_model)
         form2.addRow(self.tr("setting_tagger_gen_thresh"), self.ed_general_threshold)
@@ -171,22 +171,22 @@ class SettingsDialog(QDialog):
         text_layout = QVBoxLayout(tab_text)
         self.chk_force_lower = QCheckBox(self.tr("setting_text_force_lower"))
         self.chk_force_lower.setChecked(bool(self.cfg.get("english_force_lowercase", True)))
-        self.chk_force_lower.setToolTip("勾選後，所有英文標籤和句子會自動轉為小寫，\n符合 Stable Diffusion 訓練資料的常見格式")
+        self.chk_force_lower.setToolTip(self.tr("tip_text_lower"))
         text_layout.addWidget(self.chk_force_lower)
 
         self.chk_auto_remove_empty = QCheckBox(self.tr("setting_text_auto_remove_empty"))
         self.chk_auto_remove_empty.setChecked(bool(self.cfg.get("text_auto_remove_empty_lines", True)))
-        self.chk_auto_remove_empty.setToolTip("自動移除文字檔中的空白行，保持內容整潔")
+        self.chk_auto_remove_empty.setToolTip(self.tr("tip_text_empty"))
         text_layout.addWidget(self.chk_auto_remove_empty)
 
         self.chk_auto_format = QCheckBox(self.tr("setting_text_auto_format"))
         self.chk_auto_format.setChecked(bool(self.cfg.get("text_auto_format", True)))
-        self.chk_auto_format.setToolTip("自動整理標籤格式：移除多餘空格、統一用 ', ' 分隔")
+        self.chk_auto_format.setToolTip(self.tr("tip_text_format"))
         text_layout.addWidget(self.chk_auto_format)
 
         self.chk_auto_save = QCheckBox(self.tr("setting_text_auto_save"))
         self.chk_auto_save.setChecked(bool(self.cfg.get("text_auto_save", True)))
-        self.chk_auto_save.setToolTip("編輯內容時自動儲存到 .txt 檔案，無需手動按儲存")
+        self.chk_auto_save.setToolTip(self.tr("tip_text_save"))
         text_layout.addWidget(self.chk_auto_save)
 
         # Batch to txt options
@@ -194,12 +194,12 @@ class SettingsDialog(QDialog):
         text_layout.addWidget(QLabel(f"<b>{self.tr('setting_batch_to_txt')}</b>"))
         
         mode_grp = QGroupBox(self.tr("setting_batch_mode"))
-        mode_grp.setToolTip("決定批量處理時如何寫入 .txt 檔案")
+        mode_grp.setToolTip(self.tr("tip_batch_mode"))
         mode_lay = QHBoxLayout()
         self.rb_batch_append = QRadioButton(self.tr("setting_batch_append"))
-        self.rb_batch_append.setToolTip("將新內容附加到現有文字的後面 (推薦)")
+        self.rb_batch_append.setToolTip(self.tr("tip_batch_append"))
         self.rb_batch_overwrite = QRadioButton(self.tr("setting_batch_overwrite"))
-        self.rb_batch_overwrite.setToolTip("完全覆蓋原有文字，請謹慎使用")
+        self.rb_batch_overwrite.setToolTip(self.tr("tip_batch_overwrite"))
         if self.cfg.get("batch_to_txt_mode", "append") == "overwrite":
             self.rb_batch_overwrite.setChecked(True)
         else:
@@ -211,7 +211,7 @@ class SettingsDialog(QDialog):
         
         self.chk_folder_trigger = QCheckBox(self.tr("setting_batch_trigger"))
         self.chk_folder_trigger.setChecked(bool(self.cfg.get("batch_to_txt_folder_trigger", False)))
-        self.chk_folder_trigger.setToolTip("勾選後，會把資料夾名稱當作觸發詞加到句子最前面\n例如資料夾 '1girl_miku' 會在開頭加上 'miku'")
+        self.chk_folder_trigger.setToolTip(self.tr("tip_batch_trigger"))
         text_layout.addWidget(self.chk_folder_trigger)
 
         text_layout.addStretch(1)
@@ -223,34 +223,34 @@ class SettingsDialog(QDialog):
         form3 = QFormLayout()
 
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
-        self.ed_mask_alpha.setToolTip("去除部分的殘留透明度 (1-254)\n調低：去得更乾淨 (接近全透明)\n調高：保留更多半透明效果")
+        self.ed_mask_alpha.setToolTip(self.tr("tip_mask_alpha"))
         self.ed_mask_format = QLineEdit(str(self.cfg.get("mask_default_format", "webp")))
-        self.ed_mask_format.setToolTip("輸出格式：webp (檔案小) 或 png (相容性好)")
+        self.ed_mask_format.setToolTip(self.tr("tip_mask_format"))
         form3.addRow(self.tr("setting_mask_alpha"), self.ed_mask_alpha)
         
         # New Settings
         self.spin_mask_padding = QSpinBox()
         self.spin_mask_padding.setRange(0, 50)
         self.spin_mask_padding.setValue(int(self.cfg.get("mask_padding", 3)))
-        self.spin_mask_padding.setToolTip("主體邊緣內縮的像素數\n調大：邊緣更乾淨，但可能切到主體\n調小：保留更多邊緣細節")
-        form3.addRow("Mask Padding (內縮像素):", self.spin_mask_padding)
+        self.spin_mask_padding.setToolTip(self.tr("tip_mask_padding"))
+        form3.addRow(self.tr("label_mask_padding"), self.spin_mask_padding)
 
         self.spin_mask_blur = QSpinBox()
         self.spin_mask_blur.setRange(0, 50)
         self.spin_mask_blur.setValue(int(self.cfg.get("mask_blur_radius", 10)))
-        self.spin_mask_blur.setToolTip("邊緣模糊半徑 (高斯模糊)\n調大：邊緣更柔和自然\n調小：邊緣更銳利")
-        form3.addRow("Mask Blur (模糊半徑):", self.spin_mask_blur)
+        self.spin_mask_blur.setToolTip(self.tr("tip_mask_blur"))
+        form3.addRow(self.tr("label_mask_blur"), self.spin_mask_blur)
 
         form3.addRow(self.tr("setting_mask_format"), self.ed_mask_format)
 
         self.chk_mask_bg_only = QCheckBox(self.tr("setting_mask_only_bg"))
         self.chk_mask_bg_only.setChecked(bool(self.cfg.get("mask_batch_only_if_has_background_tag", False)))
-        self.chk_mask_bg_only.setToolTip("勾選後，批量去背只處理標籤含 'background' 的圖片\n避免誤處理不需要去背的圖")
+        self.chk_mask_bg_only.setToolTip(self.tr("tip_mask_bg_only"))
         form3.addRow("", self.chk_mask_bg_only)
 
         self.chk_mask_ocr = QCheckBox(self.tr("setting_mask_ocr"))
         self.chk_mask_ocr.setChecked(bool(self.cfg.get("mask_batch_detect_text_enabled", True)))
-        self.chk_mask_ocr.setToolTip("啟用 OCR 自動偵測並遮蔽圖片中的文字區域")
+        self.chk_mask_ocr.setToolTip(self.tr("tip_mask_ocr"))
         form3.addRow("", self.chk_mask_ocr)
 
         # OCR Advanced
@@ -278,60 +278,60 @@ class SettingsDialog(QDialog):
         self.spin_mask_text_alpha = QSpinBox()
         self.spin_mask_text_alpha.setRange(0, 255)
         self.spin_mask_text_alpha.setValue(int(self.cfg.get("mask_text_alpha", 10)))
-        self.spin_mask_text_alpha.setToolTip("僅針對『去文字』功能使用的 Alpha 透明度 (預設 10)\n設定越低，遮得越透明/乾淨")
-        form3.addRow("Text Mask Alpha (去文字遮罩值):", self.spin_mask_text_alpha)
+        self.spin_mask_text_alpha.setToolTip(self.tr("tip_mask_text_alpha"))
+        form3.addRow(self.tr("label_mask_text_alpha"), self.spin_mask_text_alpha)
 
         self.chk_mask_del_npz = QCheckBox(self.tr("setting_mask_delete_npz"))
         self.chk_mask_del_npz.setChecked(bool(self.cfg.get("mask_delete_npz_on_move", True)))
-        self.chk_mask_del_npz.setToolTip("移動原圖時自動刪除對應的 .npz 快取檔案 (SD 訓練用)")
+        self.chk_mask_del_npz.setToolTip(self.tr("tip_mask_del_npz"))
         form3.addRow("", self.chk_mask_del_npz)
 
-        self.chk_mask_reverse = QCheckBox("反轉遮罩 (Reverse)")
+        self.chk_mask_reverse = QCheckBox(self.tr("label_mask_reverse"))
         self.chk_mask_reverse.setChecked(bool(self.cfg.get("mask_reverse", False)))
-        self.chk_mask_reverse.setToolTip("將主體與背景反轉 (去主體留背景)")
+        self.chk_mask_reverse.setToolTip(self.tr("tip_mask_reverse"))
         form3.addRow("", self.chk_mask_reverse)
 
-        self.chk_save_map = QCheckBox("保存黑白 Mask 到 .\mask\ ")
+        self.chk_save_map = QCheckBox(self.tr("label_mask_save_map"))
         self.chk_save_map.setChecked(bool(self.cfg.get("mask_save_map_file", False)))
         form3.addRow("", self.chk_save_map)
 
-        self.chk_only_map = QCheckBox("不修改原圖，僅輸出黑白 Mask (動態顯示)")
+        self.chk_only_map = QCheckBox(self.tr("label_mask_only_map"))
         self.chk_only_map.setChecked(bool(self.cfg.get("mask_only_output_map", False)))
-        self.chk_only_map.setToolTip("維持原圖檔不變，但在軟體顯示時會套用 mask/ 內的黑白圖進行去背預覽")
+        self.chk_only_map.setToolTip(self.tr("tip_mask_only_map"))
         form3.addRow("", self.chk_only_map)
 
         self.ed_remover_mode = QLineEdit(str(self.cfg.get("mask_remover_mode", "base-nightly")))
-        self.ed_remover_mode.setToolTip("Remover 模式：base, base-nightly, fast")
-        form3.addRow("Remover Mode:", self.ed_remover_mode)
+        self.ed_remover_mode.setToolTip(self.tr("tip_remover_mode"))
+        form3.addRow(self.tr("label_remover_mode"), self.ed_remover_mode)
 
-        self.chk_mask_batch_skip = QCheckBox("批量處理時跳過已去背過的圖片")
+        self.chk_mask_batch_skip = QCheckBox(self.tr("label_mask_batch_skip"))
         self.chk_mask_batch_skip.setChecked(bool(self.cfg.get("mask_batch_skip_once_processed", True)))
         form3.addRow("", self.chk_mask_batch_skip)
 
         mask_layout.addLayout(form3)
 
         # Batch Ratio Limits
-        ratio_box = QGroupBox("Batch Mask 主體佔比限制")
-        ratio_box.setToolTip("根據去背後主體佔畫面的比例來決定是否套用去背")
+        ratio_box = QGroupBox(self.tr("grp_batch_ratio"))
+        ratio_box.setToolTip(self.tr("tip_batch_ratio"))
         ratio_lay = QFormLayout()
         
         self.spin_mask_min_ratio = QDoubleSpinBox()
         self.spin_mask_min_ratio.setRange(0.0, 1.0)
         self.spin_mask_min_ratio.setSingleStep(0.05)
         self.spin_mask_min_ratio.setValue(float(self.cfg.get("mask_batch_min_foreground_ratio", 0.1)))
-        self.spin_mask_min_ratio.setToolTip("主體佔比下限。若主體太小 (佔比低於此值)，可能是誤判，跳過不處理")
-        ratio_lay.addRow("Min Ratio (主體過小跳過):", self.spin_mask_min_ratio)
+        self.spin_mask_min_ratio.setToolTip(self.tr("tip_min_ratio"))
+        ratio_lay.addRow(self.tr("label_min_ratio"), self.spin_mask_min_ratio)
 
         self.spin_mask_max_ratio = QDoubleSpinBox()
         self.spin_mask_max_ratio.setRange(0.0, 1.0)
         self.spin_mask_max_ratio.setSingleStep(0.05)
         self.spin_mask_max_ratio.setValue(float(self.cfg.get("mask_batch_max_foreground_ratio", 0.8)))
-        self.spin_mask_max_ratio.setToolTip("主體佔比上限。若主體佔滿畫面 (無背景可去)，跳過不處理")
-        ratio_lay.addRow("Max Ratio (主體過大跳過):", self.spin_mask_max_ratio)
+        self.spin_mask_max_ratio.setToolTip(self.tr("tip_max_ratio"))
+        ratio_lay.addRow(self.tr("label_max_ratio"), self.spin_mask_max_ratio)
         
-        self.chk_skip_scenery = QCheckBox("跳過場景圖 (含 indoors/outdoors 標籤)")
+        self.chk_skip_scenery = QCheckBox(self.tr("label_skip_scenery"))
         self.chk_skip_scenery.setChecked(bool(self.cfg.get("mask_batch_skip_if_scenery_tag", True)))
-        self.chk_skip_scenery.setToolTip("勾選後，若標籤含 indoors 或 outdoors (場景圖)，則跳過去背")
+        self.chk_skip_scenery.setToolTip(self.tr("tip_skip_scenery"))
         ratio_lay.addRow("", self.chk_skip_scenery)
 
         ratio_box.setLayout(ratio_lay)
@@ -347,21 +347,21 @@ class SettingsDialog(QDialog):
         filter_layout.addWidget(QLabel(self.tr("setting_filter_info")))
         
         bl_label = QLabel(self.tr("setting_bl_words"))
-        bl_label.setToolTip("包含這些關鍵字的標籤會被標記為『特徵標籤』(紅框)，\n批量寫入 txt 時可選擇自動刪除")
+        bl_label.setToolTip(self.tr("tip_bl_words"))
         filter_layout.addWidget(bl_label)
         self.ed_bl_words = QPlainTextEdit()
         self.ed_bl_words.setPlainText(", ".join(self.cfg.get("char_tag_blacklist_words", [])))
         self.ed_bl_words.setMinimumHeight(120)
-        self.ed_bl_words.setToolTip("例如: hair, eyes, skin 等通用外觀描述\n這些標籤適合用於 LoRA 訓練時過濾")
+        self.ed_bl_words.setToolTip(self.tr("tip_bl_words_detail"))
         filter_layout.addWidget(self.ed_bl_words)
 
         wl_label = QLabel(self.tr("setting_wl_words"))
-        wl_label.setToolTip("包含這些關鍵字的標籤即使符合黑名單也不會被標記")
+        wl_label.setToolTip(self.tr("tip_wl_words"))
         filter_layout.addWidget(wl_label)
         self.ed_wl_words = QPlainTextEdit()
         self.ed_wl_words.setPlainText(", ".join(self.cfg.get("char_tag_whitelist_words", [])))
         self.ed_wl_words.setMinimumHeight(80)
-        self.ed_wl_words.setToolTip("例如: holding hair, background 等動作或情境描述\n這些標籤不是角色固有特徵，應該保留")
+        self.ed_wl_words.setToolTip(self.tr("tip_wl_words_detail"))
         filter_layout.addWidget(self.ed_wl_words)
         
         filter_layout.addStretch(1)
