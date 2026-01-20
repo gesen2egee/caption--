@@ -67,18 +67,40 @@ class MaskTextLocalWorker(BaseWorker):
                      image=image_data
                  )
                  
-            # Apply Mask (Blur)
-            mask = Image.new("L", img.size, 0)
-            draw = ImageDraw.Draw(mask)
+            # Prepare Alpha Mask
+            # 0 = Transparent, 255 = Opaque
+            # PIL "L" mode: 0 is black, 255 is white.
+            # We want detected text areas to have a specific alpha value.
+            
+            # Initial alpha from image
+            alpha_orig = img.split()[3]
+            
+            # Create a "burn" mask for text areas
+            # We start with a copy of original alpha
+            text_mask = Image.new("L", img.size, 0)
+            draw = ImageDraw.Draw(text_mask)
+            
+            target_alpha_val = int(self.config.get("default_alpha", 64))
+            
             for box in boxes:
-                # box is (x1, y1, x2, y2)
-                draw.rectangle(box, fill=255)
+                if len(box) > 0 and isinstance(box[0], (list, tuple)):
+                    actual_box = box[0]
+                else:
+                    actual_box = box
+                box_int = tuple(int(round(float(c))) for c in actual_box[:4])
+                # Fill text area in text_mask with 255 (meaning "this is text")
+                draw.rectangle(box_int, fill=255)
             
-            # Blur
-            blurred = img.filter(ImageFilter.GaussianBlur(radius=self.blur_radius))
+            # Now we create the new alpha channel
+            # Where text_mask is 255, we want target_alpha_val
+            # Where text_mask is 0, we want original alpha
             
-            # Composite
-            output_img = Image.composite(blurred, img, mask)
+            target_alpha_layer = Image.new("L", img.size, target_alpha_val)
+            new_alpha = Image.composite(target_alpha_layer, alpha_orig, text_mask)
+            
+            # Reconstruct RGBA image with original RGB and new Alpha
+            r, g, b, _ = img.split()
+            output_img = Image.merge("RGBA", (r, g, b, new_alpha))
             
             # Save
             base, ext = os.path.splitext(image_path)

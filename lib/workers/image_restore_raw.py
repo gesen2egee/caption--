@@ -76,7 +76,7 @@ class ImageRestoreRawWorker(BaseWorker):
             return WorkerOutput(
                 success=True,
                 image=image_data,
-                result_path=image_path,
+                result_data={"result_path": image_path},
             )
             
         except Exception as e:
