@@ -110,7 +110,20 @@ class TaggerImgutilsTaggingLocalWorker(BaseWorker):
                 pass
             
             # 執行標籤識別
-            rating, features, chars = get_wd14_tags(img, **kwargs)
+            try:
+                rating, features, chars = get_wd14_tags(img, **kwargs)
+            except KeyError as e:
+                # KeyError 通常發生在 model_name 不在 MODEL_NAMES 對應表中
+                if "/" in self.model_name:
+                    return WorkerOutput(
+                        success=False, 
+                        error=f"Model '{self.model_name}' not found in WD14 list.\nIt looks like a Repo ID. Please switch Tagger Worker to 'Local (imgutils-timm)'."
+                    )
+                else:
+                    return WorkerOutput(success=False, error=f"WD14 Model '{self.model_name}' not found: {e}")
+            except Exception as e:
+                # 其他錯誤 (如下載失敗)
+                raise e
             
             # 正規化標籤 (移除底線)
             features = {remove_underline(k): v for k, v in features.items()}
