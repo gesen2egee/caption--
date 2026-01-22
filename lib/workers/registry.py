@@ -69,6 +69,11 @@ class WorkerRegistry:
         return results
 
     @classmethod
+    def has_available_workers(cls, category: str) -> bool:
+        """檢查該分類下是否有可用的 Worker"""
+        return len(cls._workers.get(category, {})) > 0
+
+    @classmethod
     def scan_workers(cls):
         """掃描 lib.workers 下的所有模組並自動註冊"""
         import lib.workers as workers_pkg
@@ -84,6 +89,10 @@ class WorkerRegistry:
                         issubclass(item, BaseWorker) and 
                         item is not BaseWorker):
                         
+                        # 檢查可用性
+                        if not item.is_available():
+                            continue
+
                         # 取得 Metadata
                         # 這裡假設我們在子類別定義了 class attribute
                         category = getattr(item, "category", "OTHER")

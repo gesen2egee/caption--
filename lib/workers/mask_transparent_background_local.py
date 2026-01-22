@@ -59,6 +59,14 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
     @property
     def name(self) -> str:
         return "mask_transparent_background_local"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            import transparent_background
+            return True
+        except ImportError:
+            return False
     
     @classmethod
     def from_preset(cls, preset_name: str, **kwargs) -> 'MaskTransparentBackgroundLocalWorker':

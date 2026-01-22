@@ -84,6 +84,16 @@ class BaseWorker(ABC):
     def name(self) -> str:
         """Worker 唯一識別名 (system name)"""
         pass
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """
+        檢查此 Worker 是否可用 (例如檢查依賴、模型檔案是否存在)
+        
+        Returns:
+            bool: 是否可用
+        """
+        return True
     
     @abstractmethod
     def process(self, input_data: WorkerInput) -> WorkerOutput:

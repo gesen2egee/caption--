@@ -117,15 +117,15 @@ class SettingsMixin:
 
         tools_menu = menubar.addMenu(self.tr("menu_tools"))
         
-        unmask_action = QAction(self.tr("btn_unmask"), self)
-        unmask_action.setStatusTip(self.tr("tip_unmask"))
-        unmask_action.triggered.connect(self.unmask_current_image)
-        tools_menu.addAction(unmask_action)
+        self.action_unmask = QAction(self.tr("btn_unmask"), self)
+        self.action_unmask.setStatusTip(self.tr("tip_unmask"))
+        self.action_unmask.triggered.connect(self.unmask_current_image)
+        tools_menu.addAction(self.action_unmask)
 
-        mask_text_action = QAction(self.tr("btn_mask_text"), self)
-        mask_text_action.setStatusTip(self.tr("tip_mask_text"))
-        mask_text_action.triggered.connect(self.mask_text_current_image)
-        tools_menu.addAction(mask_text_action)
+        self.action_mask_text = QAction(self.tr("btn_mask_text"), self)
+        self.action_mask_text.setStatusTip(self.tr("tip_mask_text"))
+        self.action_mask_text.triggered.connect(self.mask_text_current_image)
+        tools_menu.addAction(self.action_mask_text)
 
         restore_action = QAction(self.tr("btn_restore_original"), self)
         restore_action.setStatusTip(self.tr("tip_restore"))

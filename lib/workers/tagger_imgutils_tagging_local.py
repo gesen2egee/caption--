@@ -59,6 +59,14 @@ class TaggerImgutilsTaggingLocalWorker(BaseWorker):
     @property
     def name(self) -> str:
         return "tagger_imgutils_tagging_local"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            import imgutils.tagging
+            return True
+        except ImportError:
+            return False
     
     @classmethod
     def from_preset(cls, preset_name: str, **kwargs) -> 'TaggerImgutilsTaggingLocalWorker':

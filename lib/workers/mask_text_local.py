@@ -36,6 +36,14 @@ class MaskTextLocalWorker(BaseWorker):
     def name(self) -> str:
         return "mask_text_local"
 
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            import imgutils.ocr
+            return True
+        except ImportError:
+            return False
+
     def process(self, input_data: WorkerInput) -> WorkerOutput:
         try:
             if not input_data.image:

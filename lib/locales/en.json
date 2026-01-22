@@ -256,5 +256,6 @@
     "msg_restore_failed": "Restore failed: ",
     "label_llm_url": "LLM Base URL:",
     "label_api_key": "API Key:",
-    "label_model": "Model:"
+    "label_model": "Model:",
+    "tip_no_worker": "No worker available for this task (check settings or install dependencies)."
 }

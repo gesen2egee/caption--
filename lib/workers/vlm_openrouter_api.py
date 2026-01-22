@@ -62,6 +62,14 @@ class VLMOpenRouterAPIWorker(BaseWorker):
     @property
     def name(self) -> str:
         return "vlm_openrouter_api"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            import openai
+            return True
+        except ImportError:
+            return False
     
     @classmethod
     def from_preset(cls, preset_name: str, **kwargs) -> 'VLMOpenRouterAPIWorker':

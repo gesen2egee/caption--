@@ -53,6 +53,7 @@ from lib.utils.batch_writer import write_batch_result
 
 
 from lib.utils.memory_utils import unload_all_models
+from lib.workers.registry import get_registry
 
 try:
     from transparent_background import Remover
@@ -60,7 +61,9 @@ except ImportError:
     Remover = None
 
 CLIPTokenizer = None
+from lib.workers.registry import scan_workers, get_registry
 
+    window = MainWindow()
 class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, PipelineHandlerMixin):
     def __init__(self):
         self.settings = load_app_settings()
@@ -141,6 +144,41 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
             pass
 
 
+
+    def check_worker_availability(self):
+        """檢查 Worker 可用性並更新 UI 狀態"""
+        reg = get_registry()
+        
+        # TAGGER
+        has_tagger = reg.has_available_workers("TAGGER")
+        self.btn_auto_tag.setEnabled(has_tagger)
+        self.btn_batch_tagger.setEnabled(has_tagger)
+        self.btn_batch_tagger_to_txt.setEnabled(has_tagger)
+        if not has_tagger:
+            self.btn_auto_tag.setToolTip(self.tr("tip_no_worker"))
+            self.btn_batch_tagger.setToolTip(self.tr("tip_no_worker"))
+
+        # LLM
+        has_llm = reg.has_available_workers("LLM")
+        self.btn_run_llm.setEnabled(has_llm)
+        self.btn_batch_llm.setEnabled(has_llm)
+        self.btn_batch_llm_to_txt.setEnabled(has_llm)
+        if not has_llm:
+            self.btn_run_llm.setToolTip(self.tr("tip_no_worker"))
+        
+        # UNMASK (Background Removal)
+        has_unmask = reg.has_available_workers("UNMASK")
+        if hasattr(self, "action_unmask"):
+            self.action_unmask.setEnabled(has_unmask)
+        if hasattr(self, "action_batch_unmask"):
+            self.action_batch_unmask.setEnabled(has_unmask)
+            
+        # MASK TEXT
+        has_mask_text = reg.has_available_workers("MASK_TEXT")
+        if hasattr(self, "action_mask_text"):
+            self.action_mask_text.setEnabled(has_mask_text)
+        if hasattr(self, "action_batch_mask_text"):
+            self.action_batch_mask_text.setEnabled(has_mask_text)
 
     def init_ui(self):
         font = QFont()
@@ -454,6 +492,9 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.statusBar().addPermanentWidget(self.btn_cancel_batch)
 
         self._setup_menus()
+        
+        # Check workers availability
+        self.check_worker_availability()
 
     def make_hline(self):
         line = QFrame()
