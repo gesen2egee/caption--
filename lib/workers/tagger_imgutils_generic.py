@@ -93,14 +93,12 @@ class TaggerImgutilsGenericWorker(BaseWorker):
             # 載入圖片
             img = Image.open(image_data.path)
             
-            # 呼叫 imgutils
-            from imgutils.generic import multilabel_timm_predict
+            # 呼叫 imgutils (使用支援子資料夾的修正版)
+            from lib.utils.imgutils_patch import multilabel_timm_predict_patched
             from imgutils.tagging import tags_to_text, remove_underline
             
             # 執行預測
-            # 根據使用者提供的 snippet，fmt 參數控制回傳內容
-            # repo_id 支援 "user/repo" 或 "user/repo/subdir" 格式 (取決於 imgutils 實作)
-            general, character, rating = multilabel_timm_predict(
+            general, character, rating = multilabel_timm_predict_patched(
                 img,
                 repo_id=self.repo_id,
                 fmt=("general", "character", "rating"),
