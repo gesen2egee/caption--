@@ -89,8 +89,12 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
             # 取得 Remover
             remover = self._get_remover()
             
-            # 執行去背
-            result = remover.process(img, type="rgba")
+            # 執行去背 (改用 map 模式以保留原始 RGB)
+            pred = remover.process(img, type="map")  # 輸出為 PIL Image (L)
+            
+            # 將原圖轉換為 RGBA 並將預測遮罩作為 Alpha 通道
+            result = img.copy().convert("RGBA")
+            result.putalpha(pred)
             
             # 檢查前景比例
             alpha = np.array(result.split()[3])
