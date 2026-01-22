@@ -53,6 +53,7 @@ APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json
 
 DEFAULT_APP_SETTINGS = {
     # LLM
+    "llm_provider": "vlm_openrouter_api",  # Worker Name (Category=LLM)
     "llm_base_url": "https://openrouter.ai/api/v1",
     "llm_api_key": os.getenv("OPENROUTER_API_KEY", "<OPENROUTER_API_KEY>"),
     "llm_model": "mistralai/mistral-large-2512",
@@ -64,6 +65,9 @@ DEFAULT_APP_SETTINGS = {
     "llm_use_gray_mask": True,
     "last_open_dir": "",
 
+    # Worker Selection
+    "tagger_worker": "tagger_imgutils_tagging_local",
+    
     # Tagger (WD14)
     "tagger_model": "EVA02_Large",
     "general_threshold": 0.2,
@@ -95,6 +99,9 @@ DEFAULT_APP_SETTINGS = {
     ],
 
     # Mask / batch mask text
+    "unmask_worker": "mask_transparent_background_local",
+    "mask_text_worker": "mask_text_local",
+    
     "mask_remover_mode": "base-nightly",
     "mask_default_alpha": 64,
     "mask_default_format": "webp",

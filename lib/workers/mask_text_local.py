@@ -15,6 +15,14 @@ class MaskTextLocalWorker(BaseWorker):
     使用 OCR 偵測文字並將其模糊化/移除。
     """
     
+    category = "MASK_TEXT"
+    display_name = "Local OCR Mask"
+    description = "Detect and mask text locally using lightweight OCR models"
+    default_config = {
+        "mask_ocr_max_candidates": 300,
+         "mask_ocr_heat_threshold": 0.2,
+    }
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
         self.max_candidates = self.config.get("mask_ocr_max_candidates", 300)

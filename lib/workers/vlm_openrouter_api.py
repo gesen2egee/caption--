@@ -40,6 +40,14 @@ class VLMOpenRouterAPIWorker(BaseWorker):
     使用 OpenRouter API 進行視覺語言模型推論。
     """
     
+    category = "LLM"
+    display_name = "OpenRouter / OpenAI API"
+    description = "Use remote VLM APIs compatible with OpenAI format"
+    default_config = {
+         "base_url": "https://openrouter.ai/api/v1",
+         "model_name": "mistralai/mistral-large-2512"
+    }
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
         

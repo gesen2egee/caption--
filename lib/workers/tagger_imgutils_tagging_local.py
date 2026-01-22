@@ -36,6 +36,15 @@ class TaggerImgutilsTaggingLocalWorker(BaseWorker):
     使用 imgutils.tagging 進行圖片標籤識別。
     """
     
+    category = "TAGGER"
+    display_name = "Local (imgutils)"
+    description = "Run WD14 models locally using imgutils"
+    default_config = {
+        "model_name": "EVA02_Large",
+        "general_threshold": 0.2,
+        "character_threshold": 0.85
+    }
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
         

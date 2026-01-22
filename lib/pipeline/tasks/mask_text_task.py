@@ -66,90 +66,50 @@ class MaskTextTask(BaseTask):
             # 2. 備份原圖
             backup_raw_image(image_path)
             
-            # 3. OCR 偵測
-            try:
-                from imgutils.ocr import detect_text_with_ocr
-            except ImportError:
-                return TaskResult(
-                    success=False,
-                    error="imgutils.ocr 未安裝",
-                    image=context.image,
-                )
+            # 3. 呼叫 Worker
+            from lib.workers.registry import get_registry
             
-            img = Image.open(image_path).convert("RGBA")
-            rgb_img = img.convert("RGB")
+            worker_name = settings.mask_text_worker if (settings and hasattr(settings, "mask_text_worker")) else "mask_text_local"
+            WorkerCls = get_registry().get_worker_class("MASK_TEXT", worker_name)
             
-            ocr_config = {}
+            if not WorkerCls:
+                 return TaskResult(success=False, error=f"Mask Text Worker '{worker_name}' not found", image=context.image)
+
+            config = {}
             if settings:
-                ocr_config = {
-                    "max_candidates": int(settings.mask_ocr_max_candidates),
-                    "heat_threshold": float(settings.mask_ocr_heat_threshold),
-                    "box_threshold": float(settings.mask_ocr_box_threshold),
-                    "unclip_ratio": float(settings.mask_ocr_unclip_ratio),
+                config = {
+                    "mask_ocr_max_candidates": int(settings.mask_ocr_max_candidates),
+                    "mask_ocr_heat_threshold": float(settings.mask_ocr_heat_threshold),
+                    "mask_ocr_box_threshold": float(settings.mask_ocr_box_threshold),
+                    "mask_ocr_unclip_ratio": float(settings.mask_ocr_unclip_ratio),
+                    "default_alpha": settings.mask_text_alpha, # Corrected key usage
+                    "mask_default_format": settings.mask_default_format
                 }
             
-            try:
-                boxes = detect_text_with_ocr(rgb_img, **ocr_config)
-            except TypeError:
-                boxes = detect_text_with_ocr(rgb_img)
+            worker = WorkerCls(config)
+            worker_output = worker.process(context.to_worker_input())
             
-            if not boxes:
-                return TaskResult(
-                    success=True,
-                    image=context.image,
-                    result_data={"original_path": image_path, "box_count": 0},
-                )
+            if not worker_output.success:
+                return TaskResult(success=False, error=worker_output.error, image=context.image)
+                
+            # Worker returns updated image status, but maybe we need to reload sidecar or handle result data
+            # NOTE: The original local worker implementation handles file saving.
+            # We just need to sync back the result.
             
-            # 4. 建立遮罩並套用 Alpha
-            alpha_orig = img.split()[3]
-            text_mask = Image.new("L", img.size, 0)
-            draw = ImageDraw.Draw(text_mask)
+            boxes = worker_output.result_data.get("box_count", 0) if worker_output.result_data else 0
+            new_path = worker_output.result_data.get("result_path", image_path) if worker_output.result_data else image_path
             
-            target_alpha_val = settings.mask_text_alpha if settings else 10
-            
-            for box in boxes:
-                # 處理嵌套結構
-                if len(box) > 0 and isinstance(box[0], (list, tuple)):
-                    actual_box = box[0]
-                else:
-                    actual_box = box
-                box_int = tuple(int(round(float(c))) for c in actual_box[:4])
-                draw.rectangle(box_int, fill=255)
-            
-            # 合成新 Alpha
-            target_alpha_layer = Image.new("L", img.size, target_alpha_val)
-            new_alpha = Image.composite(target_alpha_layer, alpha_orig, text_mask)
-            
-            # 重組 RGBA
-            r, g, b, _ = img.split()
-            output_img = Image.merge("RGBA", (r, g, b, new_alpha))
-            
-            # 5. 儲存
-            default_format = settings.mask_default_format if settings else "webp"
-            base, ext = os.path.splitext(image_path)
-            new_path = f"{base}.{default_format}"
-            
-            if default_format == "webp":
-                output_img.save(new_path, "WEBP", quality=95, lossless=True)
-            else:
-                output_img.save(new_path, "PNG")
-            
-            # 6. 更新 sidecar
-            sidecar = load_image_sidecar(new_path)
-            sidecar["masked_text"] = True
-            save_image_sidecar(new_path, sidecar)
-            
-            # 更新 ImageData
+            # Since worker handles saving, we just update context
             context.image.masked_text = True
             context.image.path = new_path
-            
+             
             return TaskResult(
                 success=True,
                 image=context.image,
                 result_data={
                     "original_path": image_path,
                     "result_path": new_path,
-                    "box_count": len(boxes),
+                    "box_count": boxes,
                 },
             )
             

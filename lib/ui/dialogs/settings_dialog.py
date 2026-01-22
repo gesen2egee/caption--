@@ -14,7 +14,7 @@ from lib.core.settings import (
     DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     DEFAULT_CUSTOM_TAGS, _coerce_float, _coerce_int
 )
-
+from lib.workers.registry import get_registry
 
 class SettingsDialog(QDialog):
     def __init__(self, cfg: dict, parent=None):
@@ -22,6 +22,7 @@ class SettingsDialog(QDialog):
         self.cfg = dict(cfg or {})
         self.setWindowTitle(self.tr("btn_settings"))
         self.setMinimumWidth(640)
+        self.setMinimumHeight(700) # Slightly taller for new options
 
         self.layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
@@ -70,6 +71,11 @@ class SettingsDialog(QDialog):
         llm_layout = QVBoxLayout(tab_llm)
         form = QFormLayout()
 
+        # LLM Provider Selection
+        self.cb_llm_provider = QComboBox()
+        self._populate_workers(self.cb_llm_provider, "LLM", self.cfg.get("llm_provider"))
+        form.addRow("Provider (Source)", self.cb_llm_provider)
+
         self.ed_base_url = QLineEdit(str(self.cfg.get("llm_base_url", "")))
         self.ed_api_key = QLineEdit(str(self.cfg.get("llm_api_key", "")))
         self.ed_api_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -107,14 +113,14 @@ class SettingsDialog(QDialog):
         llm_layout.addWidget(QLabel(self.tr("setting_llm_def_prompt")))
         self.ed_user_template = QPlainTextEdit()
         self.ed_user_template.setPlainText(str(self.cfg.get("llm_user_prompt_template", DEFAULT_USER_PROMPT_TEMPLATE)))
-        self.ed_user_template.setMinimumHeight(200)
+        self.ed_user_template.setMinimumHeight(150)
         llm_layout.addWidget(self.ed_user_template, 1)
 
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_cust_prompt")))
         self.ed_custom_template = QPlainTextEdit()
         self.ed_custom_template.setPlainText(str(self.cfg.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
-        self.ed_custom_template.setMinimumHeight(200)
+        self.ed_custom_template.setMinimumHeight(120)
         llm_layout.addWidget(self.ed_custom_template, 1)
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_def_tags")))
@@ -124,7 +130,7 @@ class SettingsDialog(QDialog):
             self.ed_default_custom_tags.setPlainText("\n".join([str(t) for t in tags]))
         else:
             self.ed_default_custom_tags.setPlainText(str(tags))
-        self.ed_default_custom_tags.setMinimumHeight(80)
+        self.ed_default_custom_tags.setMinimumHeight(60)
         llm_layout.addWidget(self.ed_default_custom_tags)
 
         self.tabs.addTab(tab_llm, self.tr("setting_tab_llm"))
@@ -133,6 +139,12 @@ class SettingsDialog(QDialog):
         tab_tagger = QWidget()
         tagger_layout = QVBoxLayout(tab_tagger)
         form2 = QFormLayout()
+
+        # Tagger Worker Selection
+        self.cb_tagger_worker = QComboBox()
+        self._populate_workers(self.cb_tagger_worker, "TAGGER", self.cfg.get("tagger_worker"))
+        form2.addRow("Tagger Worker", self.cb_tagger_worker)
+
         self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
         self.ed_tagger_model.setToolTip(self.tr("tip_tagger_model"))
         
@@ -220,6 +232,16 @@ class SettingsDialog(QDialog):
         tab_mask = QWidget()
         mask_layout = QVBoxLayout(tab_mask)
         form3 = QFormLayout()
+
+        # Unmask Worker Selection
+        self.cb_unmask_worker = QComboBox()
+        self._populate_workers(self.cb_unmask_worker, "UNMASK", self.cfg.get("unmask_worker"))
+        form3.addRow("Unmask Worker", self.cb_unmask_worker)
+        
+        # Mask Text Worker Selection
+        self.cb_mask_text_worker = QComboBox()
+        self._populate_workers(self.cb_mask_text_worker, "MASK_TEXT", self.cfg.get("mask_text_worker"))
+        form3.addRow("Mask Text Worker", self.cb_mask_text_worker)
 
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
         self.ed_mask_alpha.setToolTip(self.tr("tip_mask_alpha"))
@@ -378,6 +400,22 @@ class SettingsDialog(QDialog):
         btns.addWidget(self.btn_cancel)
         self.layout.addLayout(btns)
 
+    def _populate_workers(self, combo: QComboBox, category: str, default: str = None):
+        """Helper to populate worker dropdown"""
+        combo.clear()
+        reg = get_registry()
+        workers = reg.get_workers(category)
+        
+        for w in workers:
+            combo.addItem(w["display_name"], w["name"])
+        
+        if default:
+            idx = combo.findData(default)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        elif combo.count() > 0:
+            combo.setCurrentIndex(0)
+
     def _parse_tags(self, s: str):
         raw = (s or "").strip()
         if not raw:
@@ -397,6 +435,7 @@ class SettingsDialog(QDialog):
     def get_cfg(self) -> dict:
         cfg = dict(self.cfg)
 
+        cfg["llm_provider"] = self.cb_llm_provider.currentData()
         cfg["llm_base_url"] = self.ed_base_url.text().strip() or DEFAULT_APP_SETTINGS["llm_base_url"]
         cfg["llm_api_key"] = self.ed_api_key.text().strip()
         cfg["llm_model"] = self.ed_model.text().strip() or DEFAULT_APP_SETTINGS["llm_model"]
@@ -408,6 +447,7 @@ class SettingsDialog(QDialog):
         cfg["llm_use_gray_mask"] = self.chk_llm_use_gray_mask.isChecked()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
+        cfg["tagger_worker"] = self.cb_tagger_worker.currentData()
         cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
         cfg["general_threshold"] = _coerce_float(self.ed_general_threshold.text(), DEFAULT_APP_SETTINGS["general_threshold"])
         cfg["general_mcut_enabled"] = self.chk_general_mcut.isChecked()
@@ -421,9 +461,11 @@ class SettingsDialog(QDialog):
         cfg["text_auto_save"] = self.chk_auto_save.isChecked()
         cfg["batch_to_txt_mode"] = "overwrite" if self.rb_batch_overwrite.isChecked() else "append"
         cfg["batch_to_txt_folder_trigger"] = self.chk_folder_trigger.isChecked()
+        
+        cfg["unmask_worker"] = self.cb_unmask_worker.currentData()
+        cfg["mask_text_worker"] = self.cb_mask_text_worker.currentData()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
-        # Rule: 1-254 (USER request: "1-254 才對 (以防RGB丟失)")
         a = max(1, min(254, a))
         
         fmt = (self.ed_mask_format.text().strip().lower() or DEFAULT_APP_SETTINGS["mask_default_format"]).strip(".")

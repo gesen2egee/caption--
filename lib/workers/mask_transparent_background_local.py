@@ -34,6 +34,14 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
     使用 transparent_background 進行背景移除。
     """
     
+    category = "UNMASK"
+    display_name = "Local (transparent-background)"
+    description = "High quality background removal using transparent-background library"
+    default_config = {
+        "mode": "base-nightly",
+        "default_alpha": 64
+    }
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
         

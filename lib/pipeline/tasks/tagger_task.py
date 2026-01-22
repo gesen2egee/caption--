@@ -41,7 +41,14 @@ class TaggerTask(BaseTask):
                 )
             
             # 2. 建立並呼叫 Worker
-            from lib.workers.tagger_imgutils_tagging_local import TaggerImgutilsTaggingLocalWorker
+            # from lib.workers.tagger_imgutils_tagging_local import TaggerImgutilsTaggingLocalWorker
+            from lib.workers.registry import get_registry
+            
+            worker_name = context.settings.tagger_worker if (context.settings and hasattr(context.settings, "tagger_worker")) else "tagger_imgutils_tagging_local"
+            WorkerCls = get_registry().get_worker_class("TAGGER", worker_name)
+            
+            if not WorkerCls:
+                 return TaskResult(success=False, error=f"Tagger Worker '{worker_name}' not found", image=context.image)
             
             config = {}
             if context.settings:
@@ -54,7 +61,7 @@ class TaggerTask(BaseTask):
                     "drop_overlap": context.settings.drop_overlap,
                 }
             
-            worker = TaggerImgutilsTaggingLocalWorker(config)
+            worker = WorkerCls(config)
             worker_output = worker.process(context.to_worker_input())
             
             if not worker_output.success:

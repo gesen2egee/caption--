@@ -60,6 +60,12 @@ class BaseWorker(ABC):
     Worker 是無狀態的純功能單元，不涉及 UI 互動。
     """
     
+    # Metadata (子類別需覆寫)
+    category: str = "OTHER"   # "TAGGER", "LLM", "UNMASK", "MASK_TEXT", "RESTORE"
+    display_name: str = "Base Worker"
+    description: str = ""
+    default_config: Dict = {}
+    
     def __init__(self, config: Dict = None):
         """
         初始化 Worker
@@ -68,11 +74,15 @@ class BaseWorker(ABC):
             config: Worker 設定 (模型參數、閾值等)
         """
         self.config = config or {}
+        # Merge with defaults if not present
+        for k, v in self.default_config.items():
+            if k not in self.config:
+                self.config[k] = v
     
     @property
     @abstractmethod
     def name(self) -> str:
-        """Worker 名稱，用於日誌和除錯"""
+        """Worker 唯一識別名 (system name)"""
         pass
     
     @abstractmethod

@@ -75,8 +75,15 @@ class UnmaskTask(BaseTask):
             backup_raw_image(image_path)
             
             # 3. 建立並呼叫 Worker
-            from lib.workers.mask_transparent_background_local import MaskTransparentBackgroundLocalWorker
+            # from lib.workers.mask_transparent_background_local import MaskTransparentBackgroundLocalWorker
+            from lib.workers.registry import get_registry
             
+            worker_name = settings.unmask_worker if (settings and hasattr(settings, "unmask_worker")) else "mask_transparent_background_local"
+            WorkerCls = get_registry().get_worker_class("UNMASK", worker_name)
+            
+            if not WorkerCls:
+                 return TaskResult(success=False, error=f"Unmask Worker '{worker_name}' not found", image=context.image)
+
             config = {}
             if settings:
                 config = {
@@ -89,7 +96,7 @@ class UnmaskTask(BaseTask):
                     "max_foreground_ratio": settings.mask_batch_max_foreground_ratio,
                 }
             
-            worker = MaskTransparentBackgroundLocalWorker(config)
+            worker = WorkerCls(config)
             worker_output = worker.process(context.to_worker_input())
             
             if not worker_output.success:

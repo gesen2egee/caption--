@@ -55,8 +55,15 @@ class LLMTask(BaseTask):
                 system_prompt = context.settings.llm_system_prompt
             
             # 3. 建立並呼叫 Worker
-            from lib.workers.vlm_openrouter_api import VLMOpenRouterAPIWorker
+            # from lib.workers.vlm_openrouter_api import VLMOpenRouterAPIWorker
+            from lib.workers.registry import get_registry
             
+            worker_name = context.settings.llm_provider if (context.settings and hasattr(context.settings, "llm_provider")) else "vlm_openrouter_api"
+            WorkerCls = get_registry().get_worker_class("LLM", worker_name)
+            
+            if not WorkerCls:
+                 return TaskResult(success=False, error=f"LLM Worker '{worker_name}' not found", image=context.image)
+
             config = {}
             if context.settings:
                 config = {
@@ -72,7 +79,7 @@ class LLMTask(BaseTask):
             worker_input.extra["user_prompt"] = user_prompt
             worker_input.extra["system_prompt"] = system_prompt
             
-            worker = VLMOpenRouterAPIWorker(config)
+            worker = WorkerCls(config)
             worker_output = worker.process(worker_input)
             
             if not worker_output.success:
