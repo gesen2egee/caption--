@@ -96,11 +96,19 @@ class WorkerRegistry:
                         # 取得 Metadata
                         # 這裡假設我們在子類別定義了 class attribute
                         category = getattr(item, "category", "OTHER")
-                        worker_name = getattr(item, "name", None)
-                        # 如果是 property，嘗試實例化或直接讀取 (如果改成了 class var)
-                        # 為避免實例化副作用，我們將在 BaseWorker 定義中改用 Class Attribute
                         
-                        if worker_name:
+                        # 修正: name 可能是 property，若是則需實例化才能取得字串值
+                        worker_name = getattr(item, "name", None)
+                        if isinstance(worker_name, property) or worker_name is None:
+                            try:
+                                # 嘗試實例化 (假設 __init__ 支援不帶參數或 default=None)
+                                instance = item()
+                                worker_name = instance.name
+                            except Exception:
+                                print(f"[WorkerRegistry] Failed to instantiate {item_name} to get name")
+                                worker_name = None
+
+                        if worker_name and isinstance(worker_name, str):
                              cls.add_worker(category, worker_name, item)
             except Exception as e:
                 print(f"[WorkerRegistry] Failed to import {name}: {e}")
