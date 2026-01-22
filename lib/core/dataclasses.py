@@ -74,6 +74,7 @@ class Settings:
     包含所有設定項，可從設定檔載入或儲存。
     """
     # LLM 設定
+    llm_provider: str = "vlm_openrouter_api"
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: str = ""
     llm_model: str = "mistralai/mistral-large-2512"
@@ -85,6 +86,7 @@ class Settings:
     llm_use_gray_mask: bool = True
     
     # Tagger 設定
+    tagger_worker: str = "tagger_imgutils_generic"
     tagger_model: str = "EVA02_Large"
     general_threshold: float = 0.2
     general_mcut_enabled: bool = False
@@ -129,6 +131,10 @@ class Settings:
     char_tag_whitelist_words: List[str] = field(default_factory=list)
     default_custom_tags: List[str] = field(default_factory=list)
     
+    # Mask / Worker Selection
+    unmask_worker: str = "mask_transparent_background_local"
+    mask_text_worker: str = "mask_text_local"
+
     # UI 設定
     ui_language: str = "zh_tw"
     ui_theme: str = "light"
