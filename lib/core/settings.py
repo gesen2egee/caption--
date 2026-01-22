@@ -67,11 +67,11 @@ DEFAULT_APP_SETTINGS = {
     "last_open_dir": "",
 
     # Worker Selection
-    "tagger_worker": "tagger_imgutils_tagging_local",
+    "tagger_worker": "tagger_imgutils_generic",
     
     # Tagger (WD14)
-    "tagger_model": "EVA02_Large",
-    "general_threshold": 0.2,
+    "tagger_model": "Makki2104/animetimm/eva02_large_patch14_448.dbv4-full",
+    "general_threshold": 0.25,
     "general_mcut_enabled": False,
     "character_threshold": 0.85,
     "character_mcut_enabled": True,
