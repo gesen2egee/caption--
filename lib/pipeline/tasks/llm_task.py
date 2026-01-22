@@ -58,7 +58,7 @@ class LLMTask(BaseTask):
             # from lib.workers.vlm_openrouter_api import VLMOpenRouterAPIWorker
             from lib.workers.registry import get_registry
             
-            worker_name = context.settings.llm_provider if (context.settings and hasattr(context.settings, "llm_provider")) else "vlm_openrouter_api"
+            worker_name = context.settings.llm_provider if (context.settings and context.settings.llm_provider) else "vlm_openrouter_api"
             WorkerCls = get_registry().get_worker_class("LLM", worker_name)
             
             if not WorkerCls:

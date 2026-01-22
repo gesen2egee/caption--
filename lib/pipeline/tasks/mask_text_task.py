@@ -69,7 +69,7 @@ class MaskTextTask(BaseTask):
             # 3. 呼叫 Worker
             from lib.workers.registry import get_registry
             
-            worker_name = settings.mask_text_worker if (settings and hasattr(settings, "mask_text_worker")) else "mask_text_local"
+            worker_name = settings.mask_text_worker if (settings and settings.mask_text_worker) else "mask_text_local"
             WorkerCls = get_registry().get_worker_class("MASK_TEXT", worker_name)
             
             if not WorkerCls:

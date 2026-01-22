@@ -44,7 +44,7 @@ class TaggerTask(BaseTask):
             # from lib.workers.tagger_imgutils_tagging_local import TaggerImgutilsTaggingLocalWorker
             from lib.workers.registry import get_registry
             
-            worker_name = context.settings.tagger_worker if (context.settings and hasattr(context.settings, "tagger_worker")) else "tagger_imgutils_tagging_local"
+            worker_name = context.settings.tagger_worker if (context.settings and context.settings.tagger_worker) else "tagger_imgutils_generic"
             WorkerCls = get_registry().get_worker_class("TAGGER", worker_name)
             
             if not WorkerCls:

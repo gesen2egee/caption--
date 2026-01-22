@@ -78,7 +78,7 @@ class UnmaskTask(BaseTask):
             # from lib.workers.mask_transparent_background_local import MaskTransparentBackgroundLocalWorker
             from lib.workers.registry import get_registry
             
-            worker_name = settings.unmask_worker if (settings and hasattr(settings, "unmask_worker")) else "mask_transparent_background_local"
+            worker_name = settings.unmask_worker if (settings and settings.unmask_worker) else "mask_transparent_background_local"
             WorkerCls = get_registry().get_worker_class("UNMASK", worker_name)
             
             if not WorkerCls:
