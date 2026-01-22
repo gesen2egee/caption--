@@ -255,6 +255,11 @@ class SettingsDialog(QDialog):
         self._populate_workers(self.cb_mask_text_worker, "MASK_TEXT", self.cfg.get("mask_text_worker"))
         form3.addRow("Mask Text Worker", self.cb_mask_text_worker)
 
+        # Detect Text Worker Selection
+        self.cb_detect_text_worker = QComboBox()
+        self._populate_workers(self.cb_detect_text_worker, "DETECT_TEXT", self.cfg.get("detect_text_worker"))
+        form3.addRow("Detect Text Worker", self.cb_detect_text_worker)
+
         self.ed_mask_alpha = QLineEdit(str(self.cfg.get("mask_default_alpha", 0)))
         self.ed_mask_alpha.setToolTip(self.tr("tip_mask_alpha"))
         self.ed_mask_format = QLineEdit(str(self.cfg.get("mask_default_format", "webp")))
@@ -515,6 +520,7 @@ class SettingsDialog(QDialog):
         
         cfg["unmask_worker"] = self.cb_unmask_worker.currentData()
         cfg["mask_text_worker"] = self.cb_mask_text_worker.currentData()
+        cfg["detect_text_worker"] = self.cb_detect_text_worker.currentData()
 
         a = _coerce_int(self.ed_mask_alpha.text(), DEFAULT_APP_SETTINGS["mask_default_alpha"])
         a = max(1, min(254, a))

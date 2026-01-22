@@ -53,7 +53,10 @@ class TaggerTask(BaseTask):
             config = {}
             if context.settings:
                 config = {
+                    # WD14 Worker 使用 model_name
                     "model_name": context.settings.tagger_model,
+                    # imgutils-timm Worker 使用 tagger_model
+                    "tagger_model": context.settings.tagger_model,
                     "general_threshold": context.settings.general_threshold,
                     "general_mcut_enabled": context.settings.general_mcut_enabled,
                     "character_threshold": context.settings.character_threshold,

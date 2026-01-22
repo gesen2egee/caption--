@@ -20,6 +20,11 @@ class ImageRestoreRawWorker(BaseWorker):
     從 raw_image 資料夾還原原圖。
     """
     
+    category = "RESTORE"
+    display_name = "Restore from Raw"
+    description = "Restore image from raw_image backup folder"
+    default_config = {}
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
     

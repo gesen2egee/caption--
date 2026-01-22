@@ -17,6 +17,16 @@ class DetectImgutilsOCRLocalWorker(BaseWorker):
     使用 imgutils.ocr 偵測圖片中的文字區域。
     """
     
+    category = "DETECT_TEXT"
+    display_name = "Local OCR Detection"
+    description = "Detect text regions using imgutils OCR models"
+    default_config = {
+        "max_candidates": 300,
+        "heat_threshold": 0.2,
+        "box_threshold": 0.6,
+        "unclip_ratio": 2.3,
+    }
+    
     def __init__(self, config: Dict = None):
         super().__init__(config)
         
@@ -29,6 +39,14 @@ class DetectImgutilsOCRLocalWorker(BaseWorker):
     @property
     def name(self) -> str:
         return "detect_imgutils_ocr_local"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            from imgutils.ocr import detect_text_with_ocr
+            return True
+        except ImportError:
+            return False
     
     def process(self, input_data: WorkerInput) -> WorkerOutput:
         """執行文字偵測"""

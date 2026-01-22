@@ -17,6 +17,7 @@ class WorkerRegistry:
         "LLM": {},
         "UNMASK": {},
         "MASK_TEXT": {},
+        "DETECT_TEXT": {},
         "RESTORE": {},
         "OTHER": {}
     }
