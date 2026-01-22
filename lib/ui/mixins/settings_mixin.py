@@ -6,6 +6,7 @@ from lib.core.settings import (
     save_app_settings, DEFAULT_APP_SETTINGS, DEFAULT_CUSTOM_TAGS, 
     DEFAULT_CUSTOM_PROMPT_TEMPLATE, DEFAULT_USER_PROMPT_TEMPLATE
 )
+from lib.core.dataclasses import Settings
 from lib.ui.dialogs.settings_dialog import SettingsDialog
 from lib.ui.themes import THEME_STYLES
 from lib.locales import load_locale, tr as _tr
@@ -37,6 +38,14 @@ class SettingsMixin:
             new_cfg = dlg.get_cfg()
             self.settings = new_cfg
             save_app_settings(new_cfg)
+
+            # Update PipelineManager settings
+            valid_keys = Settings.__annotations__.keys()
+            clean_settings = {k: v for k, v in self.settings.items() if k in valid_keys}
+            self.pipeline_manager.set_settings(Settings(**clean_settings))
+            
+            # Check worker availability again (in case worker settings changed effectively enabling/disabling features)
+            self.check_worker_availability()
 
             # apply immediately
             self.apply_theme()
