@@ -145,6 +145,7 @@ class SettingsDialog(QDialog):
         self._populate_workers(self.cb_tagger_worker, "TAGGER", self.cfg.get("tagger_worker"))
         form2.addRow("Tagger Worker", self.cb_tagger_worker)
 
+        self.lbl_tagger_model = QLabel(self.tr("setting_tagger_model"))
         self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
         self.ed_tagger_model.setToolTip(self.tr("tip_tagger_model"))
         
@@ -166,7 +167,7 @@ class SettingsDialog(QDialog):
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
         self.chk_drop_overlap.setToolTip(self.tr("tip_tagger_drop_overlap"))
 
-        form2.addRow(self.tr("setting_tagger_model"), self.ed_tagger_model)
+        form2.addRow(self.lbl_tagger_model, self.ed_tagger_model)
         form2.addRow(self.tr("setting_tagger_gen_thresh"), self.ed_general_threshold)
         form2.addRow("", self.chk_general_mcut)
         form2.addRow(self.tr("setting_tagger_char_thresh"), self.ed_character_threshold)
