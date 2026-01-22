@@ -6,6 +6,7 @@
 """
 import os
 import json
+import shutil
 from pathlib import Path
 
 
@@ -49,7 +50,7 @@ DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 # --------------------------
 # App Settings (persisted)
 # --------------------------
-APP_SETTINGS_FILE = os.path.join(str(Path.home()), ".ai_captioning_settings.json")
+APP_SETTINGS_FILE = os.path.join(os.getcwd(), "app_settings.json")
 
 DEFAULT_APP_SETTINGS = {
     # LLM
@@ -139,10 +140,23 @@ def load_app_settings() -> dict:
     cfg = dict(DEFAULT_APP_SETTINGS)
     try:
         if os.path.exists(APP_SETTINGS_FILE):
-            with open(APP_SETTINGS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f) or {}
-            if isinstance(data, dict):
-                cfg.update(data)
+            try:
+                with open(APP_SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f) or {}
+                if isinstance(data, dict):
+                    cfg.update(data)
+            except json.JSONDecodeError as e:
+                print(f"[Settings] JSON decode failed: {e}")
+                # Backup corrupted file
+                backup_path = APP_SETTINGS_FILE + ".bak"
+                try:
+                    shutil.copy2(APP_SETTINGS_FILE, backup_path)
+                    print(f"[Settings] Corrupted settings backed up to {backup_path}")
+                except Exception:
+                    pass
+                # Return defaults (which we already have in cfg)
+            except Exception as e:
+                print(f"[Settings] Unexpected error loading settings: {e}")
     except Exception as e:
         print(f"[Settings] load failed: {e}")
     return cfg
