@@ -30,3 +30,4 @@ masked/
 # Temp
 *.tmp
 *.log
+app_settings.json.bak
