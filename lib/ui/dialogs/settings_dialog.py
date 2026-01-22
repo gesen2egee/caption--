@@ -143,11 +143,22 @@ class SettingsDialog(QDialog):
         # Tagger Worker Selection
         self.cb_tagger_worker = QComboBox()
         self._populate_workers(self.cb_tagger_worker, "TAGGER", self.cfg.get("tagger_worker"))
+        self.cb_tagger_worker.currentIndexChanged.connect(self._on_tagger_worker_changed)
         form2.addRow("Tagger Worker", self.cb_tagger_worker)
 
         self.lbl_tagger_model = QLabel(self.tr("setting_tagger_model"))
-        self.ed_tagger_model = QLineEdit(str(self.cfg.get("tagger_model", "EVA02_Large")))
-        self.ed_tagger_model.setToolTip(self.tr("tip_tagger_model"))
+        self.cb_tagger_model = QComboBox()
+        self.cb_tagger_model.setEditable(True)
+        self.cb_tagger_model.setToolTip(self.tr("tip_tagger_model"))
+        
+        # Populate initial models based on current worker
+        self._update_tagger_models()
+        
+        # Set current value
+        current_model = str(self.cfg.get("tagger_model", "EVA02_Large"))
+        if self.cb_tagger_model.findText(current_model) == -1:
+            self.cb_tagger_model.addItem(current_model)
+        self.cb_tagger_model.setCurrentText(current_model)
         
         self.ed_general_threshold = QLineEdit(str(self.cfg.get("general_threshold", 0.2)))
         self.ed_general_threshold.setToolTip(self.tr("tip_tagger_gen_thresh"))
@@ -167,7 +178,7 @@ class SettingsDialog(QDialog):
         self.chk_drop_overlap.setChecked(bool(self.cfg.get("drop_overlap", True)))
         self.chk_drop_overlap.setToolTip(self.tr("tip_tagger_drop_overlap"))
 
-        form2.addRow(self.lbl_tagger_model, self.ed_tagger_model)
+        form2.addRow(self.lbl_tagger_model, self.cb_tagger_model)
         form2.addRow(self.tr("setting_tagger_gen_thresh"), self.ed_general_threshold)
         form2.addRow("", self.chk_general_mcut)
         form2.addRow(self.tr("setting_tagger_char_thresh"), self.ed_character_threshold)
@@ -427,6 +438,25 @@ class SettingsDialog(QDialog):
             parts = [x.strip() for x in raw.split(",") if x.strip()]
         return [p.replace("_", " ").strip() for p in parts if p.strip()]
 
+    def _on_tagger_worker_changed(self):
+        self._update_tagger_models()
+
+    def _update_tagger_models(self):
+        worker_id = self.cb_tagger_worker.currentData()
+        self.cb_tagger_model.clear()
+        
+        if worker_id == "tagger_imgutils_tagging_local":
+            self.cb_tagger_model.addItems(["EVA02_Large", "SwinV2_v3"])
+        elif worker_id == "tagger_imgutils_generic":
+            self.cb_tagger_model.addItems([
+                "Makki2104/animetimm/eva02_large_patch14_448.dbv4-full",
+                "Makki2104/animetimm/convnextv2_huge.dbv4-full",
+                "Makki2104/animetimm/swinv2_base_window8_256.dbv4-full"
+            ])
+        else:
+            # Fallback or other workers
+            self.cb_tagger_model.addItems(["EVA02_Large", "SwinV2_v3"])
+
     def make_hline(self):
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
@@ -449,7 +479,7 @@ class SettingsDialog(QDialog):
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_worker"] = self.cb_tagger_worker.currentData()
-        cfg["tagger_model"] = self.ed_tagger_model.text().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
+        cfg["tagger_model"] = self.cb_tagger_model.currentText().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
         cfg["general_threshold"] = _coerce_float(self.ed_general_threshold.text(), DEFAULT_APP_SETTINGS["general_threshold"])
         cfg["general_mcut_enabled"] = self.chk_general_mcut.isChecked()
         cfg["character_threshold"] = _coerce_float(self.ed_character_threshold.text(), DEFAULT_APP_SETTINGS["character_threshold"])
