@@ -443,18 +443,38 @@ class SettingsDialog(QDialog):
 
     def _update_tagger_models(self):
         worker_id = self.cb_tagger_worker.currentData()
+        current_text = self.cb_tagger_model.currentText()
         self.cb_tagger_model.clear()
         
         if worker_id == "tagger_imgutils_tagging_local":
+            self.cb_tagger_model.setEditable(False)
             self.cb_tagger_model.addItems(["EVA02_Large", "SwinV2_v3"])
+            # 若當前文字含有 / (代表是 Repo ID)，則自動切換回預設值
+            if "/" in current_text:
+                self.cb_tagger_model.setCurrentIndex(0)
+            else:
+                # 嘗試保留原值
+                idx = self.cb_tagger_model.findText(current_text)
+                if idx >= 0:
+                    self.cb_tagger_model.setCurrentIndex(idx)
+                    
         elif worker_id == "tagger_imgutils_generic":
+            self.cb_tagger_model.setEditable(True)
             self.cb_tagger_model.addItems([
                 "Makki2104/animetimm/eva02_large_patch14_448.dbv4-full",
                 "Makki2104/animetimm/convnextv2_huge.dbv4-full",
                 "Makki2104/animetimm/swinv2_base_window8_256.dbv4-full"
             ])
+            # 若當前文字不含 / (代表是 WD14 名稱)，則切換到預設 Repo ID
+            if "/" not in current_text and current_text.strip():
+                self.cb_tagger_model.setCurrentIndex(0)
+            else:
+                 # 恢復原值 (因為是 Editable，直接設 Text)
+                 self.cb_tagger_model.setCurrentText(current_text)
+
         else:
-            # Fallback or other workers
+            # Fallback
+            self.cb_tagger_model.setEditable(True)
             self.cb_tagger_model.addItems(["EVA02_Large", "SwinV2_v3"])
 
     def make_hline(self):
