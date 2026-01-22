@@ -75,6 +75,7 @@ class ProcessingMixin:
 
     def unmask_current_image(self):
         if not self.current_image_path:
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
             return
             
         if self.pipeline_manager.is_running():
@@ -89,7 +90,9 @@ class ProcessingMixin:
 
     def mask_text_current_image(self):
         if not self.current_image_path:
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
             return
+            
         if not self.settings.get("mask_batch_detect_text_enabled", True):
              QMessageBox.information(self, self.tr("title_info"), self.tr("msg_ocr_disabled"))
              return

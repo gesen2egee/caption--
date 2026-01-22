@@ -33,6 +33,12 @@ class PipelineHandlerMixin:
             print(f"Error for {image_path}: {output.error}")
             return
             
+        if output.skipped:
+             reason = output.skip_reason or self.tr("msg_task_skipped")
+             self.statusBar().showMessage(f"{os.path.basename(image_path)}: {reason}", 5000)
+             # If strictly single image mode, maybe show alert? But status bar is less intrusive.
+             return
+
         task_name = self.pipeline_manager._current_pipeline.name if self.pipeline_manager._current_pipeline else ""
         
         # Tagger
@@ -68,11 +74,23 @@ class PipelineHandlerMixin:
 
         # Unmask or Mask Text
         elif "unmask" in task_name or "mask_text" in task_name:
-             if output.result_data and "original_path" in output.result_data:
+             if output.result_data:
                   old_path = output.result_data.get("original_path")
-                  new_path = output.result_data.get("result_path") or image_path
-                  self._replace_image_path_in_list(old_path, new_path)
-             
+                  new_path = output.result_data.get("result_path")
+                  
+                  # Mask Text special case: 0 boxes found
+                  if "mask_text" in task_name and output.result_data.get("box_count", 0) == 0:
+                      self.statusBar().showMessage(self.tr("msg_no_text_detected"), 4000)
+                      # No new file created usually if box_count is 0, so new_path might be None
+                  
+                  elif new_path:
+                      self._replace_image_path_in_list(old_path, new_path)
+                      self.statusBar().showMessage(self.tr("status_done"), 3000)
+                  
+                  else:
+                      # Result data exists but no new path? Maybe skipped internally without flag
+                      pass
+
              if self.current_image_path:
                  self.load_image()
 

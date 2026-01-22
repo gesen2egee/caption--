@@ -258,5 +258,8 @@
     "label_llm_url": "LLM Base URL:",
     "label_api_key": "API Key:",
     "label_model": "模型 (Model):",
-    "tip_no_worker": "此任務無可用的 Worker (請檢查設定或安裝依賴)。"
+    "tip_no_worker": "此任務無可用的 Worker (請檢查設定或安裝依賴)。",
+    "msg_no_image_selected": "請先選擇一張圖片",
+    "msg_task_skipped": "任務被跳過 (條件不符)",
+    "msg_no_text_detected": "未偵測到文字，圖片未修改"
 }
