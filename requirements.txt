@@ -14,3 +14,4 @@ wget
 gdown
 tqdm
 packaging
+timm

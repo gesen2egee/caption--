@@ -61,9 +61,7 @@ except ImportError:
     Remover = None
 
 CLIPTokenizer = None
-from lib.workers.registry import scan_workers, get_registry
 
-    window = MainWindow()
 class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, PipelineHandlerMixin):
     def __init__(self):
         self.settings = load_app_settings()
