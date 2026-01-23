@@ -134,6 +134,7 @@ class PipelineHandlerMixin:
             
         self.progress_bar.setFormat(final_msg)
         self.btn_cancel_batch.setVisible(True)
+        self.btn_cancel_batch.setEnabled(True)
 
     def on_pipeline_error(self, err_msg):
         self.statusBar().showMessage(self.tr("msg_error_fmt").replace("{msg}", str(err_msg)), 8000)

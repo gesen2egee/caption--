@@ -11,6 +11,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtCore import Qt, QPoint
 from lib.locales import tr as _tr
+from lib.locales import load_locale
 
 
 def create_checkerboard_png_bytes(size=16, color1=(200, 200, 200), color2=(150, 150, 150)):

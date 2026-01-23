@@ -102,6 +102,7 @@ class BatchMixin:
 
     def cancel_batch(self):
         self.statusBar().showMessage(self.tr("status_aborting"), 2000)
+        self.btn_cancel_batch.setEnabled(False)
         self.stop_current_task()
         for attr in ['batch_mask_text_thread']:
              thread = getattr(self, attr, None)
