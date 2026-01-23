@@ -126,8 +126,11 @@ class PipelineHandlerMixin:
         else:
             speed_str = "..."
 
-        # Format: [MODEL] Filename (current/total) - Speed
-        final_msg = f"{model_info} | {os.path.basename(filename)} ({current}/{total}) - {speed_str}"
+        # Format: [MODEL] Filename at StatusBar
+        self.statusBar().showMessage(f"{model_info} | {os.path.basename(filename)}")
+
+        # Helper text on ProgressBar: (current/total) - Speed
+        final_msg = f"{current}/{total} | {speed_str}"
             
         self.progress_bar.setFormat(final_msg)
         self.btn_cancel_batch.setVisible(True)
