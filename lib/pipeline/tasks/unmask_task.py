@@ -117,8 +117,54 @@ class UnmaskTask(BaseTask):
                     image=context.image,
                 )
             
-            # 4. 更新 sidecar
             new_path = worker_output.result_data.get("result_path", image_path) if worker_output.result_data else image_path
+            
+            # --- Advanced Post-Processing ---
+            if settings and os.path.exists(new_path):
+                from lib.utils.image_processing import apply_advanced_mask_processing
+                from PIL import Image
+                
+                # Check if we need to process (using Background Settings)
+                # User keys: mask_bg_shrink_size, mask_bg_blur_radius, mask_bg_min_alpha
+                need_proc = any([
+                    getattr(settings, "mask_bg_shrink_size", 1) > 0,
+                    getattr(settings, "mask_bg_blur_radius", 3) > 0,
+                    getattr(settings, "mask_bg_min_alpha", 0) > 0,
+                    True # Enforce fill white check
+                ])
+                
+                if need_proc:
+                    try:
+                        with Image.open(new_path) as img:
+                            img = img.convert("RGBA")
+                            
+                            processed_alpha = apply_advanced_mask_processing(
+                                img, 
+                                img.getchannel("A"),
+                                shrink=getattr(settings, "mask_bg_shrink_size", 1),
+                                blur=getattr(settings, "mask_bg_blur_radius", 3),
+                                min_alpha=getattr(settings, "mask_bg_min_alpha", 0)
+                            )
+                            
+                            img.putalpha(processed_alpha)
+                            
+                            # Alpha=0 -> Fill White
+                            datas = img.getdata()
+                            new_data = []
+                            for item in datas:
+                                if item[3] == 0:
+                                    new_data.append((255, 255, 255, 0))
+                                else:
+                                    new_data.append(item)
+                            img.putdata(new_data)
+                            
+                            img.save(new_path)
+                            
+                    except Exception as e:
+                        print(f"Post-processing failed: {e}")
+                        traceback.print_exc()
+
+            # 4. 更新 sidecar
             sidecar = load_image_sidecar(new_path)
             sidecar["masked_background"] = True
             save_image_sidecar(new_path, sidecar)

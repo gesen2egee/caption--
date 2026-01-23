@@ -97,9 +97,70 @@ class MaskTextTask(BaseTask):
             # NOTE: The original local worker implementation handles file saving.
             # We just need to sync back the result.
             
+            # Worker returns updated image status
             boxes = worker_output.result_data.get("box_count", 0) if worker_output.result_data else 0
             new_path = worker_output.result_data.get("result_path", image_path) if worker_output.result_data else image_path
             
+            # --- Advanced Post-Processing ---
+            if settings and os.path.exists(new_path):
+                from lib.utils.image_processing import apply_advanced_mask_processing
+                from PIL import Image
+                
+                # Check if we need to process
+                need_proc = any([
+                    settings.mask_text_shrink_size > 0,
+                    settings.mask_text_blur_radius > 0,
+                    settings.mask_text_min_alpha > 0,
+                    # We always check fill white? User said "原始alpha alpha=0..." 
+                    # Let's assume we enforce it if any mask op is done or just always?
+                    # User request: "原始alpha alpha=0像素填補白色...".
+                    # I'll do it as part of processing.
+                    True 
+                ])
+                
+                if need_proc:
+                    try:
+                        with Image.open(new_path) as img:
+                            img = img.convert("RGBA")
+                            
+                            # Apply advanced processing to Alpha
+                            # Note: This processes the WHOLE alpha channel of the result.
+                            processed_alpha = apply_advanced_mask_processing(
+                                img, 
+                                img.getchannel("A"), # Use current alpha as mask
+                                shrink=settings.mask_text_shrink_size,
+                                blur=settings.mask_text_blur_radius,
+                                min_alpha=settings.mask_text_min_alpha
+                            )
+                            
+                            # Put alpha back
+                            img.putalpha(processed_alpha)
+                            
+                            # "alpha=0 像素填補白色" logic
+                            # Create white background
+                            white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                            # Composite: If alpha is 0, show white.
+                            # Actually, we want to CHANGE the RGB of the pixel to White if Alpha is 0.
+                            # But keep the Alpha as 0.
+                            # So we want (255,255,255,0) where it was (r,g,b,0).
+                            # This helps some Inpainting models.
+                            
+                            datas = img.getdata()
+                            new_data = []
+                            for item in datas:
+                                # item is (r,g,b,a)
+                                if item[3] == 0:
+                                    new_data.append((255, 255, 255, 0))
+                                else:
+                                    new_data.append(item)
+                            img.putdata(new_data)
+                            
+                            img.save(new_path)
+                            
+                    except Exception as e:
+                        print(f"Post-processing failed: {e}")
+                        traceback.print_exc()
+
             # Since worker handles saving, we just update context
             context.image.masked_text = True
             context.image.path = new_path

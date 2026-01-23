@@ -163,17 +163,42 @@ class ProcessingMixin:
             src_for_processing = image_path
 
         from PIL import ImageChops
+        from lib.utils.image_processing import process_mask_channel
 
         with Image.open(src_for_processing) as img:
             img_rgba = img.convert("RGBA")
             mask_pil = self._qimage_to_pil_l(mask_qimg)
-            # resize to original size (dialog is scaled)
+            # resize to original size
             mask_pil = mask_pil.resize(img_rgba.size, Image.Resampling.NEAREST)
 
+            # mask_pil: 255=Painted(Remove), 0=Keep
+            # Create Keep Mask: 0=Remove, 255=Keep
+            keep = Image.eval(mask_pil, lambda v: 0 if v > 0 else 255)
+            
+            # Apply Advanced Processing to the "Keep Mask" using Text Settings
+            # User request: "手繪 ... (用文字的設定值)"
+            keep_processed = process_mask_channel(
+                keep, 
+                shrink=getattr(self.settings, "mask_text_shrink_size", 1),
+                blur=getattr(self.settings, "mask_text_blur_radius", 3),
+                min_alpha=getattr(self.settings, "mask_text_min_alpha", 0)
+            )
+
+            # Combine with Original Alpha
             alpha = img_rgba.getchannel("A")
-            keep = Image.eval(mask_pil, lambda v: 0 if v > 0 else 255)  # painted => transparent
-            new_alpha = ImageChops.multiply(alpha, keep)
+            new_alpha = ImageChops.multiply(alpha, keep_processed)
             img_rgba.putalpha(new_alpha)
+            
+            # "alpha=0 像素填補白色" logic
+            datas = img_rgba.getdata()
+            new_data = []
+            for item in datas:
+                if item[3] == 0:
+                    new_data.append((255, 255, 255, 0))
+                else:
+                    new_data.append(item)
+            img_rgba.putdata(new_data)
+            
             img_rgba.save(target_file, "WEBP")
 
         if ext != ".webp":

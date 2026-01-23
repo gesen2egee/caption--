@@ -117,6 +117,17 @@ DEFAULT_APP_SETTINGS = {
     "mask_padding": 1,
     "mask_blur_radius": 3,
     
+    # Advanced Mask Post-Processing
+    # Background (Unmask) settings
+    "mask_bg_shrink_size": 1,
+    "mask_bg_blur_radius": 3,
+    "mask_bg_min_alpha": 0,
+    
+    # Text (Mask Text) settings
+    "mask_text_shrink_size": 1,
+    "mask_text_blur_radius": 3,
+    "mask_text_min_alpha": 0,
+    
     # Batch Mask Logic
     "mask_batch_skip_once_processed": True,
     "mask_batch_min_foreground_ratio": 0.3,
