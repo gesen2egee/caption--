@@ -53,6 +53,10 @@ class StrokeCanvas(QLabel):
         self.pen_width = 30
         self.drawing = False
         self.last_pos = None
+        
+        self.rect_dragging = False
+        self.rect_start = None
+        self.rect_current = None
 
         self._update_display()
 
@@ -85,10 +89,32 @@ class StrokeCanvas(QLabel):
         painter2.drawLine(p1, p2)
         painter2.end()
 
+    def _draw_rect_commit(self, rect):
+        # Draw filled rect to mask
+        painter = QPainter(self.mask)
+        painter.fillRect(rect, QColor(255, 255, 255))
+        painter.end()
+        
+        # Draw filled rect to preview
+        painter2 = QPainter(self.preview)
+        painter2.fillRect(rect, QColor(255, 0, 0, 160))
+        painter2.end()
+
     def _update_display(self):
         pm = QPixmap(self.base_pixmap)
         painter = QPainter(pm)
         painter.drawPixmap(0, 0, self.preview)
+        
+        # Draw dynamic rect if dragging
+        if self.rect_dragging and self.rect_start and self.rect_current:
+             from PyQt6.QtCore import QRect
+             rect = QRect(self.rect_start, self.rect_current).normalized()
+             painter.fillRect(rect, QColor(255, 0, 0, 80)) # lighter preview
+             pen = QPen(QColor(255, 0, 0, 200))
+             pen.setWidth(2)
+             painter.setPen(pen)
+             painter.drawRect(rect)
+             
         painter.end()
         self.setPixmap(pm)
 
@@ -100,43 +126,63 @@ class StrokeCanvas(QLabel):
         off_y = int((self.height() - pm_h) / 2)
         x = int(widget_pos.x() - off_x)
         y = int(widget_pos.y() - off_y)
-        if x < 0 or y < 0 or x >= pm_w or y >= pm_h:
-            return None
+        # Ensure clamped to valid range for Rect, but for brush maybe skip?
+        # Let's clamp for safety.
+        x = max(0, min(x, pm_w - 1))
+        y = max(0, min(y, pm_h - 1))
         return QPoint(x, y)
 
     def mousePressEvent(self, event):
+        p = self._to_image_pos(event.position().toPoint())
+        if p is None: # Should be handled by clamp, but check just in case
+            return
+
         if event.button() == Qt.MouseButton.LeftButton:
-            p = self._to_image_pos(event.position().toPoint())
-            if p is None:
-                event.ignore()
-                return
             self.drawing = True
             self.last_pos = p
             event.accept()
-            return
-        super().mousePressEvent(event)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.rect_dragging = True
+            self.rect_start = p
+            self.rect_current = p
+            event.accept()
+            self._update_display()
+        else:
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        p = self._to_image_pos(event.position().toPoint())
+        
         if self.drawing and (event.buttons() & Qt.MouseButton.LeftButton):
-            p = self._to_image_pos(event.position().toPoint())
-            if p is None:
-                event.ignore()
-                return
             if self.last_pos is not None:
                 self._draw_line(self.last_pos, p)
                 self.last_pos = p
                 self._update_display()
             event.accept()
-            return
-        super().mouseMoveEvent(event)
+        elif self.rect_dragging and (event.buttons() & Qt.MouseButton.RightButton):
+            self.rect_current = p
+            self._update_display()
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.drawing:
             self.drawing = False
             self.last_pos = None
             event.accept()
-            return
-        super().mouseReleaseEvent(event)
+        elif event.button() == Qt.MouseButton.RightButton and self.rect_dragging:
+            from PyQt6.QtCore import QRect
+            self.rect_dragging = False
+            if self.rect_start and self.rect_current:
+                rect = QRect(self.rect_start, self.rect_current).normalized()
+                self._draw_rect_commit(rect)
+                self.rect_start = None
+                self.rect_current = None
+            self._update_display()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
     def get_mask(self) -> QImage:
         return QImage(self.mask)
@@ -152,7 +198,7 @@ class StrokeEraseDialog(QDialog):
 
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(self.tr("title_stroke_eraser"))
+        self.setWindowTitle("遮罩工具 (Mask Tool)")
         self.image_path = image_path
         self._mask = None
 
@@ -170,15 +216,19 @@ class StrokeEraseDialog(QDialog):
         self.canvas = StrokeCanvas(pm)
         layout.addWidget(self.canvas, 1)
 
+        # Cleaned up controls
         ctrl = QHBoxLayout()
         ctrl.addWidget(QLabel(self.tr("label_pen_width")))
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setMinimum(5)
-        self.slider.setMaximum(120)
-        self.slider.setValue(30)
-        self.slider.valueChanged.connect(lambda v: self.canvas.set_pen_width(v))
-        ctrl.addWidget(self.slider, 1)
+        # Preset Buttons
+        btn_sizes = [15, 30, 60, 100]
+        for size in btn_sizes:
+            btn = QPushButton(str(size))
+            btn.setFixedWidth(50)
+            btn.clicked.connect(lambda _, s=size: self.canvas.set_pen_width(s))
+            ctrl.addWidget(btn)
+
+        ctrl.addStretch(1)
 
         self.btn_clear = QPushButton(self.tr("btn_clear_action"))
         self.btn_clear.clicked.connect(self.canvas.clear_mask)

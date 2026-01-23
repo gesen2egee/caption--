@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, QBuffer, QIODevice, QByteArray
 
 from PIL import Image, ImageChops
 
-from lib.utils.file_ops import create_image_data_from_path, has_raw_backup
+from lib.utils.file_ops import create_image_data_from_path, has_raw_backup, backup_raw_image
 from lib.utils.tag_context import build_llm_tags_context_for_image
 from lib.ui.components.stroke import StrokeEraseDialog
 from lib.pipeline.tasks import TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
@@ -221,6 +221,9 @@ class ProcessingMixin:
 
         mask_qimg, _w = dlg.get_result()
         try:
+            # Backup Raw Image if needed
+            backup_raw_image(self.current_image_path)
+            
             old_path = self.current_image_path
             new_path = self.stroke_erase_to_webp(old_path, mask_qimg)
             if not new_path:
