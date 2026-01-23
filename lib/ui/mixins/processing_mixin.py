@@ -27,7 +27,7 @@ class ProcessingMixin:
         if not self.current_image_path:
             return
         
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
@@ -37,7 +37,7 @@ class ProcessingMixin:
         
         try:
             image_data = create_image_data_from_path(self.current_image_path)
-            self.pipeline_manager.run_tagger([image_data])
+            self.run_task(TaggerTask, [image_data])
         except Exception as e:
             self.on_pipeline_error(str(e))
 
@@ -45,7 +45,7 @@ class ProcessingMixin:
         if not self.current_image_path:
             return
             
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
@@ -60,16 +60,13 @@ class ProcessingMixin:
             )
             if reply == QMessageBox.StandardButton.No:
                 return
-
+        
         self.btn_run_llm.setEnabled(False)
         self.btn_run_llm.setText(self.tr("btn_txt_running_llm"))
         
         try:
             image_data = create_image_data_from_path(self.current_image_path)
-            self.pipeline_manager.run_llm(
-                [image_data], 
-                user_prompt=user_prompt
-            )
+            self.run_task(LLMTask, [image_data], extra={"user_prompt": user_prompt})
         except Exception as e:
             self.on_pipeline_error(str(e))
 
@@ -78,12 +75,12 @@ class ProcessingMixin:
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
             return
             
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
              QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
-            self.pipeline_manager.run_unmask([create_image_data_from_path(self.current_image_path)])
+            self.run_task(UnmaskTask, [create_image_data_from_path(self.current_image_path)])
             self.statusBar().showMessage(self.tr("status_unmasking"), 2000)
         except Exception as e:
             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_unmask_failed')}{e}")
@@ -97,12 +94,12 @@ class ProcessingMixin:
              QMessageBox.information(self, self.tr("title_info"), self.tr("msg_ocr_disabled"))
              return
              
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
              QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
-             self.pipeline_manager.run_mask_text([create_image_data_from_path(self.current_image_path)])
+             self.run_task(MaskTextTask, [create_image_data_from_path(self.current_image_path)])
              self.statusBar().showMessage(self.tr("status_masking_text"), 2000)
         except Exception as e:
              QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_failed')}{e}")
@@ -116,12 +113,12 @@ class ProcessingMixin:
             QMessageBox.information(self, self.tr("title_restore"), self.tr("msg_restore_no_backup"))
             return
             
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
              QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
         try:
-            self.pipeline_manager.run_restore([create_image_data_from_path(self.current_image_path)])
+            self.run_task(RestoreTask, [create_image_data_from_path(self.current_image_path)])
             self.statusBar().showMessage(self.tr("status_restoring"), 2000)
         except Exception as e:
             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_restore_failed')}{e}")
