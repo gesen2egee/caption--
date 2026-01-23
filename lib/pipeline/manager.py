@@ -26,7 +26,8 @@ class PipelineManager(QObject):
     """
     
     # 信號（轉發給 UI）
-    progress = pyqtSignal(int, int, str)          # 進度 (current, total, filename)
+    # 信號（轉發給 UI）
+    progress = pyqtSignal(int, int, str, float)          # 進度 (current, total, filename, speed)
     image_done = pyqtSignal(str, object)          # 單圖完成 (image_path, TaskResult)
     pipeline_done = pyqtSignal(str, list)         # Pipeline 完成 (name, results)
     error = pyqtSignal(str)                        # 錯誤

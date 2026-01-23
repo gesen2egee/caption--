@@ -23,7 +23,7 @@ class Pipeline(QThread):
     """
     
     # 信號
-    progress = pyqtSignal(int, int, str)       # 進度 (current, total, filename)
+    progress = pyqtSignal(int, int, str, float)       # 進度 (current, total, filename, speed)
     image_done = pyqtSignal(str, object)       # 單圖完成 (image_path, TaskResult)
     pipeline_done = pyqtSignal(list)           # Pipeline 完成 (all_results)
     error = pyqtSignal(str)                    # 錯誤
@@ -66,15 +66,24 @@ class Pipeline(QThread):
     
     def run(self):
         """執行 Pipeline"""
+        import time
         try:
             total = len(self.images)
+            start_time = time.time()
             
             for i, image in enumerate(self.images):
                 if self._stop:
                     break
                 
-                # 發送進度
-                self.progress.emit(i + 1, total, image.filename)
+                # 計算速度 (平均速度)
+                elapsed = time.time() - start_time
+                speed = (i) / elapsed if elapsed > 0 and i > 0 else 0.0
+                # 如果是第一張，速度暫時為 0 或不顯示
+                
+                # 發送進度 (在處理該圖片*之前*發送，還是之後？通常是 "正在處理第 X 張")
+                # UI 上通常顯示 "Processing X/N ... filename"
+                # Speed 用於預估剩餘時間或顯示當前性能
+                self.progress.emit(i + 1, total, image.filename, speed)
                 
                 # 建立上下文
                 context = TaskContext(

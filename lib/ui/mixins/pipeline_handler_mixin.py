@@ -11,12 +11,46 @@ class PipelineHandlerMixin:
     """
     Mixin handling Pipeline callback events.
     """
-    def on_pipeline_progress(self, current, total, filename):
+    def on_pipeline_progress(self, current, total, filename, speed=0.0):
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(current)
-        msg = self.tr("status_batch_progress_fmt").replace("{current}", str(current)).replace("{total}", str(total)).replace("{filename}", filename)
-        self.progress_bar.setFormat(msg)
+        
+        # 取得任務與模型資訊
+        task_name = self.pipeline_manager._current_pipeline.name if self.pipeline_manager._current_pipeline else "TASK"
+        model_info = task_name.upper()
+        
+        if "tagger" in task_name:
+            # 簡化顯示，只取最後一個斜線後的名稱
+            model = self.settings.get("tagger_model", "")
+            if "/" in model: 
+                 model = model.split("/")[-1]
+            model_info = f"TAGGER ({model})"
+        elif "llm" in task_name:
+            model = self.settings.get("llm_model", "")
+            model_info = f"LLM ({model})"
+        elif "unmask" in task_name:
+             mode = self.settings.get("mask_remover_mode", "base")
+             model_info = f"UNMASK ({mode})"
+        elif "mask_text" in task_name:
+             model_info = "MASK TEXT (OCR)"
+        elif "restore" in task_name:
+             model_info = "RESTORE"
+        
+        # 速度
+        if speed > 0:
+            if speed < 1:
+                speed_str = f"{1/speed:.2f} s/it"
+            else:
+                speed_str = f"{speed:.2f} it/s"
+        else:
+            speed_str = "..."
+
+        base_msg = self.tr("status_batch_progress_fmt").replace("{current}", str(current)).replace("{total}", str(total)).replace("{filename}", filename)
+        
+        final_msg = f"{model_info} | {base_msg} | {speed_str}"
+            
+        self.progress_bar.setFormat(final_msg)
         self.btn_cancel_batch.setVisible(True)
 
     def on_pipeline_error(self, err_msg):
