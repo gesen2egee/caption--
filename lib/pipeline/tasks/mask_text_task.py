@@ -34,16 +34,17 @@ class MaskTextTask(BaseTask):
         
         if not settings:
             return False, ""
+            
+        if context.extra.get("force_execution", False):
+            return False, ""
         
         # 已處理過
         if settings.mask_batch_skip_once_processed and image.masked_text:
             return True, "已去字"
         
         # 需要 background 標籤
-        if settings.mask_batch_only_if_has_background_tag:
-            tags = (image.tagger_tags or "").lower()
-            if "background" not in tags:
-                return True, "無 background 標籤"
+        if settings.mask_batch_skip_once_processed and image.masked_text:
+            return True, "已去字"
         
         return False, ""
     

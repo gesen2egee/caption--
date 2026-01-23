@@ -25,6 +25,9 @@ class RestoreTask(BaseTask):
     
     def should_skip(self, context: TaskContext) -> Tuple[bool, str]:
         """檢查是否有備份"""
+        if context.extra.get("force_execution", False):
+            return False, ""
+            
         sidecar = load_image_sidecar(context.image.path)
         raw_rel = sidecar.get("raw_backup_path") or sidecar.get("raw_image_rel_path")
         if not raw_rel:

@@ -36,6 +36,9 @@ class UnmaskTask(BaseTask):
         
         if not settings:
             return False, ""
+            
+        if context.extra.get("force_execution", False):
+            return False, ""
         
         # 已處理過
         if settings.mask_batch_skip_once_processed and image.masked_background:

@@ -87,15 +87,20 @@ class BaseTask(QThread):
                 elapsed = time.time() - start_time
                 speed = (i) / elapsed if elapsed > 0 and i > 0 else 0.0
                 
-                # Emit progress BEFORE processing (or allow UI to show "Processing...")
+                # Emit progress BEFORE processing
                 self.progress.emit(i + 1, total, image.filename, speed)
                 
+                # 如果是單張任務，強制執行 (無視 Skip 條件)
+                task_extra = self.extra.copy()
+                if total == 1:
+                    task_extra["force_execution"] = True
+
                 context = TaskContext(
                     image=image,
                     settings=self.settings,
                     prompt=self.prompt,
                     folder=self.folder,
-                    extra=self.extra,
+                    extra=task_extra,
                 )
                 
                 # Execute Logic

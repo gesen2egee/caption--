@@ -26,6 +26,9 @@ class LLMTask(BaseTask):
     
     def should_skip(self, context: TaskContext) -> Tuple[bool, str]:
         """檢查 NSFW 跳過設定"""
+        if context.extra.get("force_execution", False):
+            return False, ""
+            
         if context.settings and context.settings.llm_skip_nsfw_on_batch:
             tags = (context.image.tagger_tags or "").lower()
             if "explicit" in tags or "questionable" in tags:

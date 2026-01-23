@@ -118,7 +118,6 @@ class PipelineHandlerMixin:
         elif "restore" in task_name:
              model_info = "RESTORE"
         
-        # 速度
         if speed > 0:
             if speed < 1:
                 speed_str = f"{1/speed:.2f} s/it"
@@ -127,9 +126,8 @@ class PipelineHandlerMixin:
         else:
             speed_str = "..."
 
-        base_msg = self.tr("status_batch_progress_fmt").replace("{current}", str(current)).replace("{total}", str(total)).replace("{filename}", filename)
-        
-        final_msg = f"{model_info} | {base_msg} | {speed_str}"
+        # Format: [MODEL] Filename (current/total) - Speed
+        final_msg = f"{model_info} | {os.path.basename(filename)} ({current}/{total}) - {speed_str}"
             
         self.progress_bar.setFormat(final_msg)
         self.btn_cancel_batch.setVisible(True)
