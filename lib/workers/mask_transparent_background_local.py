@@ -108,6 +108,13 @@ class MaskTransparentBackgroundLocalWorker(BaseWorker):
             # 執行去背 (改用 map 模式以保留原始 RGB)
             pred = remover.process(img, type="map")  # 輸出為 PIL Image (L)
             
+            # 確保 Mask 為 L 模式且尺寸一致
+            if pred.mode != 'L':
+                 pred = pred.convert('L')
+            
+            if pred.size != img.size:
+                 pred = pred.resize(img.size, Image.Resampling.BILINEAR)
+            
             # 將原圖轉換為 RGBA 並將預測遮罩作為 Alpha 通道
             result = img.copy().convert("RGBA")
             result.putalpha(pred)

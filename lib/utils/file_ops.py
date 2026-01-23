@@ -172,8 +172,6 @@ def delete_raw_backup(image_path: str) -> bool:
         if os.path.exists(abs_raw_path):
             os.remove(abs_raw_path)
         
-        if "raw_backup_path" in sidecar:
-            del sidecar["raw_backup_path"]
         if "raw_image_rel_path" in sidecar:
             del sidecar["raw_image_rel_path"]
         
@@ -182,3 +180,28 @@ def delete_raw_backup(image_path: str) -> bool:
     except Exception as e:
         print(f"[DeleteBackup] 刪除備份失敗 {image_path}: {e}")
         return False
+
+
+# ==========================================
+#  ImageData Helpers
+# ==========================================
+
+from typing import List
+from lib.core.dataclasses import ImageData
+
+def create_image_data_from_path(image_path: str) -> ImageData:
+    """從檔案路徑建立 ImageData"""
+    sidecar = load_image_sidecar(image_path)
+    return ImageData(
+        path=image_path,
+        tagger_tags=sidecar.get("tagger_tags"),
+        nl_pages=sidecar.get("nl_pages", []),
+        masked_background=sidecar.get("masked_background", False),
+        masked_text=sidecar.get("masked_text", False),
+        raw_image_rel_path=sidecar.get("raw_image_rel_path") or sidecar.get("raw_backup_path"),
+    )
+
+
+def create_image_data_list(image_paths: List[str]) -> List[ImageData]:
+    """從檔案路徑列表建立 ImageData 列表"""
+    return [create_image_data_from_path(p) for p in image_paths]

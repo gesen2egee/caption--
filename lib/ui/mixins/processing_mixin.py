@@ -9,10 +9,10 @@ from PyQt6.QtCore import Qt, QBuffer, QIODevice, QByteArray
 
 from PIL import Image, ImageChops
 
-from lib.pipeline.manager import create_image_data_from_path
+from lib.utils.file_ops import create_image_data_from_path, has_raw_backup
 from lib.utils.tag_context import build_llm_tags_context_for_image
-from lib.utils.file_ops import has_raw_backup
 from lib.ui.components.stroke import StrokeEraseDialog
+from lib.pipeline.tasks import TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow

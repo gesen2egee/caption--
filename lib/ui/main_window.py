@@ -47,7 +47,7 @@ from lib.ui.components.stroke import create_checkerboard_png_bytes
 
 
 
-from lib.pipeline.manager import PipelineManager
+
 
 from lib.utils.batch_writer import write_batch_result
 
@@ -67,18 +67,9 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.settings = load_app_settings()
         super().__init__()
         self.setWindowTitle(self.tr("app_title"))
-
-        # Init PipelineManager
-        self.pipeline_manager = PipelineManager(self)
-        # Convert dict settings to dataclass safely
-        valid_keys = Settings.__annotations__.keys()
-        clean_settings = {k: v for k, v in self.settings.items() if k in valid_keys}
-        self.pipeline_manager.set_settings(Settings(**clean_settings))
         
-        self.pipeline_manager.image_done.connect(self.on_pipeline_image_done)
-        self.pipeline_manager.progress.connect(self.on_pipeline_progress)
-        self.pipeline_manager.pipeline_done.connect(self.on_pipeline_done)
-        self.pipeline_manager.error.connect(self.on_pipeline_error)
+        # Init Task Tracking
+        self._current_task = None
 
         self.llm_base_url = str(self.settings.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
         self.api_key = str(self.settings.get("llm_api_key", DEFAULT_APP_SETTINGS["llm_api_key"]))

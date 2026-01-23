@@ -3,10 +3,11 @@ from typing import TYPE_CHECKING
 import os
 from PyQt6.QtWidgets import QMessageBox, QDialog
 
-from lib.pipeline.manager import create_image_data_list
+from lib.utils.file_ops import create_image_data_list
 from lib.utils.batch_writer import write_batch_result
 from lib.utils.sidecar import load_image_sidecar
 from lib.utils.memory_utils import unload_all_models
+from lib.pipeline.tasks import TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
@@ -17,7 +18,34 @@ class BatchMixin:
     """
 
     def on_pipeline_done(self, name, results):
-        self.statusBar().showMessage(self.tr("status_task_completed").replace("{name}", name), 5000)
+        # 分析結果
+        total = len(results)
+        skipped = sum(1 for r in results if r.skipped)
+        errors = sum(1 for r in results if not r.success)
+        
+        # 如果是單張處理
+        if total == 1:
+            res = results[0]
+            if res.skipped:
+                reason = res.skip_reason or self.tr("msg_task_skipped")
+                self.statusBar().showMessage(f"{name}: {reason}", 5000)
+            elif not res.success:
+                self.statusBar().showMessage(f"{name}: 失敗 - {res.error}", 5000)
+            else:
+                # 成功情況，檢查特殊狀態
+                is_mask_text_no_box = "mask_text" in name.lower() and res.result_data and res.result_data.get("box_count", 0) == 0
+                
+                if is_mask_text_no_box:
+                    self.statusBar().showMessage(self.tr("msg_no_text_detected"), 5000)
+                else:
+                    self.statusBar().showMessage(self.tr("status_task_completed").replace("{name}", name), 5000)
+        else:
+            # 批量處理
+            msg = self.tr("status_task_completed").replace("{name}", name)
+            if skipped > 0 or errors > 0:
+                msg += f" (Success: {total-skipped-errors}, Skip: {skipped}, Err: {errors})"
+            self.statusBar().showMessage(msg, 5000)
+            
         self.progress_bar.setVisible(False)
         self.btn_cancel_batch.setVisible(False)
         self.set_batch_ui_enabled(True)
@@ -74,8 +102,7 @@ class BatchMixin:
 
     def cancel_batch(self):
         self.statusBar().showMessage(self.tr("status_aborting"), 2000)
-        if self.pipeline_manager.is_running():
-            self.pipeline_manager.stop()
+        self.stop_current_task()
         for attr in ['batch_mask_text_thread']:
              thread = getattr(self, attr, None)
              if thread is not None and thread.isRunning():
@@ -84,7 +111,7 @@ class BatchMixin:
     def run_batch_tagger(self):
         if not self.image_files:
             return
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
@@ -95,14 +122,14 @@ class BatchMixin:
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_tagger(images)
+             self.run_task(TaggerTask, images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
     def run_batch_tagger_to_txt(self):
         if not self.image_files:
             return
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
         
@@ -142,7 +169,7 @@ class BatchMixin:
             self.statusBar().showMessage(self.tr("status_remaining_tagger").replace("{count}", str(len(files_to_process))), 5000)
 
             images = create_image_data_list(files_to_process)
-            self.pipeline_manager.run_tagger(images)
+            self.run_task(TaggerTask, images)
 
         except Exception as e:
             self.on_pipeline_error(str(e))
@@ -150,7 +177,7 @@ class BatchMixin:
     def run_batch_llm(self):
         if not self.image_files:
             return
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
@@ -168,17 +195,14 @@ class BatchMixin:
         try:
              images = create_image_data_list(self.image_files)
              user_prompt = self.prompt_edit.toPlainText()
-             self.pipeline_manager.run_llm(
-                 images,
-                 user_prompt=user_prompt
-             )
+             self.run_task(LLMTask, images, extra={"user_prompt": user_prompt})
         except Exception as e:
              self.on_pipeline_error(str(e))
 
     def run_batch_llm_to_txt(self):
         if not self.image_files:
             return
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
@@ -221,10 +245,7 @@ class BatchMixin:
             
             images = create_image_data_list(files_to_process)
             user_prompt = self.prompt_edit.toPlainText()
-            self.pipeline_manager.run_llm(
-                 images,
-                 user_prompt=user_prompt
-            )
+            self.run_task(LLMTask, images, extra={"user_prompt": user_prompt})
 
         except Exception as e:
             self.on_pipeline_error(str(e))
@@ -232,7 +253,7 @@ class BatchMixin:
     def run_batch_unmask_background(self):
         if not self.image_files:
             return
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
              QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
              return
 
@@ -250,7 +271,7 @@ class BatchMixin:
             
         try:
              images = create_image_data_list(targets)
-             self.pipeline_manager.run_unmask(images)
+             self.run_task(UnmaskTask, images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
@@ -259,13 +280,13 @@ class BatchMixin:
             QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
 
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_mask_text(images)
+             self.run_task(MaskTextTask, images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 
@@ -274,7 +295,7 @@ class BatchMixin:
             QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
 
-        if self.pipeline_manager.is_running():
+        if self.is_task_running():
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
 
@@ -288,7 +309,7 @@ class BatchMixin:
 
         try:
              images = create_image_data_list(self.image_files)
-             self.pipeline_manager.run_restore(images)
+             self.run_task(RestoreTask, images)
         except Exception as e:
              self.on_pipeline_error(str(e))
 

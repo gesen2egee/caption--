@@ -1,23 +1,104 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Type, Optional, Dict, Any
 import os
 
 from lib.pipeline.context import TaskResult
 from lib.utils.parsing import extract_llm_content_and_postprocess
+from lib.core.dataclasses import ImageData, Settings, Prompt, FolderMeta
+from lib.pipeline.tasks import BaseTask, TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
 
 class PipelineHandlerMixin:
     """
-    Mixin handling Pipeline callback events.
+    Mixin handling Task execution and callback events.
+    Now directly manages the Task Thread (UI -> Task).
     """
+
+    # ============================================================
+    # Task Execution Management
+    # ============================================================
+    
+    def is_task_running(self) -> bool:
+        """Check if any task is currently running."""
+        return getattr(self, "_current_task", None) is not None and self._current_task.isRunning()
+    
+    def stop_current_task(self):
+        """Request stop for the current task."""
+        if self._current_task:
+            self._current_task.stop()
+
+    def run_task(self, TaskClass: Type[BaseTask], images: List[ImageData], extra: Optional[Dict[str, Any]] = None):
+        """Run a specified Task."""
+        if self.is_task_running():
+            self.on_pipeline_error("已有任務正在執行 (Task Running)")
+            return
+
+        settings_obj = self._get_current_settings_obj()
+        
+        # Create Task (Thread)
+        self._current_task = TaskClass(
+            images=images,
+            settings=settings_obj,
+            prompt=None, 
+            folder=None, 
+            extra=extra,
+        )
+        
+        # Connect Signals directly to UI handlers
+        self._current_task.progress.connect(self.on_pipeline_progress)
+        self._current_task.image_done.connect(self.on_pipeline_image_done)
+        self._current_task.batch_done.connect(
+            lambda results: self._on_task_done(self._current_task.name, results)
+        )
+        self._current_task.error.connect(self.on_pipeline_error)
+        
+        # Start Thread
+        self._current_task.start()
+
+    def _get_current_settings_obj(self) -> Settings:
+        """Helper to create Settings dataclass from current UI dict settings."""
+        valid_keys = Settings.__annotations__.keys()
+        clean_settings = {k: v for k, v in self.settings.items() if k in valid_keys}
+        return Settings(**clean_settings)
+
+    def _on_task_done(self, name: str, results: List[TaskResult]):
+        """Internal callback when task thread finishes."""
+        self.on_pipeline_done(name, results)
+        self._current_task = None
+
+    # ============================================================
+    # Convenience Methods (Helpers)
+    # ============================================================
+
+    def run_tagger(self, images: List[ImageData]):
+        self.run_task(TaggerTask, images)
+
+    def run_llm(self, images: List[ImageData], user_prompt: str = None, system_prompt: str = None):
+        extra = {}
+        if user_prompt: extra["user_prompt"] = user_prompt
+        if system_prompt: extra["system_prompt"] = system_prompt
+        self.run_task(LLMTask, images, extra=extra)
+
+    def run_unmask(self, images: List[ImageData]):
+        self.run_task(UnmaskTask, images)
+
+    def run_mask_text(self, images: List[ImageData]):
+        self.run_task(MaskTextTask, images)
+
+    def run_restore(self, images: List[ImageData]):
+        self.run_task(RestoreTask, images)
+
+    # ============================================================
+    # Signal Handlers
+    # ============================================================
     def on_pipeline_progress(self, current, total, filename, speed=0.0):
         self.progress_bar.setVisible(True)
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(current)
         
         # 取得任務與模型資訊
-        task_name = self.pipeline_manager._current_pipeline.name if self.pipeline_manager._current_pipeline else "TASK"
+        task_name = self._current_task.name if self._current_task else "TASK"
         model_info = task_name.upper()
         
         if "tagger" in task_name:
@@ -73,7 +154,7 @@ class PipelineHandlerMixin:
              # If strictly single image mode, maybe show alert? But status bar is less intrusive.
              return
 
-        task_name = self.pipeline_manager._current_pipeline.name if self.pipeline_manager._current_pipeline else ""
+        task_name = self._current_task.name if self._current_task else ""
         
         # Tagger
         if "tagger" in task_name:
