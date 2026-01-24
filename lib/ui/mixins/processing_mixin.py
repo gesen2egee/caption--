@@ -142,6 +142,8 @@ class ProcessingMixin:
         if not image_path:
             return ""
 
+        from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
+
         src_dir = os.path.dirname(image_path)
         unmask_dir = os.path.join(src_dir, "unmask")
         os.makedirs(unmask_dir, exist_ok=True)
@@ -150,17 +152,29 @@ class ProcessingMixin:
         base_no_ext = os.path.splitext(image_path)[0]
 
         target_file = base_no_ext + ".webp"
-        if os.path.exists(target_file) and os.path.abspath(target_file) != os.path.abspath(image_path):
-            target_file = self._unique_path(target_file)
+        # Change: Allow overwrite of existing webp
+        # if os.path.exists(target_file) and os.path.abspath(target_file) != os.path.abspath(image_path):
+        #    target_file = self._unique_path(target_file)
 
         moved_original = ""
         if ext == ".webp":
+            # If editing webp, move original to backup and overwrite current
             moved_original = self._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
+            shutil.copy2(image_path, moved_original) # Use copy then delete/overwrite to be safe
+            # Actually shutil.move is fine if we are about to overwrite 'image_path' which is 'target_file'
+            # But wait, we save to 'target_file' later.
+            # If we move 'image_path' away, 'target_file' (same path) is free.
             shutil.move(image_path, moved_original)
+            
             src_for_processing = moved_original
             target_file = image_path
         else:
             src_for_processing = image_path
+            # Check if target_file exists, maybe backup it too?
+            # If overwriting an existing webp (not the source image), maybe we should backup that webp?
+            if os.path.exists(target_file):
+                bkp_existing = self._unique_path(os.path.join(unmask_dir, os.path.basename(target_file)))
+                shutil.move(target_file, bkp_existing)
 
         from PIL import ImageChops
         from lib.utils.image_processing import process_mask_channel
@@ -187,23 +201,42 @@ class ProcessingMixin:
             # Combine with Original Alpha
             alpha = img_rgba.getchannel("A")
             new_alpha = ImageChops.multiply(alpha, keep_processed)
-            img_rgba.putalpha(new_alpha)
             
-            # "alpha=0 像素填補白色" logic
-            datas = img_rgba.getdata()
-            new_data = []
-            for item in datas:
+            # "alpha=0 像素填補白色" logic (Based on ORIGINAL Alpha)
+            # Logic: If Original Alpha is 0, set RGB to White.
+            # Otherwise, keep Original RGB (Don't affect RGB of erased stroked area).
+            # And use New Alpha.
+            
+            datas = img_rgba.getdata() # (r, g, b, old_a)
+            new_alpha_data = new_alpha.getdata()
+            
+            new_combined_data = []
+            # Optimization: Use zip for iteration
+            for item, new_a in zip(datas, new_alpha_data):
+                # item: (r, g, b, old_a)
                 if item[3] == 0:
-                    new_data.append((255, 255, 255, 0))
+                    # Original was transparent -> Fill White
+                    new_combined_data.append((255, 255, 255, new_a))
                 else:
-                    new_data.append(item)
-            img_rgba.putdata(new_data)
+                    # Original had content -> Keep RGB, use New Alpha
+                    new_combined_data.append((item[0], item[1], item[2], new_a))
+            
+            img_rgba.putdata(new_combined_data)
             
             img_rgba.save(target_file, "WEBP")
 
         if ext != ".webp":
             moved_original = self._unique_path(os.path.join(unmask_dir, os.path.basename(image_path)))
             shutil.move(image_path, moved_original)
+            
+            # Handle Sidecar: Copy to new webp, and move old json to backup
+            old_json = image_path + ".json"
+            if os.path.exists(old_json):
+                 sc = load_image_sidecar(image_path)
+                 save_image_sidecar(target_file, sc)
+                 
+                 backup_json = moved_original + ".json"
+                 shutil.move(old_json, backup_json)
 
         return target_file
 
