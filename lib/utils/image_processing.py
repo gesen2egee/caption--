@@ -1,6 +1,6 @@
 from PIL import Image, ImageFilter, ImageChops
 
-def process_mask_channel(mask: Image.Image, shrink_size: int, blur_radius: float, min_alpha: int) -> Image.Image:
+def process_mask_channel(mask: Image.Image, shrink: int, blur: float, min_alpha: int) -> Image.Image:
     """
     Process a single channel mask (L mode).
     1. Shrink (Erode) - Simulated by MinFilter? Or negative expand?
@@ -23,15 +23,15 @@ def process_mask_channel(mask: Image.Image, shrink_size: int, blur_radius: float
     processed = mask.copy()
     
     # 1. Shrink (Erode opaque area)
-    if shrink_size > 0:
+    if shrink > 0:
         # MinFilter erodes bright areas (255)
         # Using an odd kernel size ~ 2*shrink + 1 is common, or iteration.
         # PIL MinFilter size is diameter.
-        processed = processed.filter(ImageFilter.MinFilter(size=shrink_size * 2 + 1))
+        processed = processed.filter(ImageFilter.MinFilter(size=shrink * 2 + 1))
         
     # 2. Blur
-    if blur_radius > 0:
-        processed = processed.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    if blur > 0:
+        processed = processed.filter(ImageFilter.GaussianBlur(radius=blur))
         
     # 3. Clamp Min
     if min_alpha > 0:

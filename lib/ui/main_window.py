@@ -262,6 +262,33 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.image_label.setStyleSheet("background-color:#888;")
 
         left_layout.addWidget(self.image_label, 1)
+
+        # Image Control Bar
+        img_ctrl = QHBoxLayout()
+        img_ctrl.setContentsMargins(0, 5, 0, 0)
+        
+        img_ctrl.addStretch(1) # Center alignment start
+
+        self.btn_prev_img = QPushButton(self.tr("btn_prev"))
+        if self.btn_prev_img.text() == "btn_prev": self.btn_prev_img.setText("上一張")
+        self.btn_prev_img.clicked.connect(self.prev_image)
+        img_ctrl.addWidget(self.btn_prev_img)
+
+        self.btn_next_img = QPushButton(self.tr("btn_next"))
+        if self.btn_next_img.text() == "btn_next": self.btn_next_img.setText("下一張")
+        self.btn_next_img.clicked.connect(self.next_image)
+        img_ctrl.addWidget(self.btn_next_img)
+
+        self.btn_del_img = QPushButton("移除") 
+        self.btn_del_img.setToolTip("放到 no_use (Delete)")
+        self.btn_del_img.clicked.connect(self.delete_current_image)
+        self.btn_del_img.setStyleSheet("background-color: #ffebee; color: #c62828;")
+        img_ctrl.addWidget(self.btn_del_img)
+
+        img_ctrl.addStretch(1) # Center alignment end
+        
+        left_layout.addLayout(img_ctrl)
+
         splitter.addWidget(left_panel)
 
         # === Right Side ===
@@ -506,7 +533,9 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
             sc.activated.connect(fn)
 
         # Delete 保持原本（避免在 txt 刪字誤觸搬圖）
-        QShortcut(QKeySequence(Qt.Key.Key_Delete), self, self.delete_current_image)
+        sc_del = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
+        sc_del.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc_del.activated.connect(self.delete_current_image)
 
     def wheelEvent(self, event):
         pos = event.position().toPoint()
