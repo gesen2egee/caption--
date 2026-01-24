@@ -247,4 +247,4 @@ class StrokeEraseDialog(QDialog):
         layout.addLayout(btns)
 
     def get_result(self):
-        return self.canvas.get_mask(), int(self.slider.value())
+        return self.canvas.get_mask(), self.canvas.pen_width
