@@ -193,9 +193,9 @@ class ProcessingMixin:
             # User request: "手繪 ... (用文字的設定值)"
             keep_processed = process_mask_channel(
                 keep, 
-                shrink=getattr(self.settings, "mask_text_shrink_size", 1),
-                blur=getattr(self.settings, "mask_text_blur_radius", 3),
-                min_alpha=getattr(self.settings, "mask_text_min_alpha", 0)
+                shrink=self.settings.get("mask_text_shrink_size", 1),
+                blur=self.settings.get("mask_text_blur_radius", 3),
+                min_alpha=self.settings.get("mask_text_min_alpha", 0)
             )
 
             # Combine with Original Alpha
