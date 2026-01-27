@@ -268,5 +268,9 @@
     "tool_title_mask": "遮罩工具 (Mask Tool)",
     "tip_btn_prev_img": "切換到上一張圖片 (PgUp)",
     "tip_btn_next_img": "切換到下一張圖片 (PgDn/Space)",
-    "tip_btn_delete_img": "移除當前圖片至 .no_used/ 資料夾 (Del)"
+    "tip_btn_delete_img": "移除當前圖片至 .no_used/ 資料夾 (Del)",
+    "setting_llm_input_repeat": "LLM 輸入重複次數:",
+    "tip_llm_input_repeat": "將 User Prompt 與圖片重複輸入 N 次 (預設 2)，可能提升模型依從性。",
+    "chk_save_to_txt": "寫入 .txt",
+    "tip_chk_save_to_txt": "勾選後，無論單張或批量推論，結果皆會寫入對應的 .txt 檔案。\n若未勾選，僅會存入 JSON Sidecar (不修改 txt)。"
 }

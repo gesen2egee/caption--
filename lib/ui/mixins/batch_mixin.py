@@ -62,9 +62,11 @@ class BatchMixin:
 
     def set_batch_ui_enabled(self, enabled):
         self.btn_batch_tagger.setEnabled(enabled)
-        self.btn_batch_tagger_to_txt.setEnabled(enabled)
+        if hasattr(self, 'chk_tags_save_txt'):
+             self.chk_tags_save_txt.setEnabled(enabled)
         self.btn_batch_llm.setEnabled(enabled)
-        self.btn_batch_llm_to_txt.setEnabled(enabled)
+        if hasattr(self, 'chk_llm_save_txt'):
+             self.chk_llm_save_txt.setEnabled(enabled)
 
     def show_progress(self, current, total, name):
         self.progress_bar.setVisible(True)
@@ -116,64 +118,59 @@ class BatchMixin:
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
+        save_to_txt = False
+        if hasattr(self, 'chk_tags_save_txt') and self.chk_tags_save_txt.isChecked():
+            save_to_txt = True
+            
         self.btn_batch_tagger.setEnabled(False)
         self.btn_auto_tag.setEnabled(False)
-        self.btn_batch_tagger_to_txt.setEnabled(False)
-        self._is_batch_to_txt = False
-
-        try:
-             images = create_image_data_list(self.image_files)
-             self.run_task(TaggerTask, images)
-        except Exception as e:
-             self.on_pipeline_error(str(e))
-
-    def run_batch_tagger_to_txt(self):
-        if not self.image_files:
-            return
-        if self.is_task_running():
-            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
-            return
+        if hasattr(self, 'chk_tags_save_txt'):
+            self.chk_tags_save_txt.setEnabled(False)
         
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
+        self._is_batch_to_txt = save_to_txt
+        
+        try:
+            files_to_process = []
             
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_tagger_to_txt.setEnabled(False)
-        self.btn_batch_tagger.setEnabled(False)
+            if save_to_txt:
+                delete_chars = self.prompt_delete_chars()
+                if delete_chars is None:
+                    self.set_batch_ui_enabled(True)
+                    self.btn_auto_tag.setEnabled(True)
+                    return
+                self._batch_delete_chars = delete_chars
+                
+                already_done_count = 0
+                for img_path in self.image_files:
+                    sidecar = load_image_sidecar(img_path)
+                    tags_str = sidecar.get("tagger_tags", "")
 
-        files_to_process = []
-        already_done_count = 0
+                    if tags_str:
+                        self.write_batch_result_to_txt(img_path, tags_str, is_tagger=True)
+                        already_done_count += 1
+                    else:
+                        files_to_process.append(img_path)
+                
+                if already_done_count > 0:
+                    self.statusBar().showMessage(self.tr("msg_restore_sidecar_tagger").replace("{count}", str(already_done_count)), 5000)
 
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                tags_str = sidecar.get("tagger_tags", "")
-
-                if tags_str:
-                    self.write_batch_result_to_txt(img_path, tags_str, is_tagger=True)
-                    already_done_count += 1
-                else:
-                    files_to_process.append(img_path)
-
-            if already_done_count > 0:
-                self.statusBar().showMessage(self.tr("msg_restore_sidecar_tagger").replace("{count}", str(already_done_count)), 5000)
-
-            if not files_to_process:
-                self.set_batch_ui_enabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, self.tr("title_batch_tagger_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
-                return
-
-            self.statusBar().showMessage(self.tr("status_remaining_tagger").replace("{count}", str(len(files_to_process))), 5000)
+                if not files_to_process:
+                    self.set_batch_ui_enabled(True)
+                    self.btn_auto_tag.setEnabled(True)
+                    self._is_batch_to_txt = False
+                    QMessageBox.information(self, self.tr("title_batch_tagger_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
+                    return
+                
+                self.statusBar().showMessage(self.tr("status_remaining_tagger").replace("{count}", str(len(files_to_process))), 5000)
+                
+            else:
+                files_to_process = self.image_files
 
             images = create_image_data_list(files_to_process)
             self.run_task(TaggerTask, images)
 
         except Exception as e:
-            self.on_pipeline_error(str(e))
+             self.on_pipeline_error(str(e))
 
     def run_batch_llm(self):
         if not self.image_files:
@@ -182,6 +179,10 @@ class BatchMixin:
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
             return
             
+        save_to_txt = False
+        if hasattr(self, 'chk_llm_save_txt') and self.chk_llm_save_txt.isChecked():
+             save_to_txt = True
+        
         user_prompt = self.prompt_edit.toPlainText()
         if "{角色名}" in user_prompt:
              reply = QMessageBox.question(self, self.tr("title_warning"), self.tr("msg_prompt_char_name_warn"), QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -189,67 +190,55 @@ class BatchMixin:
                  return
 
         self.btn_batch_llm.setEnabled(False)
-        self.btn_batch_llm_to_txt.setEnabled(False)
         self.btn_run_llm.setEnabled(False)
-        self._is_batch_to_txt = False
+        if hasattr(self, 'chk_llm_save_txt'):
+             self.chk_llm_save_txt.setEnabled(False)
+             
+        self._is_batch_to_txt = save_to_txt
         
         try:
-             images = create_image_data_list(self.image_files)
+             files_to_process = []
+             
+             if save_to_txt:
+                 delete_chars = self.prompt_delete_chars()
+                 if delete_chars is None:
+                     self.set_batch_ui_enabled(True)
+                     self.btn_run_llm.setEnabled(True)
+                     return
+                 self._batch_delete_chars = delete_chars
+                 
+                 already_done_count = 0
+                 for img_path in self.image_files:
+                    sidecar = load_image_sidecar(img_path)
+                    nl = sidecar.get("nl_pages", [])
+                    content = nl[-1] if nl and isinstance(nl, list) else ""
+                    
+                    if content:
+                        self.write_batch_result_to_txt(img_path, content, is_tagger=False)
+                        already_done_count += 1
+                    else:
+                        files_to_process.append(img_path)
+                 
+                 if already_done_count > 0:
+                    self.statusBar().showMessage(self.tr("msg_restore_sidecar_llm").replace("{count}", str(already_done_count)), 5000)
+
+                 if not files_to_process:
+                    self.set_batch_ui_enabled(True)
+                    self.btn_run_llm.setEnabled(True)
+                    self._is_batch_to_txt = False
+                    QMessageBox.information(self, self.tr("title_batch_llm_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
+                    return
+                 
+                 self.statusBar().showMessage(self.tr("status_remaining_llm").replace("{count}", str(len(files_to_process))), 5000)
+             
+             else:
+                 files_to_process = self.image_files
+
+             images = create_image_data_list(files_to_process)
              user_prompt = self.prompt_edit.toPlainText()
              self.run_task(LLMTask, images, extra={"user_prompt": user_prompt})
         except Exception as e:
              self.on_pipeline_error(str(e))
-
-    def run_batch_llm_to_txt(self):
-        if not self.image_files:
-            return
-        if self.is_task_running():
-            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
-            return
-            
-        delete_chars = self.prompt_delete_chars()
-        if delete_chars is None:
-            return
-            
-        self._is_batch_to_txt = True
-        self._batch_delete_chars = delete_chars
-        
-        self.btn_batch_llm_to_txt.setEnabled(False)
-        self.btn_batch_llm.setEnabled(False)
-
-        files_to_process = []
-        already_done_count = 0
-        
-        try:
-            for img_path in self.image_files:
-                sidecar = load_image_sidecar(img_path)
-                nl = sidecar.get("nl_pages", [])
-                content = nl[-1] if nl and isinstance(nl, list) else ""
-                
-                if content:
-                    self.write_batch_result_to_txt(img_path, content, is_tagger=False)
-                    already_done_count += 1
-                else:
-                    files_to_process.append(img_path)
-            
-            if already_done_count > 0:
-                self.statusBar().showMessage(self.tr("msg_restore_sidecar_llm").replace("{count}", str(already_done_count)), 5000)
-
-            if not files_to_process:
-                self.set_batch_ui_enabled(True)
-                self.btn_run_llm.setEnabled(True)
-                self._is_batch_to_txt = False
-                QMessageBox.information(self, self.tr("title_batch_llm_txt"), self.tr("msg_batch_done_fmt").replace("{count}", str(already_done_count)))
-                return
-
-            self.statusBar().showMessage(self.tr("status_remaining_llm").replace("{count}", str(len(files_to_process))), 5000)
-            
-            images = create_image_data_list(files_to_process)
-            user_prompt = self.prompt_edit.toPlainText()
-            self.run_task(LLMTask, images, extra={"user_prompt": user_prompt})
-
-        except Exception as e:
-            self.on_pipeline_error(str(e))
 
     def run_batch_unmask_background(self):
         if not self.image_files:

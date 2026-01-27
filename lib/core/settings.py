@@ -63,7 +63,9 @@ DEFAULT_APP_SETTINGS = {
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
     "llm_skip_nsfw_on_batch": False,
+    "llm_skip_nsfw_on_batch": False,
     "llm_use_gray_mask": True,
+    "llm_input_repeat_count": 2,
     "last_open_dir": "",
 
     # Worker Selection

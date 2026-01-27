@@ -83,7 +83,9 @@ class Settings:
     llm_custom_prompt_template: str = ""
     llm_max_image_dimension: int = 1024
     llm_skip_nsfw_on_batch: bool = False
+    llm_skip_nsfw_on_batch: bool = False
     llm_use_gray_mask: bool = True
+    llm_input_repeat_count: int = 2
     
     # Tagger 設定
     tagger_worker: str = "tagger_imgutils_generic"

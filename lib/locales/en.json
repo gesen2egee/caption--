@@ -265,5 +265,9 @@
     "tool_title_mask": "Mask Tool",
     "tip_btn_prev_img": "Previous Image (PgUp)",
     "tip_btn_next_img": "Next Image (PgDn/Space)",
-    "tip_btn_delete_img": "Move current image to .no_used/ folder (Del)"
+    "tip_btn_delete_img": "Move current image to .no_used/ folder (Del)",
+    "setting_llm_input_repeat": "LLM Input Repeat Count:",
+    "tip_llm_input_repeat": "Repeat User Prompt and Image N times (Default 2) to potentially improve adherence.",
+    "chk_save_to_txt": "Write to .txt",
+    "tip_chk_save_to_txt": "If checked, results (Single or Batch) will be written to .txt file.\nIf unchecked, results are saved to JSON Sidecar only."
 }

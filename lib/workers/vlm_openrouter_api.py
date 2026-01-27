@@ -149,7 +149,15 @@ class VLMOpenRouterAPIWorker(BaseWorker):
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
                                     
-            user_content = [
+            # 2. 構建 User Content (支援重複輸入)
+            repeat_count = getattr(settings, 'llm_input_repeat_count', 2) if settings else 2
+            # Allow override from extra/input
+            repeat_count = int(input_data.extra.get("llm_input_repeat_count", repeat_count))
+            
+            user_content = []
+            
+            # 基本單元: [User Prompt, Image]
+            base_unit = [
                 {
                     "type": "text", 
                     "text": f"{user_prompt}"
@@ -157,27 +165,24 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
-                },
-                {
-                    "type": "text", 
-                    "text": f"{user_prompt}"
-                }, 
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
-                },
-                {
-                    "type": "text", 
-                    "text": f"{system_prompt}"
                 }
             ]
+            
+            for i in range(repeat_count):
+                # 在重複的單元之間插入 System Prompt (如果 User 要求的中間插入)
+                # Client example: User, Image, System, User, Image
+                if i > 0 and system_prompt:
+                    user_content.append({
+                        "type": "text",
+                        "text": f"{system_prompt}"
+                    })
+                
+                user_content.extend(base_unit)
 
-            # 2. 重複加入兩次訊息
-            for _ in range(1):
-                messages.append({
-                    "role": "user",
-                    "content": user_content
-                })
+            messages.append({
+                "role": "user",
+                "content": user_content
+            })
 
             response = client.chat.completions.create(
                 model=self.model_name,

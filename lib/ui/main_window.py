@@ -142,7 +142,6 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         has_tagger = reg.has_available_workers("TAGGER")
         self.btn_auto_tag.setEnabled(has_tagger)
         self.btn_batch_tagger.setEnabled(has_tagger)
-        self.btn_batch_tagger_to_txt.setEnabled(has_tagger)
         if not has_tagger:
             self.btn_auto_tag.setToolTip(self.tr("tip_no_worker"))
             self.btn_batch_tagger.setToolTip(self.tr("tip_no_worker"))
@@ -151,7 +150,6 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         has_llm = reg.has_available_workers("LLM")
         self.btn_run_llm.setEnabled(has_llm)
         self.btn_batch_llm.setEnabled(has_llm)
-        self.btn_batch_llm_to_txt.setEnabled(has_llm)
         if not has_llm:
             self.btn_run_llm.setToolTip(self.tr("tip_no_worker"))
         
@@ -321,10 +319,10 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.btn_batch_tagger.clicked.connect(self.run_batch_tagger)
         tags_toolbar.addWidget(self.btn_batch_tagger)
 
-        self.btn_batch_tagger_to_txt = QPushButton(self.tr("btn_batch_tagger_to_txt"))
-        self.btn_batch_tagger_to_txt.setToolTip(self.tr("tip_batch_tagger_txt"))
-        self.btn_batch_tagger_to_txt.clicked.connect(self.run_batch_tagger_to_txt)
-        tags_toolbar.addWidget(self.btn_batch_tagger_to_txt)
+        self.chk_tags_save_txt = QCheckBox(self.tr("chk_save_to_txt"))
+        self.chk_tags_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
+        self.chk_tags_save_txt.setChecked(True) # Default Checked? User didn't specify, but "to txt" implies intent.
+        tags_toolbar.addWidget(self.chk_tags_save_txt)
 
         self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
         self.btn_add_custom_tag.setToolTip(self.tr("tip_add_custom_tag"))
@@ -394,10 +392,10 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.btn_batch_llm.clicked.connect(self.run_batch_llm)
         nl_toolbar.addWidget(self.btn_batch_llm)
 
-        self.btn_batch_llm_to_txt = QPushButton(self.tr("btn_batch_llm_to_txt"))
-        self.btn_batch_llm_to_txt.setToolTip(self.tr("tip_batch_llm_txt"))
-        self.btn_batch_llm_to_txt.clicked.connect(self.run_batch_llm_to_txt)
-        nl_toolbar.addWidget(self.btn_batch_llm_to_txt)
+        self.chk_llm_save_txt = QCheckBox(self.tr("chk_save_to_txt"))
+        self.chk_llm_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
+        self.chk_llm_save_txt.setChecked(True)
+        nl_toolbar.addWidget(self.chk_llm_save_txt)
 
         self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
         self.btn_prev_nl.setToolTip(self.tr("tip_prev_nl"))

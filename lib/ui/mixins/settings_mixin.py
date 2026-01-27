@@ -71,11 +71,17 @@ class SettingsMixin:
         # Update main controls
         self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
         self.btn_batch_tagger.setText(self.tr("btn_batch_tagger"))
-        self.btn_batch_tagger_to_txt.setText(self.tr("btn_batch_tagger_to_txt"))
+        if hasattr(self, 'chk_tags_save_txt'):
+             self.chk_tags_save_txt.setText(self.tr("chk_save_to_txt"))
+             self.chk_tags_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
+             
         self.btn_add_custom_tag.setText(self.tr("btn_add_tag"))
         self.btn_run_llm.setText(self.tr("btn_run_llm"))
         self.btn_batch_llm.setText(self.tr("btn_batch_llm"))
-        self.btn_batch_llm_to_txt.setText(self.tr("btn_batch_llm_to_txt"))
+        if hasattr(self, 'chk_llm_save_txt'):
+             self.chk_llm_save_txt.setText(self.tr("chk_save_to_txt"))
+             self.chk_llm_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
+             
         self.btn_prev_nl.setText(self.tr("btn_prev"))
         self.btn_next_nl.setText(self.tr("btn_next"))
         self.btn_find_replace.setText(self.tr("btn_find_replace"))

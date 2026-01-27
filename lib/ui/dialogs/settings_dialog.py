@@ -101,6 +101,12 @@ class SettingsDialog(QDialog):
         self.chk_llm_use_gray_mask.setChecked(bool(self.cfg.get("llm_use_gray_mask", True)))
         self.chk_llm_use_gray_mask.setToolTip(self.tr("tip_llm_gray_mask"))
         form.addRow("", self.chk_llm_use_gray_mask)
+        
+        self.spin_llm_repeat = QSpinBox()
+        self.spin_llm_repeat.setRange(1, 10)
+        self.spin_llm_repeat.setValue(int(self.cfg.get("llm_input_repeat_count", 2)))
+        self.spin_llm_repeat.setToolTip(self.tr("tip_llm_input_repeat"))
+        form.addRow(self.tr("setting_llm_input_repeat"), self.spin_llm_repeat)
 
         llm_layout.addLayout(form)
 
@@ -501,6 +507,7 @@ class SettingsDialog(QDialog):
         cfg["llm_max_image_dimension"] = self.spin_llm_dim.value()
         cfg["llm_skip_nsfw_on_batch"] = self.chk_llm_skip_nsfw.isChecked()
         cfg["llm_use_gray_mask"] = self.chk_llm_use_gray_mask.isChecked()
+        cfg["llm_input_repeat_count"] = self.spin_llm_repeat.value()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_worker"] = self.cb_tagger_worker.currentData()
