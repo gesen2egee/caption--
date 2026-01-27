@@ -188,17 +188,15 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 "content": user_content
             })
 
-            # Params from settings
-            temperature = getattr(settings, 'llm_temperature', 1.0) if settings else 1.0
-            top_p = getattr(settings, 'llm_top_p', 0.95) if settings else 0.95
-            thinking_mode = getattr(settings, 'llm_thinking_mode', True) if settings else True
+            # User requested forced Instant Mode (No Thinking)
+            # Ignoring settings for these specific params
+            temperature = 0.6 
+            top_p = 0.95
             
-            # Allow overrides from extra
+            # Allow manual override via extra input only (not global settings)
             temperature = float(input_data.extra.get("temperature", temperature))
             top_p = float(input_data.extra.get("top_p", top_p))
-            if "thinking_mode" in input_data.extra:
-                 thinking_mode = bool(input_data.extra.get("thinking_mode"))
-
+            
             kwargs = {
                 "model": self.model_name,
                 "messages": messages,
@@ -207,11 +205,8 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 "top_p": top_p,
             }
             
-            # Handle Thinking Mode (Kimi specific)
-            if not thinking_mode:
-                # Instant mode logic
-                # To use instant mode, you need to pass {'chat_template_kwargs': {"thinking": False}}
-                kwargs["extra_body"] = {'chat_template_kwargs': {"thinking": False}}
+            # Force Instant Mode (thinking=False)
+            kwargs["extra_body"] = {'chat_template_kwargs': {"thinking": False}}
 
             response = client.chat.completions.create(**kwargs)
                         

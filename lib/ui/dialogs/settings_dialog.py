@@ -120,7 +120,7 @@ class SettingsDialog(QDialog):
         self.spin_llm_top_p.setValue(float(self.cfg.get("llm_top_p", 0.95)))
         form.addRow("Top P", self.spin_llm_top_p)
 
-        self.chk_llm_thinking = QCheckBox("Thinking Mode (Moonshot/Kimi)")
+        self.chk_llm_thinking = QCheckBox(self.tr("setting_llm_thinking"))
         self.chk_llm_thinking.setChecked(bool(self.cfg.get("llm_thinking_mode", True)))
         self.chk_llm_thinking.toggled.connect(self._on_thinking_toggled)
         form.addRow("", self.chk_llm_thinking)

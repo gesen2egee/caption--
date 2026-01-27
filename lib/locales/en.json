@@ -269,5 +269,6 @@
     "setting_llm_input_repeat": "LLM Input Repeat Count:",
     "tip_llm_input_repeat": "Repeat User Prompt and Image N times (Default 2) to potentially improve adherence.",
     "chk_save_to_txt": "Write to .txt",
-    "tip_chk_save_to_txt": "If checked, results (Single or Batch) will be written to .txt file.\nIf unchecked, results are saved to JSON Sidecar only."
+    "tip_chk_save_to_txt": "If checked, results (Single or Batch) will be written to .txt file.\nIf unchecked, results are saved to JSON Sidecar only.",
+    "setting_llm_thinking": "Thinking Mode (Kimi Only)"
 }
