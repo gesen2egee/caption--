@@ -167,7 +167,12 @@ class PipelineHandlerMixin:
                  self.tagger_tags = self.load_tagger_tags_for_current_image()
                  self.refresh_tags_tab()
              
-             if getattr(self, "_is_batch_to_txt", False) and output.result_text:
+             # Check write to txt (Batch Task flag OR UI Checkbox)
+             write_to_txt = getattr(self, "_is_batch_to_txt", False)
+             if not write_to_txt and hasattr(self, 'chk_tags_save_txt') and self.chk_tags_save_txt.isChecked():
+                 write_to_txt = True
+
+             if write_to_txt and output.result_text:
                   self.write_batch_result_to_txt(image_path, output.result_text, is_tagger=True)
 
         # LLM
@@ -186,7 +191,12 @@ class PipelineHandlerMixin:
                      self.update_nl_page_controls()
                      self.on_text_changed()
                      
-                 if getattr(self, "_is_batch_to_txt", False):
+                 # Check write to txt (Batch Task flag OR UI Checkbox)
+                 write_to_txt = getattr(self, "_is_batch_to_txt", False)
+                 if not write_to_txt and hasattr(self, 'chk_llm_save_txt') and self.chk_llm_save_txt.isChecked():
+                     write_to_txt = True
+
+                 if write_to_txt:
                       self.write_batch_result_to_txt(image_path, final_content, is_tagger=False)
 
         # Unmask or Mask Text
