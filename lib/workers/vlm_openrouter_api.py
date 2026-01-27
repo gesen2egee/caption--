@@ -206,7 +206,8 @@ class VLMOpenRouterAPIWorker(BaseWorker):
             }
             
             # Force Instant Mode (thinking=False)
-            kwargs["extra_body"] = {'chat_template_kwargs': {"thinking": False}}
+            # Use Official API format as previous method failed
+            kwargs["extra_body"] = {'thinking': {'type': 'disabled'}}
 
             response = client.chat.completions.create(**kwargs)
                         
