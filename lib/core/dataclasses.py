@@ -119,6 +119,15 @@ class Settings:
     mask_batch_max_foreground_ratio: float = 0.8
     mask_batch_skip_if_scenery_tag: bool = True
     
+    # 進階遮罩後處理 (背景與文字)
+    mask_bg_shrink_size: int = 1
+    mask_bg_blur_radius: int = 3
+    mask_bg_min_alpha: int = 0
+    
+    mask_text_shrink_size: int = 1
+    mask_text_blur_radius: int = 3
+    mask_text_min_alpha: int = 0
+    
     # OCR 設定
     mask_ocr_max_candidates: int = 300
     mask_ocr_heat_threshold: float = 0.2

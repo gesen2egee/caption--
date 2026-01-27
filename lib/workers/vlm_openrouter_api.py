@@ -148,24 +148,43 @@ class VLMOpenRouterAPIWorker(BaseWorker):
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
-            
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
-                    }
-                ]
-            })
-            
+                                    
+            user_content = [
+                {
+                    "type": "text", 
+                    "text": f"{user_prompt}"
+                }, 
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
+                },
+                {
+                    "type": "text", 
+                    "text": f"{user_prompt}"
+                }, 
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}
+                },
+                {
+                    "type": "text", 
+                    "text": f"{system_prompt}"
+                }
+            ]
+
+            # 2. 重複加入兩次訊息
+            for _ in range(1):
+                messages.append({
+                    "role": "user",
+                    "content": user_content
+                })
+
             response = client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 max_tokens=self.max_tokens,
             )
-            
+                        
             result_text = response.choices[0].message.content or ""
             
             # 更新 ImageData

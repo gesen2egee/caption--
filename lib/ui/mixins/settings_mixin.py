@@ -39,10 +39,7 @@ class SettingsMixin:
             self.settings = new_cfg
             save_app_settings(new_cfg)
 
-            # Update PipelineManager settings
-            valid_keys = Settings.__annotations__.keys()
-            clean_settings = {k: v for k, v in self.settings.items() if k in valid_keys}
-            self.pipeline_manager.set_settings(Settings(**clean_settings))
+            # 現在設定會在 Task 啟動時動態抓取，不需手動同步到已移除的 pipeline_manager
             
             # Check worker availability again (in case worker settings changed effectively enabling/disabling features)
             self.check_worker_availability()
