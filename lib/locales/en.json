@@ -258,5 +258,12 @@
     "label_llm_url": "LLM Base URL:",
     "label_api_key": "API Key:",
     "label_model": "Model:",
-    "tip_no_worker": "No worker available for this task (check settings or install dependencies)."
+    "msg_no_text_detected": "No text detected, image unchanged",
+    "btn_prev_img": "Prev Image",
+    "btn_next_img": "Next Image",
+    "btn_delete_img": "Remove",
+    "tool_title_mask": "Mask Tool",
+    "tip_btn_prev_img": "Previous Image (PgUp)",
+    "tip_btn_next_img": "Next Image (PgDn/Space)",
+    "tip_btn_delete_img": "Move current image to .no_used/ folder (Del)"
 }

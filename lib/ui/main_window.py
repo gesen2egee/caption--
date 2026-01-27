@@ -269,18 +269,18 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         
         img_ctrl.addStretch(1) # Center alignment start
 
-        self.btn_prev_img = QPushButton(self.tr("btn_prev"))
-        if self.btn_prev_img.text() == "btn_prev": self.btn_prev_img.setText("上一張")
+        self.btn_prev_img = QPushButton(self.tr("btn_prev_img"))
+        self.btn_prev_img.setToolTip(self.tr("tip_btn_prev_img"))
         self.btn_prev_img.clicked.connect(self.prev_image)
         img_ctrl.addWidget(self.btn_prev_img)
 
-        self.btn_next_img = QPushButton(self.tr("btn_next"))
-        if self.btn_next_img.text() == "btn_next": self.btn_next_img.setText("下一張")
+        self.btn_next_img = QPushButton(self.tr("btn_next_img"))
+        self.btn_next_img.setToolTip(self.tr("tip_btn_next_img"))
         self.btn_next_img.clicked.connect(self.next_image)
         img_ctrl.addWidget(self.btn_next_img)
 
-        self.btn_del_img = QPushButton("移除") 
-        self.btn_del_img.setToolTip("放到 no_use (Delete)")
+        self.btn_del_img = QPushButton(self.tr("btn_delete_img")) 
+        self.btn_del_img.setToolTip(self.tr("tip_btn_delete_img"))
         self.btn_del_img.clicked.connect(self.delete_current_image)
         self.btn_del_img.setStyleSheet("background-color: #ffebee; color: #c62828;")
         img_ctrl.addWidget(self.btn_del_img)

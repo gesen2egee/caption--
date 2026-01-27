@@ -198,7 +198,7 @@ class StrokeEraseDialog(QDialog):
 
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("遮罩工具 (Mask Tool)")
+        self.setWindowTitle(self.tr("tool_title_mask"))
         self.image_path = image_path
         self._mask = None
 

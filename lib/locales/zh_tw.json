@@ -261,5 +261,12 @@
     "tip_no_worker": "此任務無可用的 Worker (請檢查設定或安裝依賴)。",
     "msg_no_image_selected": "請先選擇一張圖片",
     "msg_task_skipped": "任務被跳過 (條件不符)",
-    "msg_no_text_detected": "未偵測到文字，圖片未修改"
+    "msg_no_text_detected": "未偵測到文字，圖片未修改",
+    "btn_prev_img": "上一張",
+    "btn_next_img": "下一張",
+    "btn_delete_img": "移除",
+    "tool_title_mask": "遮罩工具 (Mask Tool)",
+    "tip_btn_prev_img": "切換到上一張圖片 (PgUp)",
+    "tip_btn_next_img": "切換到下一張圖片 (PgDn/Space)",
+    "tip_btn_delete_img": "移除當前圖片至 .no_used/ 資料夾 (Del)"
 }

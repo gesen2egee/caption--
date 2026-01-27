@@ -84,6 +84,16 @@ class SettingsMixin:
         self.btn_txt_undo.setText(self.tr("btn_undo"))
         self.btn_txt_redo.setText(self.tr("btn_redo"))
         
+        if hasattr(self, 'btn_prev_img'):
+            self.btn_prev_img.setText(self.tr("btn_prev_img"))
+            self.btn_prev_img.setToolTip(self.tr("tip_btn_prev_img"))
+        if hasattr(self, 'btn_next_img'):
+            self.btn_next_img.setText(self.tr("btn_next_img"))
+            self.btn_next_img.setToolTip(self.tr("tip_btn_next_img"))
+        if hasattr(self, 'btn_del_img'):
+            self.btn_del_img.setText(self.tr("btn_delete_img"))
+            self.btn_del_img.setToolTip(self.tr("tip_btn_delete_img"))
+        
         self.nl_label.setText(f"<b>{self.tr('sec_nl')}</b>")
         self.bot_label.setText(f"<b>{self.tr('label_txt_content')}</b>")
         self.nl_result_title.setText(f"<b>{self.tr('label_nl_result')}</b>")
