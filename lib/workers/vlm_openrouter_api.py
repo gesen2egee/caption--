@@ -59,7 +59,7 @@ class VLMOpenRouterAPIWorker(BaseWorker):
         self.base_url = self.config.get("base_url", "https://openrouter.ai/api/v1")
         self.api_key = self.config.get("api_key", "")
         self.model_name = self.config.get("model_name", "mistralai/mistral-large-2512")
-        self.max_tokens = self.config.get("max_tokens", 4096)
+        self.max_tokens = self.config.get("max_tokens", 40960)
         self.max_image_dim = self.config.get("max_image_dim", 1024)
         self.use_gray_mask = self.config.get("use_gray_mask", True)
     
@@ -200,15 +200,13 @@ class VLMOpenRouterAPIWorker(BaseWorker):
             kwargs = {
                 "model": self.model_name,
                 "messages": messages,
+                "stream": False,
                 "max_tokens": self.max_tokens,
                 "temperature": temperature,
                 "top_p": top_p,
+                "extra_body": {"reasoning": {"enabled": False}}
             }
             
-            # Force Instant Mode (thinking=False)
-            # Use Official API format as previous method failed
-            kwargs["extra_body"] = {'thinking': {'type': 'disabled'}}
-
             response = client.chat.completions.create(**kwargs)
                         
             result_text = response.choices[0].message.content or ""
