@@ -108,6 +108,23 @@ class SettingsDialog(QDialog):
         self.spin_llm_repeat.setToolTip(self.tr("tip_llm_input_repeat"))
         form.addRow(self.tr("setting_llm_input_repeat"), self.spin_llm_repeat)
 
+        self.spin_llm_temp = QDoubleSpinBox()
+        self.spin_llm_temp.setRange(0.0, 2.0)
+        self.spin_llm_temp.setSingleStep(0.1)
+        self.spin_llm_temp.setValue(float(self.cfg.get("llm_temperature", 1.0)))
+        form.addRow("Temperature", self.spin_llm_temp)
+
+        self.spin_llm_top_p = QDoubleSpinBox()
+        self.spin_llm_top_p.setRange(0.0, 1.0)
+        self.spin_llm_top_p.setSingleStep(0.05)
+        self.spin_llm_top_p.setValue(float(self.cfg.get("llm_top_p", 0.95)))
+        form.addRow("Top P", self.spin_llm_top_p)
+
+        self.chk_llm_thinking = QCheckBox("Thinking Mode (Moonshot/Kimi)")
+        self.chk_llm_thinking.setChecked(bool(self.cfg.get("llm_thinking_mode", True)))
+        self.chk_llm_thinking.toggled.connect(self._on_thinking_toggled)
+        form.addRow("", self.chk_llm_thinking)
+
         llm_layout.addLayout(form)
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
@@ -439,6 +456,12 @@ class SettingsDialog(QDialog):
         elif combo.count() > 0:
             combo.setCurrentIndex(0)
 
+    def _on_thinking_toggled(self, checked: bool):
+        if checked:
+            self.spin_llm_temp.setValue(1.0)
+        else:
+            self.spin_llm_temp.setValue(0.6)
+
     def _parse_tags(self, s: str):
         raw = (s or "").strip()
         if not raw:
@@ -508,6 +531,9 @@ class SettingsDialog(QDialog):
         cfg["llm_skip_nsfw_on_batch"] = self.chk_llm_skip_nsfw.isChecked()
         cfg["llm_use_gray_mask"] = self.chk_llm_use_gray_mask.isChecked()
         cfg["llm_input_repeat_count"] = self.spin_llm_repeat.value()
+        cfg["llm_temperature"] = self.spin_llm_temp.value()
+        cfg["llm_top_p"] = self.spin_llm_top_p.value()
+        cfg["llm_thinking_mode"] = self.chk_llm_thinking.isChecked()
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
 
         cfg["tagger_worker"] = self.cb_tagger_worker.currentData()

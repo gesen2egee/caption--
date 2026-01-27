@@ -57,15 +57,17 @@ DEFAULT_APP_SETTINGS = {
     "llm_provider": "vlm_openrouter_api",  # Worker Name (Category=LLM)
     "llm_base_url": "https://openrouter.ai/api/v1",
     "llm_api_key": os.getenv("OPENROUTER_API_KEY", "<OPENROUTER_API_KEY>"),
-    "llm_model": "mistralai/mistral-large-2512",
+    "llm_model": "moonshotai/kimi-k2.5",
     "llm_system_prompt": DEFAULT_SYSTEM_PROMPT,
     "llm_user_prompt_template": DEFAULT_USER_PROMPT_TEMPLATE,
     "llm_custom_prompt_template": DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     "default_custom_tags": list(DEFAULT_CUSTOM_TAGS),
     "llm_skip_nsfw_on_batch": False,
-    "llm_skip_nsfw_on_batch": False,
     "llm_use_gray_mask": True,
     "llm_input_repeat_count": 2,
+    "llm_temperature": 1.0,
+    "llm_top_p": 0.95,
+    "llm_thinking_mode": True,
     "last_open_dir": "",
 
     # Worker Selection

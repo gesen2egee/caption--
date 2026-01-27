@@ -30,6 +30,10 @@ MODEL_PRESETS = {
         "model_name": "anthropic/claude-3.5-sonnet",
         "max_tokens": 4096,
     },
+    "kimi_k2_5": {
+        "model_name": "moonshotai/kimi-k2.5",
+        "max_tokens": 8192,
+    },
 }
 
 
@@ -184,11 +188,32 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 "content": user_content
             })
 
-            response = client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=self.max_tokens,
-            )
+            # Params from settings
+            temperature = getattr(settings, 'llm_temperature', 1.0) if settings else 1.0
+            top_p = getattr(settings, 'llm_top_p', 0.95) if settings else 0.95
+            thinking_mode = getattr(settings, 'llm_thinking_mode', True) if settings else True
+            
+            # Allow overrides from extra
+            temperature = float(input_data.extra.get("temperature", temperature))
+            top_p = float(input_data.extra.get("top_p", top_p))
+            if "thinking_mode" in input_data.extra:
+                 thinking_mode = bool(input_data.extra.get("thinking_mode"))
+
+            kwargs = {
+                "model": self.model_name,
+                "messages": messages,
+                "max_tokens": self.max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+            }
+            
+            # Handle Thinking Mode (Kimi specific)
+            if not thinking_mode:
+                # Instant mode logic
+                # To use instant mode, you need to pass {'chat_template_kwargs': {"thinking": False}}
+                kwargs["extra_body"] = {'chat_template_kwargs': {"thinking": False}}
+
+            response = client.chat.completions.create(**kwargs)
                         
             result_text = response.choices[0].message.content or ""
             

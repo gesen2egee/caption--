@@ -77,7 +77,7 @@ class Settings:
     llm_provider: str = "vlm_openrouter_api"
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_api_key: str = ""
-    llm_model: str = "mistralai/mistral-large-2512"
+    llm_model: str = "moonshotai/kimi-k2.5" # Changed default as per instruction
     llm_system_prompt: str = ""
     llm_user_prompt_template: str = ""
     llm_custom_prompt_template: str = ""
@@ -86,6 +86,9 @@ class Settings:
     llm_skip_nsfw_on_batch: bool = False
     llm_use_gray_mask: bool = True
     llm_input_repeat_count: int = 2
+    llm_temperature: float = 1.0
+    llm_top_p: float = 0.95
+    llm_thinking_mode: bool = True
     
     # Tagger 設定
     tagger_worker: str = "tagger_imgutils_generic"
