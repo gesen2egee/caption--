@@ -10,9 +10,7 @@ from PyQt6.QtCore import Qt, QBuffer, QIODevice, QByteArray
 from PIL import Image, ImageChops
 
 from lib.utils.file_ops import create_image_data_from_path, has_raw_backup, backup_raw_image
-from lib.utils.tag_context import build_llm_tags_context_for_image
 from lib.ui.components.stroke import StrokeEraseDialog
-from lib.pipeline.tasks import TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
@@ -20,10 +18,11 @@ if TYPE_CHECKING:
 class ProcessingMixin:
     """
     Mixin handling single-image processing actions:
-    Tagger, LLM, Unmask, Mask Text, Restore, Stroke Eraser.
+    Tagger, LLM, Image Process, Unmask, Mask Text, Restore, Stroke Eraser.
     """
 
     def run_tagger(self):
+        from lib.pipeline.tasks import TaggerTask
         if not self.current_image_path:
             return
         
@@ -42,6 +41,8 @@ class ProcessingMixin:
             self.on_pipeline_error(str(e))
 
     def run_llm_generation(self):
+        from lib.pipeline.tasks import LLMTask
+        from lib.utils.tag_context import build_llm_tags_context_for_image
         if not self.current_image_path:
             return
             
@@ -70,7 +71,34 @@ class ProcessingMixin:
         except Exception as e:
             self.on_pipeline_error(str(e))
 
+    def run_image_processing(self):
+        from lib.pipeline.tasks import ImageProcessTask
+        if not self.current_image_path:
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
+            return
+
+        if self.is_task_running():
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
+            return
+
+        prompt = ""
+        if hasattr(self, "img_prompt_edit") and self.img_prompt_edit is not None:
+            prompt = self.img_prompt_edit.toPlainText().strip()
+        if not prompt:
+            prompt = self.settings.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")
+
+        self.btn_run_imgproc.setEnabled(False)
+        self.btn_run_imgproc.setText(self.tr("btn_txt_image_processing"))
+        self.statusBar().showMessage(self.tr("status_image_processing"), 2000)
+
+        try:
+            image_data = create_image_data_from_path(self.current_image_path)
+            self.run_task(ImageProcessTask, [image_data], extra={"edit_prompt": prompt})
+        except Exception as e:
+            self.on_pipeline_error(str(e))
+
     def unmask_current_image(self):
+        from lib.pipeline.tasks import UnmaskTask
         if not self.current_image_path:
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
             return
@@ -86,6 +114,7 @@ class ProcessingMixin:
             QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_unmask_failed')}{e}")
 
     def mask_text_current_image(self):
+        from lib.pipeline.tasks import MaskTextTask
         if not self.current_image_path:
             QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_no_image_selected"))
             return
@@ -105,6 +134,7 @@ class ProcessingMixin:
              QMessageBox.warning(self, self.tr("title_error"), f"{self.tr('msg_failed')}{e}")
 
     def restore_current_image(self):
+        from lib.pipeline.tasks import RestoreTask
         """還原當前圖片為原始備份 (從 raw_image 資料夾)"""
         if not self.current_image_path:
             return

@@ -43,6 +43,26 @@ def create_settings_from_dict(cfg: dict) -> Settings:
         llm_max_image_dimension=cfg.get("llm_max_image_dimension", defaults["llm_max_image_dimension"]),
         llm_skip_nsfw_on_batch=cfg.get("llm_skip_nsfw_on_batch", defaults["llm_skip_nsfw_on_batch"]),
         llm_use_gray_mask=cfg.get("llm_use_gray_mask", defaults["llm_use_gray_mask"]),
+        startup_defer_worker_scan=cfg.get("startup_defer_worker_scan", defaults.get("startup_defer_worker_scan", True)),
+        tokenizer_local_only=cfg.get("tokenizer_local_only", defaults.get("tokenizer_local_only", True)),
+        tokenizer_retry_on_failure=cfg.get("tokenizer_retry_on_failure", defaults.get("tokenizer_retry_on_failure", False)),
+        image_process_worker=cfg.get("image_process_worker", defaults.get("image_process_worker", "image_flux2_klein_gguf_local")),
+        image_process_model=cfg.get("image_process_model", defaults.get("image_process_model", "unsloth/FLUX.2-klein-4B-GGUF")),
+        image_process_prompt_template=cfg.get("image_process_prompt_template", defaults.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")),
+        image_process_steps=cfg.get("image_process_steps", defaults.get("image_process_steps", 6)),
+        image_process_guidance_scale=cfg.get("image_process_guidance_scale", defaults.get("image_process_guidance_scale", 3.5)),
+        image_process_max_dimension=cfg.get("image_process_max_dimension", defaults.get("image_process_max_dimension", 1536)),
+        image_process_seed=cfg.get("image_process_seed", defaults.get("image_process_seed", -1)),
+        image_process_local_files_only=cfg.get(
+            "image_process_local_files_only", defaults.get("image_process_local_files_only", False)
+        ),
+        image_process_allow_full_model_fallback=cfg.get(
+            "image_process_allow_full_model_fallback",
+            defaults.get("image_process_allow_full_model_fallback", False),
+        ),
+        image_process_gguf_filename=cfg.get(
+            "image_process_gguf_filename", defaults.get("image_process_gguf_filename", "")
+        ),
         
         # Tagger
         tagger_model=cfg.get("tagger_model", defaults["tagger_model"]),

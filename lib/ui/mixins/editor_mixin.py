@@ -9,12 +9,9 @@ from lib.core.settings import DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CUSTOM_PROMP
 from lib.utils.parsing import cleanup_csv_like_text
 from lib.ui.dialogs.find_replace import AdvancedFindReplaceDialog
 
-try:
-    from transformers import AutoTokenizer, CLIPTokenizer
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
-    CLIPTokenizer = None
+AutoTokenizer = None
+CLIPTokenizer = None
+TRANSFORMERS_AVAILABLE = None
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
@@ -23,6 +20,22 @@ class EditorMixin:
     """
     Mixin handling text editor operations, token counting, prompt management, and Find/Replace.
     """
+
+    def _ensure_transformers(self) -> bool:
+        global AutoTokenizer, CLIPTokenizer, TRANSFORMERS_AVAILABLE
+        if TRANSFORMERS_AVAILABLE is False:
+            return False
+        if TRANSFORMERS_AVAILABLE is True:
+            return True
+        try:
+            from transformers import AutoTokenizer as _AutoTokenizer, CLIPTokenizer as _CLIPTokenizer
+            AutoTokenizer = _AutoTokenizer
+            CLIPTokenizer = _CLIPTokenizer
+            TRANSFORMERS_AVAILABLE = True
+            return True
+        except Exception:
+            TRANSFORMERS_AVAILABLE = False
+            return False
 
     def on_text_changed(self):
         if not self.current_image_path:
@@ -72,7 +85,7 @@ class EditorMixin:
         self.update_txt_token_count()
 
     def _get_clip_tokenizer(self):
-        if CLIPTokenizer is None:
+        if not self._ensure_transformers() or CLIPTokenizer is None:
             return None
         if self._clip_tokenizer is None:
             try:
@@ -86,23 +99,33 @@ class EditorMixin:
         Lazy load tokenizer to avoid startup lag.
         Uses the standard SD 1.5 CLIP model (openai/clip-vit-large-patch14).
         """
-        if not TRANSFORMERS_AVAILABLE:
+        if not self._ensure_transformers():
             return None
-            
+
+        if getattr(self, "_tokenizer_failed", False):
+            return None
+
         if self._hf_tokenizer is None:
             try:
-                # 這裡會下載約 1MB 的 tokenizer 設定檔 (只會下載一次)
-                # 這是 Stable Diffusion 1.x / 2.x 最常用的 Text Encoder
-                self._hf_tokenizer = AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+                self._hf_tokenizer = AutoTokenizer.from_pretrained(
+                    "openai/clip-vit-large-patch14",
+                    local_files_only=bool(self.settings.get("tokenizer_local_only", True)),
+                )
             except Exception as e:
-                print(f"Failed to load CLIP tokenizer: {e}")
                 self._hf_tokenizer = None
-                
+                if not bool(self.settings.get("tokenizer_retry_on_failure", False)):
+                    self._tokenizer_failed = True
+                if not getattr(self, "_tokenizer_warned", False):
+                    self._tokenizer_warned = True
+                    print(f"Tokenizer unavailable, fallback to regex token count: {e}")
+
         return self._hf_tokenizer
 
     def update_txt_token_count(self):
             content = self.txt_edit.toPlainText()
-            tokenizer = self._get_tokenizer()
+            tokenizer = None
+            if getattr(self, "_app_startup_complete", True):
+                tokenizer = self._get_tokenizer()
 
             count = 0
 

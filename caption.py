@@ -34,10 +34,6 @@ from lib.ui.main_window import MainWindow
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
-    # Scan and register workers
-    from lib.workers.registry import scan_workers
-    scan_workers()
 
     window = MainWindow()
     window.show()

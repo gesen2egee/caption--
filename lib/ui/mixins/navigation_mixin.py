@@ -171,8 +171,6 @@ class NavigationMixin:
             self.txt_edit.setPlainText(content)
             self.txt_edit.blockSignals(False)
 
-            self.update_txt_token_count()
-
             self.top_tags = self.build_top_tags_for_current_image()
             self.custom_tags = self.load_folder_custom_tags(self.current_folder_path)
             self.tagger_tags = self.load_tagger_tags_for_current_image()

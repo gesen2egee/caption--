@@ -273,5 +273,20 @@
     "tip_llm_input_repeat": "將 User Prompt 與圖片重複輸入 N 次 (預設 2)，可能提升模型依從性。",
     "chk_save_to_txt": "寫入 .txt",
     "tip_chk_save_to_txt": "勾選後，無論單張或批量推論，結果皆會寫入對應的 .txt 檔案。\n若未勾選，僅會存入 JSON Sidecar (不修改 txt)。",
-    "setting_llm_thinking": "思考模式 (Thinking Mode - Kimi Only)"
+    "setting_llm_thinking": "思考模式 (Thinking Mode - Kimi Only)",
+    "status_done": "完成。",
+    "sec_imgproc": "圖片處理",
+    "btn_run_imgproc": "單圖處理",
+    "btn_batch_imgproc": "批次處理",
+    "btn_default_img_prompt": "預設提示詞",
+    "label_imgproc_prompt": "圖片處理提示詞",
+    "tip_run_imgproc": "使用 FLUX 模型處理當前圖片並覆寫檔案。",
+    "tip_batch_imgproc": "對目前清單中的所有圖片套用同一個提示詞。",
+    "tip_default_img_prompt": "將圖片處理提示詞重設為預設值。",
+    "btn_txt_image_processing": "圖片處理中...",
+    "status_image_processing": "圖片處理中...",
+    "tip_imgproc_lazy_load": "圖片處理 Worker/模型會在首次執行時載入（可能從 Hugging Face 下載）。",
+    "tip_worker_loading": "Workers 載入中，請稍候。",
+    "status_initializing_ui": "初始化介面中...",
+    "status_worker_scan_bg": "背景掃描 workers 中..."
 }

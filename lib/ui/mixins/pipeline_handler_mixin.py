@@ -2,9 +2,7 @@ from typing import TYPE_CHECKING, List, Type, Optional, Dict, Any
 import os
 
 from lib.pipeline.context import TaskResult
-from lib.utils.parsing import extract_llm_content_and_postprocess
 from lib.core.dataclasses import ImageData, Settings, Prompt, FolderMeta
-from lib.pipeline.tasks import BaseTask, TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
@@ -28,7 +26,7 @@ class PipelineHandlerMixin:
         if self._current_task:
             self._current_task.stop()
 
-    def run_task(self, TaskClass: Type[BaseTask], images: List[ImageData], extra: Optional[Dict[str, Any]] = None):
+    def run_task(self, TaskClass: Type[Any], images: List[ImageData], extra: Optional[Dict[str, Any]] = None):
         """Run a specified Task."""
         if self.is_task_running():
             self.on_pipeline_error("已有任務正在執行 (Task Running)")
@@ -72,21 +70,33 @@ class PipelineHandlerMixin:
     # ============================================================
 
     def run_tagger(self, images: List[ImageData]):
+        from lib.pipeline.tasks import TaggerTask
         self.run_task(TaggerTask, images)
 
     def run_llm(self, images: List[ImageData], user_prompt: str = None, system_prompt: str = None):
+        from lib.pipeline.tasks import LLMTask
         extra = {}
         if user_prompt: extra["user_prompt"] = user_prompt
         if system_prompt: extra["system_prompt"] = system_prompt
         self.run_task(LLMTask, images, extra=extra)
 
     def run_unmask(self, images: List[ImageData]):
+        from lib.pipeline.tasks import UnmaskTask
         self.run_task(UnmaskTask, images)
 
     def run_mask_text(self, images: List[ImageData]):
+        from lib.pipeline.tasks import MaskTextTask
         self.run_task(MaskTextTask, images)
 
+    def run_image_process(self, images: List[ImageData], edit_prompt: str = None):
+        from lib.pipeline.tasks import ImageProcessTask
+        extra = {}
+        if edit_prompt:
+            extra["edit_prompt"] = edit_prompt
+        self.run_task(ImageProcessTask, images, extra=extra)
+
     def run_restore(self, images: List[ImageData]):
+        from lib.pipeline.tasks import RestoreTask
         self.run_task(RestoreTask, images)
 
     # ============================================================
@@ -110,6 +120,9 @@ class PipelineHandlerMixin:
         elif "llm" in task_name:
             model = self.settings.get("llm_model", "")
             model_info = f"LLM ({model})"
+        elif "image_process" in task_name:
+            model = self.settings.get("image_process_model", "unsloth/FLUX.2-klein-4B-GGUF")
+            model_info = f"IMG ({model})"
         elif "unmask" in task_name:
              mode = self.settings.get("mask_remover_mode", "base")
              model_info = f"UNMASK ({mode})"
@@ -143,6 +156,9 @@ class PipelineHandlerMixin:
         self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
         self.btn_run_llm.setEnabled(True)
         self.btn_run_llm.setText(self.tr("btn_run_llm"))
+        if hasattr(self, "btn_run_imgproc"):
+            self.btn_run_imgproc.setEnabled(True)
+            self.btn_run_imgproc.setText(self.tr("btn_run_imgproc"))
         self.set_batch_ui_enabled(True) 
 
     def on_pipeline_image_done(self, image_path: str, output: TaskResult):
@@ -177,6 +193,7 @@ class PipelineHandlerMixin:
 
         # LLM
         elif "llm" in task_name:
+             from lib.utils.parsing import extract_llm_content_and_postprocess
              content = output.result_text or ""
              final_content = extract_llm_content_and_postprocess(content, self.english_force_lowercase)
              
@@ -198,6 +215,21 @@ class PipelineHandlerMixin:
 
                  if write_to_txt:
                       self.write_batch_result_to_txt(image_path, final_content, is_tagger=False)
+
+        # Image Process
+        elif "image_process" in task_name:
+             if output.result_data:
+                  old_path = output.result_data.get("original_path", image_path)
+                  new_path = output.result_data.get("result_path", image_path)
+                  if new_path and old_path and os.path.abspath(new_path) != os.path.abspath(old_path):
+                      self._replace_image_path_in_list(old_path, new_path)
+
+             if self.current_image_path and os.path.abspath(image_path) == os.path.abspath(self.current_image_path):
+                 self.load_image()
+             elif self.current_image_path and output.result_data:
+                 old_path = output.result_data.get("original_path")
+                 if old_path and os.path.abspath(old_path) == os.path.abspath(self.current_image_path):
+                     self.load_image()
 
         # Unmask or Mask Text
         elif "unmask" in task_name or "mask_text" in task_name:

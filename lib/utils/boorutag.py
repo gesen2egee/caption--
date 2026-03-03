@@ -11,11 +11,8 @@ import os
 import csv
 from typing import List, Tuple, Dict
 
-try:
-    from imgutils.tagging import remove_underline
-except ImportError:
-    def remove_underline(s):
-        return s.replace("_", " ")
+def remove_underline(s):
+    return s.replace("_", " ")
 
 
 TAGS_CSV_LOCAL = "Tags.csv"

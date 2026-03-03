@@ -83,12 +83,26 @@ class Settings:
     llm_custom_prompt_template: str = ""
     llm_max_image_dimension: int = 1024
     llm_skip_nsfw_on_batch: bool = False
-    llm_skip_nsfw_on_batch: bool = False
     llm_use_gray_mask: bool = True
     llm_input_repeat_count: int = 2
     llm_temperature: float = 1.0
     llm_top_p: float = 0.95
     llm_thinking_mode: bool = True
+    startup_defer_worker_scan: bool = True
+    tokenizer_local_only: bool = True
+    tokenizer_retry_on_failure: bool = False
+
+    # Image Processing (FLUX edit)
+    image_process_worker: str = "image_flux2_klein_gguf_local"
+    image_process_model: str = "unsloth/FLUX.2-klein-4B-GGUF"
+    image_process_prompt_template: str = "幫我移除圖中所有的文字、文字氣泡、文字框"
+    image_process_steps: int = 6
+    image_process_guidance_scale: float = 3.5
+    image_process_max_dimension: int = 1536
+    image_process_seed: int = -1
+    image_process_local_files_only: bool = False
+    image_process_allow_full_model_fallback: bool = False
+    image_process_gguf_filename: str = ""
     
     # Tagger 設定
     tagger_worker: str = "tagger_imgutils_generic"

@@ -61,7 +61,7 @@ class BaseWorker(ABC):
     """
     
     # Metadata (子類別需覆寫)
-    category: str = "OTHER"   # "TAGGER", "LLM", "UNMASK", "MASK_TEXT", "RESTORE"
+    category: str = "OTHER"   # "TAGGER", "LLM", "IMAGE_PROCESS", "UNMASK", "MASK_TEXT", "RESTORE"
     display_name: str = "Base Worker"
     description: str = ""
     default_config: Dict = {}

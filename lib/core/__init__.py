@@ -8,6 +8,7 @@ from lib.core.settings import (
     DEFAULT_USER_PROMPT_TEMPLATE,
     DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     DEFAULT_CUSTOM_TAGS,
+    DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE,
     load_app_settings,
     save_app_settings,
     _coerce_bool,

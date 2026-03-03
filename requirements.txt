@@ -15,3 +15,7 @@ gdown
 tqdm
 packaging
 timm
+diffusers
+huggingface-hub
+accelerate
+gguf

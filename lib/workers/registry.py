@@ -15,6 +15,7 @@ class WorkerRegistry:
     _workers: Dict[str, Dict[str, Type[BaseWorker]]] = {
         "TAGGER": {},
         "LLM": {},
+        "IMAGE_PROCESS": {},
         "UNMASK": {},
         "MASK_TEXT": {},
         "DETECT_TEXT": {},

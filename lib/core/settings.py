@@ -45,6 +45,7 @@ A short English sentence about the subject
 """
 
 DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
+DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE = "幫我移除圖中所有的文字、文字氣泡、文字框"
 
 
 # --------------------------
@@ -69,6 +70,22 @@ DEFAULT_APP_SETTINGS = {
     "llm_top_p": 0.95,
     "llm_thinking_mode": True,
     "last_open_dir": "",
+    # Startup / performance
+    "startup_defer_worker_scan": True,
+    "tokenizer_local_only": True,
+    "tokenizer_retry_on_failure": False,
+
+    # Image Processing (FLUX edit)
+    "image_process_worker": "image_flux2_klein_gguf_local",
+    "image_process_model": "unsloth/FLUX.2-klein-4B-GGUF",
+    "image_process_prompt_template": DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE,
+    "image_process_steps": 6,
+    "image_process_guidance_scale": 3.5,
+    "image_process_max_dimension": 1536,
+    "image_process_seed": -1,
+    "image_process_local_files_only": False,
+    "image_process_allow_full_model_fallback": False,
+    "image_process_gguf_filename": "",
 
     # Worker Selection
     "tagger_worker": "tagger_imgutils_generic",

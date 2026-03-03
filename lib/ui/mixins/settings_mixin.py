@@ -57,10 +57,16 @@ class SettingsMixin:
             self.custom_prompt_template = str(new_cfg.get("llm_custom_prompt_template", DEFAULT_APP_SETTINGS.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
             self.default_custom_tags_global = list(new_cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
             self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
+            self.image_process_prompt_template = str(new_cfg.get("image_process_prompt_template", DEFAULT_APP_SETTINGS.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")))
 
             if hasattr(self, "prompt_edit") and self.prompt_edit:
                 try:
                     self.prompt_edit.setPlainText(self.default_user_prompt_template)
+                except Exception:
+                    pass
+            if hasattr(self, "img_prompt_edit") and self.img_prompt_edit:
+                try:
+                    self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
                 except Exception:
                     pass
 
@@ -81,7 +87,20 @@ class SettingsMixin:
         if hasattr(self, 'chk_llm_save_txt'):
              self.chk_llm_save_txt.setText(self.tr("chk_save_to_txt"))
              self.chk_llm_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
-             
+        if hasattr(self, "btn_run_imgproc"):
+            self.btn_run_imgproc.setText(self.tr("btn_run_imgproc"))
+            self.btn_run_imgproc.setToolTip(self.tr("tip_run_imgproc"))
+        if hasattr(self, "btn_batch_imgproc"):
+            self.btn_batch_imgproc.setText(self.tr("btn_batch_imgproc"))
+            self.btn_batch_imgproc.setToolTip(self.tr("tip_batch_imgproc"))
+        if hasattr(self, "btn_default_img_prompt"):
+            self.btn_default_img_prompt.setText(self.tr("btn_default_img_prompt"))
+            self.btn_default_img_prompt.setToolTip(self.tr("tip_default_img_prompt"))
+        if hasattr(self, "img_proc_label"):
+            self.img_proc_label.setText(f"<b>{self.tr('sec_imgproc')}</b>")
+        if hasattr(self, "img_prompt_label"):
+            self.img_prompt_label.setText(f"<b>{self.tr('label_imgproc_prompt')}</b>")
+        
         self.btn_prev_nl.setText(self.tr("btn_prev"))
         self.btn_next_nl.setText(self.tr("btn_next"))
         self.btn_find_replace.setText(self.tr("btn_find_replace"))
@@ -109,6 +128,8 @@ class SettingsMixin:
         # Update tabs
         self.tabs.setTabText(0, self.tr("sec_tags"))
         self.tabs.setTabText(1, self.tr("sec_nl"))
+        if self.tabs.count() > 2:
+            self.tabs.setTabText(2, self.tr("sec_imgproc"))
         
         # Labels
         self.sec1_title.setText(f"<b>{self.tr('sec_folder_meta')}</b>")

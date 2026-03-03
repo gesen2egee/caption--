@@ -4,10 +4,8 @@ import os
 from PyQt6.QtWidgets import QMessageBox, QDialog
 
 from lib.utils.file_ops import create_image_data_list
-from lib.utils.batch_writer import write_batch_result
 from lib.utils.sidecar import load_image_sidecar
 from lib.utils.memory_utils import unload_all_models
-from lib.pipeline.tasks import TaggerTask, LLMTask, UnmaskTask, MaskTextTask, RestoreTask
 
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
@@ -57,6 +55,9 @@ class BatchMixin:
         self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
         self.btn_run_llm.setEnabled(True)
         self.btn_run_llm.setText(self.tr("btn_run_llm"))
+        if hasattr(self, "btn_run_imgproc"):
+            self.btn_run_imgproc.setEnabled(True)
+            self.btn_run_imgproc.setText(self.tr("btn_run_imgproc"))
         
         unload_all_models()
 
@@ -67,6 +68,8 @@ class BatchMixin:
         self.btn_batch_llm.setEnabled(enabled)
         if hasattr(self, 'chk_llm_save_txt'):
              self.chk_llm_save_txt.setEnabled(enabled)
+        if hasattr(self, "btn_batch_imgproc"):
+            self.btn_batch_imgproc.setEnabled(enabled)
 
     def show_progress(self, current, total, name):
         self.progress_bar.setVisible(True)
@@ -98,6 +101,8 @@ class BatchMixin:
         self.set_batch_ui_enabled(True)
         self.btn_auto_tag.setEnabled(True)
         self.btn_run_llm.setEnabled(True)
+        if hasattr(self, "btn_run_imgproc"):
+            self.btn_run_imgproc.setEnabled(True)
         self._is_batch_to_txt = False
         self.hide_progress()
         self.statusBar().showMessage(self.tr("status_batch_error").replace("{err}", str(err)), 8000)
@@ -112,6 +117,7 @@ class BatchMixin:
                  thread.stop()
 
     def run_batch_tagger(self):
+        from lib.pipeline.tasks import TaggerTask
         if not self.image_files:
             return
         if self.is_task_running():
@@ -173,6 +179,7 @@ class BatchMixin:
              self.on_pipeline_error(str(e))
 
     def run_batch_llm(self):
+        from lib.pipeline.tasks import LLMTask
         if not self.image_files:
             return
         if self.is_task_running():
@@ -240,7 +247,33 @@ class BatchMixin:
         except Exception as e:
              self.on_pipeline_error(str(e))
 
+    def run_batch_image_processing(self):
+        from lib.pipeline.tasks import ImageProcessTask
+        if not self.image_files:
+            return
+        if self.is_task_running():
+            QMessageBox.warning(self, self.tr("title_warning"), self.tr("msg_task_running"))
+            return
+
+        prompt = ""
+        if hasattr(self, "img_prompt_edit") and self.img_prompt_edit is not None:
+            prompt = self.img_prompt_edit.toPlainText().strip()
+        if not prompt:
+            prompt = self.settings.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")
+
+        if hasattr(self, "btn_batch_imgproc"):
+            self.btn_batch_imgproc.setEnabled(False)
+        if hasattr(self, "btn_run_imgproc"):
+            self.btn_run_imgproc.setEnabled(False)
+
+        try:
+            images = create_image_data_list(self.image_files)
+            self.run_task(ImageProcessTask, images, extra={"edit_prompt": prompt})
+        except Exception as e:
+            self.on_pipeline_error(str(e))
+
     def run_batch_unmask_background(self):
+        from lib.pipeline.tasks import UnmaskTask
         if not self.image_files:
             return
         if self.is_task_running():
@@ -266,6 +299,7 @@ class BatchMixin:
              self.on_pipeline_error(str(e))
 
     def run_batch_mask_text(self):
+        from lib.pipeline.tasks import MaskTextTask
         if not self.image_files:
             QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
@@ -281,6 +315,7 @@ class BatchMixin:
              self.on_pipeline_error(str(e))
 
     def run_batch_restore(self):
+        from lib.pipeline.tasks import RestoreTask
         if not self.image_files:
             QMessageBox.information(self, self.tr("title_info"), self.tr("msg_no_images"))
             return
@@ -334,6 +369,7 @@ class BatchMixin:
         return None
 
     def write_batch_result_to_txt(self, image_path, content, is_tagger: bool):
+        from lib.utils.batch_writer import write_batch_result
         delete_chars = getattr(self, "_batch_delete_chars", False)
         final = write_batch_result(image_path, content, is_tagger, self.settings, delete_chars)
         

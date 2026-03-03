@@ -47,20 +47,20 @@ from lib.ui.components.stroke import create_checkerboard_png_bytes
 
 
 
-
-
-from lib.utils.batch_writer import write_batch_result
-
-
 from lib.utils.memory_utils import unload_all_models
-from lib.workers.registry import get_registry
-
-try:
-    from transparent_background import Remover
-except ImportError:
-    Remover = None
+from lib.workers.registry import get_registry, scan_workers
 
 CLIPTokenizer = None
+
+class WorkerScanThread(QThread):
+    done = pyqtSignal(bool, str)
+
+    def run(self):
+        try:
+            scan_workers()
+            self.done.emit(True, "")
+        except Exception as e:
+            self.done.emit(False, str(e))
 
 class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, PipelineHandlerMixin):
     def __init__(self):
@@ -77,6 +77,12 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.llm_system_prompt = str(self.settings.get("llm_system_prompt", DEFAULT_APP_SETTINGS["llm_system_prompt"]))
         self.default_user_prompt_template = str(self.settings.get("llm_user_prompt_template", DEFAULT_APP_SETTINGS["llm_user_prompt_template"]))
         self.custom_prompt_template = str(self.settings.get("llm_custom_prompt_template", DEFAULT_APP_SETTINGS.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
+        self.image_process_prompt_template = str(
+            self.settings.get(
+                "image_process_prompt_template",
+                DEFAULT_APP_SETTINGS.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")
+            )
+        )
         self.current_prompt_mode = "default"
         self.default_custom_tags_global = list(self.settings.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
         self.english_force_lowercase = bool(self.settings.get("english_force_lowercase", True))
@@ -106,18 +112,32 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.nl_page_index = 0
         self.nl_latest = ""
 
+        self._hf_tokenizer = None
+        self._clip_tokenizer = None
+        self._tokenizer_failed = False
+        self._tokenizer_warned = False
+        self._app_startup_complete = False
+        self._workers_scan_completed = False
+        self._workers_scan_thread = None
 
 
         self.init_ui()
+        self.statusBar().showMessage(self.tr("status_initializing_ui"), 3000)
         self.apply_theme()
         self.setup_shortcuts()
-        self._hf_tokenizer = None
+
+        if bool(self.settings.get("startup_defer_worker_scan", True)):
+            QTimer.singleShot(0, self.start_worker_scan_background)
+        else:
+            self.scan_workers_blocking()
 
         # Auto-load last directory
         last_dir = self.settings.get("last_open_dir", "")
         if last_dir and os.path.exists(last_dir):
             self.root_dir_path = last_dir
-            self.refresh_file_list()
+            QTimer.singleShot(0, self.load_last_open_dir_deferred)
+        else:
+            self._app_startup_complete = True
 
         # Check CUDA availability
         try:
@@ -132,17 +152,59 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         except ImportError:
             pass
 
+    def load_last_open_dir_deferred(self):
+        try:
+            self.refresh_file_list()
+        finally:
+            self._app_startup_complete = True
+
 
 
     def check_worker_availability(self):
         """檢查 Worker 可用性並更新 UI 狀態"""
         reg = get_registry()
+
+        if not self._workers_scan_completed:
+            if hasattr(self, "btn_auto_tag"):
+                self.btn_auto_tag.setEnabled(False)
+                self.btn_auto_tag.setToolTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "btn_batch_tagger"):
+                self.btn_batch_tagger.setEnabled(False)
+                self.btn_batch_tagger.setToolTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "btn_run_llm"):
+                self.btn_run_llm.setEnabled(False)
+                self.btn_run_llm.setToolTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "btn_batch_llm"):
+                self.btn_batch_llm.setEnabled(False)
+                self.btn_batch_llm.setToolTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "btn_run_imgproc"):
+                self.btn_run_imgproc.setEnabled(True)
+                self.btn_run_imgproc.setToolTip(self.tr("tip_imgproc_lazy_load"))
+            if hasattr(self, "btn_batch_imgproc"):
+                self.btn_batch_imgproc.setEnabled(True)
+                self.btn_batch_imgproc.setToolTip(self.tr("tip_imgproc_lazy_load"))
+            if hasattr(self, "action_unmask"):
+                self.action_unmask.setEnabled(False)
+                self.action_unmask.setStatusTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "action_batch_unmask"):
+                self.action_batch_unmask.setEnabled(False)
+                self.action_batch_unmask.setStatusTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "action_mask_text"):
+                self.action_mask_text.setEnabled(False)
+                self.action_mask_text.setStatusTip(self.tr("tip_worker_loading"))
+            if hasattr(self, "action_batch_mask_text"):
+                self.action_batch_mask_text.setEnabled(False)
+                self.action_batch_mask_text.setStatusTip(self.tr("tip_worker_loading"))
+            return
         
         # TAGGER
         has_tagger = reg.has_available_workers("TAGGER")
         self.btn_auto_tag.setEnabled(has_tagger)
         self.btn_batch_tagger.setEnabled(has_tagger)
-        if not has_tagger:
+        if has_tagger:
+            self.btn_auto_tag.setToolTip(self.tr("tip_auto_tag"))
+            self.btn_batch_tagger.setToolTip(self.tr("tip_batch_tagger"))
+        else:
             self.btn_auto_tag.setToolTip(self.tr("tip_no_worker"))
             self.btn_batch_tagger.setToolTip(self.tr("tip_no_worker"))
 
@@ -150,22 +212,83 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         has_llm = reg.has_available_workers("LLM")
         self.btn_run_llm.setEnabled(has_llm)
         self.btn_batch_llm.setEnabled(has_llm)
-        if not has_llm:
+        if has_llm:
+            self.btn_run_llm.setToolTip(self.tr("tip_run_llm"))
+            self.btn_batch_llm.setToolTip(self.tr("tip_batch_llm"))
+        else:
             self.btn_run_llm.setToolTip(self.tr("tip_no_worker"))
+            self.btn_batch_llm.setToolTip(self.tr("tip_no_worker"))
+
+        # IMAGE PROCESS
+        has_image_process = reg.has_available_workers("IMAGE_PROCESS")
+        if hasattr(self, "btn_run_imgproc"):
+            # Keep image processing runnable even if worker was not registered
+            # during startup scan. Runtime path can lazy-import worker and
+            # download model from HF on first execution.
+            self.btn_run_imgproc.setEnabled(True)
+            if has_image_process:
+                self.btn_run_imgproc.setToolTip(self.tr("tip_run_imgproc"))
+            else:
+                self.btn_run_imgproc.setToolTip(self.tr("tip_imgproc_lazy_load"))
+        if hasattr(self, "btn_batch_imgproc"):
+            self.btn_batch_imgproc.setEnabled(True)
+            if has_image_process:
+                self.btn_batch_imgproc.setToolTip(self.tr("tip_batch_imgproc"))
+            else:
+                self.btn_batch_imgproc.setToolTip(self.tr("tip_imgproc_lazy_load"))
         
         # UNMASK (Background Removal)
         has_unmask = reg.has_available_workers("UNMASK")
         if hasattr(self, "action_unmask"):
             self.action_unmask.setEnabled(has_unmask)
+            self.action_unmask.setStatusTip(self.tr("tip_unmask") if has_unmask else self.tr("tip_no_worker"))
         if hasattr(self, "action_batch_unmask"):
             self.action_batch_unmask.setEnabled(has_unmask)
+            self.action_batch_unmask.setStatusTip(self.tr("tip_batch_unmask") if has_unmask else self.tr("tip_no_worker"))
             
         # MASK TEXT
         has_mask_text = reg.has_available_workers("MASK_TEXT")
         if hasattr(self, "action_mask_text"):
             self.action_mask_text.setEnabled(has_mask_text)
+            self.action_mask_text.setStatusTip(self.tr("tip_mask_text") if has_mask_text else self.tr("tip_no_worker"))
         if hasattr(self, "action_batch_mask_text"):
             self.action_batch_mask_text.setEnabled(has_mask_text)
+            self.action_batch_mask_text.setStatusTip(self.tr("tip_batch_mask_text") if has_mask_text else self.tr("tip_no_worker"))
+
+    def start_worker_scan_background(self):
+        if self._workers_scan_thread is not None or self._workers_scan_completed:
+            return
+
+        self.statusBar().showMessage(self.tr("status_worker_scan_bg"))
+        self._workers_scan_thread = WorkerScanThread(self)
+        self._workers_scan_thread.done.connect(self.on_worker_scan_done)
+        self._workers_scan_thread.finished.connect(self.on_worker_scan_finished)
+        self._workers_scan_thread.start()
+
+    def scan_workers_blocking(self):
+        ok = True
+        err = ""
+        self.statusBar().showMessage(self.tr("status_worker_scan_bg"))
+        try:
+            scan_workers()
+        except Exception as e:
+            ok = False
+            err = str(e)
+        self.on_worker_scan_done(ok, err)
+
+    def on_worker_scan_done(self, ok: bool, err: str):
+        self._workers_scan_completed = True
+        self.check_worker_availability()
+        if ok:
+            self.statusBar().showMessage(self.tr("status_ready"), 3000)
+        else:
+            msg = self.tr("msg_error_fmt").replace("{msg}", f"worker scan failed: {err}")
+            self.statusBar().showMessage(msg, 8000)
+
+    def on_worker_scan_finished(self):
+        if self._workers_scan_thread is not None:
+            self._workers_scan_thread.deleteLater()
+            self._workers_scan_thread = None
 
     def init_ui(self):
         font = QFont()
@@ -443,6 +566,43 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
 
         self.tabs.addTab(nl_tab, self.tr("sec_nl"))
 
+        # ---- Image Process Tab ----
+        img_tab = QWidget()
+        img_layout = QVBoxLayout(img_tab)
+        img_layout.setContentsMargins(5, 5, 5, 5)
+
+        img_toolbar = QHBoxLayout()
+        self.img_proc_label = QLabel(f"<b>{self.tr('sec_imgproc')}</b>")
+        img_toolbar.addWidget(self.img_proc_label)
+
+        self.btn_run_imgproc = QPushButton(self.tr("btn_run_imgproc"))
+        self.btn_run_imgproc.setToolTip(self.tr("tip_run_imgproc"))
+        self.btn_run_imgproc.clicked.connect(self.run_image_processing)
+        img_toolbar.addWidget(self.btn_run_imgproc)
+
+        self.btn_batch_imgproc = QPushButton(self.tr("btn_batch_imgproc"))
+        self.btn_batch_imgproc.setToolTip(self.tr("tip_batch_imgproc"))
+        self.btn_batch_imgproc.clicked.connect(self.run_batch_image_processing)
+        img_toolbar.addWidget(self.btn_batch_imgproc)
+
+        self.btn_default_img_prompt = QPushButton(self.tr("btn_default_img_prompt"))
+        self.btn_default_img_prompt.setToolTip(self.tr("tip_default_img_prompt"))
+        self.btn_default_img_prompt.clicked.connect(self.use_default_image_prompt)
+        img_toolbar.addWidget(self.btn_default_img_prompt)
+
+        img_toolbar.addStretch(1)
+        img_layout.addLayout(img_toolbar)
+
+        self.img_prompt_label = QLabel(f"<b>{self.tr('label_imgproc_prompt')}</b>")
+        img_layout.addWidget(self.img_prompt_label)
+
+        self.img_prompt_edit = QTextEdit()
+        self.img_prompt_edit.setFont(QFont("Consolas", 11))
+        self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
+        img_layout.addWidget(self.img_prompt_edit, 1)
+
+        self.tabs.addTab(img_tab, self.tr("sec_imgproc"))
+
         # ---- Bottom: txt ----
         bot_widget = QWidget()
         bot_layout = QVBoxLayout(bot_widget)
@@ -515,6 +675,10 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         line.setFrameShape(QFrame.Shape.HLine)
         line.setFrameShadow(QFrame.Shadow.Sunken)
         return line
+
+    def use_default_image_prompt(self):
+        if hasattr(self, "img_prompt_edit") and self.img_prompt_edit is not None:
+            self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
 
     def setup_shortcuts(self):
         # ✅ 圖片左右/翻頁鍵：用 ApplicationShortcut，焦點在 txt 也能翻

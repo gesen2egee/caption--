@@ -5,11 +5,21 @@
 import re
 from typing import List, Dict, Optional
 
-# 嘗試匯入 tags_to_text（用於 try_tags_to_text_list）
-try:
-    from imgutils.tagging import tags_to_text
-except ImportError:
-    tags_to_text = None
+_tags_to_text = None
+_tags_to_text_checked = False
+
+
+def _get_tags_to_text():
+    global _tags_to_text, _tags_to_text_checked
+    if _tags_to_text_checked:
+        return _tags_to_text
+    _tags_to_text_checked = True
+    try:
+        from imgutils.tagging import tags_to_text as _func
+        _tags_to_text = _func
+    except Exception:
+        _tags_to_text = None
+    return _tags_to_text
 
 
 def extract_bracket_content(text: str) -> List[str]:
@@ -134,6 +144,7 @@ def try_tags_to_text_list(tags_list) -> List[str]:
     先 tags_to_text，再拆回 list；若失敗就 fallback
     """
     try:
+        tags_to_text = _get_tags_to_text()
         if tags_to_text is not None:
             s = tags_to_text(tags_list)
             parts = [p.strip() for p in s.split(",") if p.strip()]
