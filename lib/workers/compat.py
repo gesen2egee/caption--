@@ -34,6 +34,7 @@ def create_settings_from_dict(cfg: dict) -> Settings:
     
     return Settings(
         # LLM
+        llm_provider=cfg.get("llm_provider", defaults["llm_provider"]),
         llm_base_url=cfg.get("llm_base_url", defaults["llm_base_url"]),
         llm_api_key=cfg.get("llm_api_key", defaults["llm_api_key"]),
         llm_model=cfg.get("llm_model", defaults["llm_model"]),
@@ -43,6 +44,48 @@ def create_settings_from_dict(cfg: dict) -> Settings:
         llm_max_image_dimension=cfg.get("llm_max_image_dimension", defaults["llm_max_image_dimension"]),
         llm_skip_nsfw_on_batch=cfg.get("llm_skip_nsfw_on_batch", defaults["llm_skip_nsfw_on_batch"]),
         llm_use_gray_mask=cfg.get("llm_use_gray_mask", defaults["llm_use_gray_mask"]),
+        llm_input_repeat_count=cfg.get("llm_input_repeat_count", defaults.get("llm_input_repeat_count", 2)),
+        llm_temperature=cfg.get("llm_temperature", defaults.get("llm_temperature", 1.0)),
+        llm_top_p=cfg.get("llm_top_p", defaults.get("llm_top_p", 0.95)),
+        llm_thinking_mode=cfg.get("llm_thinking_mode", defaults.get("llm_thinking_mode", True)),
+        llama_cpp_base_url=cfg.get("llama_cpp_base_url", defaults.get("llama_cpp_base_url", "http://127.0.0.1:8000/v1")),
+        llama_cpp_api_key=cfg.get("llama_cpp_api_key", defaults.get("llama_cpp_api_key", "")),
+        llama_cpp_model_alias=cfg.get("llama_cpp_model_alias", defaults.get("llama_cpp_model_alias", "qwen35-vl-gguf")),
+        llama_cpp_model_path=cfg.get("llama_cpp_model_path", defaults.get("llama_cpp_model_path", "")),
+        llama_cpp_n_ctx=cfg.get("llama_cpp_n_ctx", defaults.get("llama_cpp_n_ctx", 8192)),
+        llama_cpp_n_threads=cfg.get("llama_cpp_n_threads", defaults.get("llama_cpp_n_threads", 0)),
+        llama_cpp_n_gpu_layers=cfg.get("llama_cpp_n_gpu_layers", defaults.get("llama_cpp_n_gpu_layers", 99)),
+        llama_cpp_max_tokens=cfg.get("llama_cpp_max_tokens", defaults.get("llama_cpp_max_tokens", 81920)),
+        llama_cpp_temperature=cfg.get("llama_cpp_temperature", defaults.get("llama_cpp_temperature", 1.0)),
+        llama_cpp_top_p=cfg.get("llama_cpp_top_p", defaults.get("llama_cpp_top_p", 0.8)),
+        llama_cpp_top_k=cfg.get("llama_cpp_top_k", defaults.get("llama_cpp_top_k", 20)),
+        llama_cpp_min_p=cfg.get("llama_cpp_min_p", defaults.get("llama_cpp_min_p", 0.0)),
+        llama_cpp_presence_penalty=cfg.get(
+            "llama_cpp_presence_penalty", defaults.get("llama_cpp_presence_penalty", 1.5)
+        ),
+        llama_cpp_repeat_penalty=cfg.get(
+            "llama_cpp_repeat_penalty", defaults.get("llama_cpp_repeat_penalty", 1.0)
+        ),
+        llama_cpp_chat_format=cfg.get("llama_cpp_chat_format", defaults.get("llama_cpp_chat_format", "chatml")),
+        llama_cpp_local_files_only=cfg.get(
+            "llama_cpp_local_files_only", defaults.get("llama_cpp_local_files_only", False)
+        ),
+        llama_cpp_mmproj_path=(
+            cfg.get("llama_cpp_mmproj_path")
+            if str(cfg.get("llama_cpp_mmproj_path", "")).strip()
+            else defaults.get("llama_cpp_mmproj_path", "")
+        ),
+        llama_cpp_enable_vision=cfg.get("llama_cpp_enable_vision", defaults.get("llama_cpp_enable_vision", True)),
+        llama_cpp_server_autostart=cfg.get(
+            "llama_cpp_server_autostart", defaults.get("llama_cpp_server_autostart", True)
+        ),
+        llama_cpp_server_exe=cfg.get("llama_cpp_server_exe", defaults.get("llama_cpp_server_exe", "")),
+        llama_cpp_server_workers=cfg.get(
+            "llama_cpp_server_workers", defaults.get("llama_cpp_server_workers", 8)
+        ),
+        llama_cpp_server_start_timeout=cfg.get(
+            "llama_cpp_server_start_timeout", defaults.get("llama_cpp_server_start_timeout", 900)
+        ),
         startup_defer_worker_scan=cfg.get("startup_defer_worker_scan", defaults.get("startup_defer_worker_scan", True)),
         tokenizer_local_only=cfg.get("tokenizer_local_only", defaults.get("tokenizer_local_only", True)),
         tokenizer_retry_on_failure=cfg.get("tokenizer_retry_on_failure", defaults.get("tokenizer_retry_on_failure", False)),

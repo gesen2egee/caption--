@@ -26,6 +26,7 @@ app_settings.json
 no_used/
 unmask/
 masked/
+tasks/runtime/
 
 # Temp
 *.tmp

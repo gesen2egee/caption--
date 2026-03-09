@@ -1,59 +1,94 @@
 # -*- coding: utf-8 -*-
 """
-FLUX.2-klein GGUF local image processor worker.
+FLUX.2-klein image editing worker backed by stable-diffusion.cpp sd-server.
 
-This worker runs instruction-based image editing and overwrites the original
-image file so sidecar/txt relationships stay consistent with existing app
-behavior.
+The worker keeps the existing worker id for backward compatibility, but no
+longer loads GGUF through diffusers in-process. Instead it talks to the
+OpenAI-compatible `/v1/images/edits` endpoint exposed by `sd-server`.
 """
+import base64
+import json
 import os
-import traceback
+import re
+import shlex
+import shutil
+import subprocess
+import time
+import urllib.error
+import urllib.request
+import uuid
+from io import BytesIO
 from pathlib import Path
 from threading import Lock
-from typing import Optional, Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from PIL import Image
 
 from lib.workers.base import BaseWorker, WorkerInput, WorkerOutput
 
 
+HF_BLOB_OR_RESOLVE_RE = re.compile(
+    r"^https?://huggingface\.co/"
+    r"(?P<repo>[^/]+/[^/]+)/"
+    r"(?:(?:blob)|(?:resolve))/"
+    r"(?P<revision>[^/]+)/"
+    r"(?P<filename>.+)$"
+)
+
+
 class ImageFlux2KleinGGUFLocalWorker(BaseWorker):
     category = "IMAGE_PROCESS"
-    display_name = "Local FLUX.2-klein-4B-GGUF"
-    description = "Instruction-based image processing with FLUX.2-klein-4B GGUF"
+    display_name = "FLUX.2-klein via stable-diffusion.cpp"
+    description = "Instruction-based image editing through sd-server OpenAI Images API"
     default_config = {
+        "base_url": "http://127.0.0.1:8001/v1",
         "model_name": "unsloth/FLUX.2-klein-4B-GGUF",
-        "base_model_name": "black-forest-labs/FLUX.2-klein-4B",
+        "diffusion_model_path": "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-BF16.gguf",
+        "vae_path": "https://huggingface.co/black-forest-labs/FLUX.2-dev/resolve/main/ae.safetensors",
+        "llm_path": "https://huggingface.co/unsloth/Qwen3-4B-GGUF/blob/main/Qwen3-4B-Q4_K_M.gguf",
         "num_inference_steps": 6,
         "guidance_scale": 3.5,
-        "strength": 0.85,
         "max_image_dimension": 1536,
         "seed": -1,
-        # If True, only use local Hugging Face cache (no network).
         "local_files_only": False,
-        # If True and GGUF load fails, fallback to full-precision base model.
-        # Keep False by default to avoid unexpected huge downloads.
-        "allow_full_model_fallback": False,
+        "server_autostart": True,
+        "server_exe": "",
+        "server_start_timeout": 900,
+        "server_args_extra": "",
     }
 
-    _pipeline = None
-    _pipeline_key = None
-    _pipeline_error = None
-    _pipeline_lock = Lock()
+    _server_proc = None
+    _server_key = None
+    _server_lock = Lock()
 
     def __init__(self, config: Dict = None):
         super().__init__(config)
-        self.model_name = str(self.config.get("model_name", self.default_config["model_name"]))
-        self.base_model_name = str(self.config.get("base_model_name", self.default_config["base_model_name"]))
-        self.num_inference_steps = int(self.config.get("num_inference_steps", self.default_config["num_inference_steps"]))
+        self.base_url = str(self.config.get("base_url", self.default_config["base_url"])).strip()
+        self.model_name = str(self.config.get("model_name", self.default_config["model_name"])).strip()
+        self.diffusion_model_path = str(
+            self.config.get("diffusion_model_path", self.default_config["diffusion_model_path"])
+        ).strip()
+        self.vae_path = str(self.config.get("vae_path", self.default_config["vae_path"])).strip()
+        self.llm_path = str(self.config.get("llm_path", self.default_config["llm_path"])).strip()
+        self.num_inference_steps = int(
+            self.config.get("num_inference_steps", self.default_config["num_inference_steps"])
+        )
         self.guidance_scale = float(self.config.get("guidance_scale", self.default_config["guidance_scale"]))
-        self.strength = float(self.config.get("strength", self.default_config["strength"]))
-        self.max_image_dimension = int(self.config.get("max_image_dimension", self.default_config["max_image_dimension"]))
+        self.max_image_dimension = int(
+            self.config.get("max_image_dimension", self.default_config["max_image_dimension"])
+        )
         self.seed = int(self.config.get("seed", self.default_config["seed"]))
         self.local_files_only = bool(self.config.get("local_files_only", self.default_config["local_files_only"]))
-        self.allow_full_model_fallback = bool(
-            self.config.get("allow_full_model_fallback", self.default_config["allow_full_model_fallback"])
+        self.server_autostart = bool(
+            self.config.get("server_autostart", self.default_config["server_autostart"])
         )
+        self.server_exe = str(self.config.get("server_exe", self.default_config["server_exe"])).strip()
+        self.server_start_timeout = int(
+            self.config.get("server_start_timeout", self.default_config["server_start_timeout"])
+        )
+        self.server_args_extra = str(
+            self.config.get("server_args_extra", self.default_config["server_args_extra"])
+        ).strip()
 
     @property
     def name(self) -> str:
@@ -61,260 +96,260 @@ class ImageFlux2KleinGGUFLocalWorker(BaseWorker):
 
     @classmethod
     def is_available(cls) -> bool:
-        try:
-            import torch  # noqa: F401
-            import diffusers  # noqa: F401
-            import huggingface_hub  # noqa: F401
-            return True
-        except Exception:
-            return False
+        # Keep endpoint mode always selectable. Runtime reports actionable
+        # errors when sd-server or assets are missing.
+        return True
 
     @staticmethod
-    def _set_diffusers_xformers_safe():
-        """
-        Some Windows setups have broken xformers wheels that crash pipeline
-        imports. If xformers import fails, force diffusers to treat it as unavailable.
-        """
-        try:
-            import diffusers.utils.import_utils as import_utils
-            if not import_utils.is_xformers_available():
-                return
-            try:
-                import xformers.ops  # noqa: F401
-            except Exception:
-                import_utils._xformers_available = False
-        except Exception:
-            pass
+    def _resolve_models_url(base_url: str) -> str:
+        url = (base_url or "").strip().rstrip("/")
+        if not url:
+            raise RuntimeError("sd-server base URL is empty")
+        if url.endswith("/models"):
+            return url
+        if url.endswith("/v1"):
+            return f"{url}/models"
+        return f"{url}/v1/models"
 
-    def _pick_gguf_filename(self, repo_files: List[str]) -> Optional[str]:
-        ggufs = [f for f in repo_files if f.lower().endswith(".gguf")]
-        if not ggufs:
+    @staticmethod
+    def _resolve_images_edits_url(base_url: str) -> str:
+        url = (base_url or "").strip().rstrip("/")
+        if not url:
+            raise RuntimeError("sd-server base URL is empty")
+        if url.endswith("/images/edits"):
+            return url
+        if url.endswith("/v1"):
+            return f"{url}/images/edits"
+        return f"{url}/v1/images/edits"
+
+    @staticmethod
+    def _parse_port_from_endpoint(endpoint: str) -> int:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(endpoint)
+        if parsed.port:
+            return int(parsed.port)
+        if parsed.scheme == "https":
+            return 443
+        return 80
+
+    @staticmethod
+    def _parse_hf_source(model_source: str) -> Tuple[Optional[str], Optional[str], str]:
+        src = (model_source or "").strip()
+        if not src:
+            return None, None, "main"
+
+        parsed = HF_BLOB_OR_RESOLVE_RE.match(src)
+        if parsed:
+            return parsed.group("repo"), parsed.group("filename"), parsed.group("revision")
+
+        parts = src.split("/")
+        if len(parts) >= 3 and any(src.lower().endswith(ext) for ext in (".gguf", ".safetensors", ".ckpt", ".pth")):
+            return "/".join(parts[:2]), "/".join(parts[2:]), "main"
+
+        if len(parts) == 2:
+            return src, None, "main"
+
+        return None, None, "main"
+
+    @staticmethod
+    def _pick_repo_file(repo_files: List[str], kind: str) -> Optional[str]:
+        files = [f for f in (repo_files or []) if not f.endswith("/")]
+        lower_kind = kind.lower()
+
+        if lower_kind == "diffusion":
+            candidates = [f for f in files if f.lower().endswith(".gguf")]
+            priority_tokens = ["q4_k_m", "q5_k_m", "q6_k", "q8_0", "bf16", "f16"]
+        elif lower_kind == "llm":
+            candidates = [f for f in files if f.lower().endswith(".gguf")]
+            priority_tokens = ["q4_k_m", "q4_0", "q5_k_m", "q8_0", "bf16", "f16"]
+        else:
+            exact = [f for f in files if os.path.basename(f).lower() in ("ae.safetensors", "flux2_ae.safetensors")]
+            if exact:
+                return exact[0]
+            candidates = [f for f in files if f.lower().endswith(".safetensors")]
+            priority_tokens = ["flux2_ae", "ae"]
+
+        if not candidates:
             return None
 
-        priority_tokens = ["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16"]
         for token in priority_tokens:
-            for filename in ggufs:
-                if token.lower() in filename.lower():
+            for filename in candidates:
+                if token in filename.lower():
                     return filename
-        return ggufs[0]
+        return candidates[0]
 
-    def _resolve_diffusers_classes(self) -> Tuple[type, type, type]:
-        self._set_diffusers_xformers_safe()
-        import diffusers
+    def _resolve_asset_to_local_path(self, source: str, kind: str) -> str:
+        src = (source or "").strip()
+        if not src:
+            raise RuntimeError(f"缺少 {kind} 模型設定")
+        if os.path.exists(src):
+            return src
 
-        pipeline_cls = getattr(diffusers, "Flux2KleinPipeline", None)
-        if pipeline_cls is None:
-            # Compatibility path for environments where Flux2KleinPipeline is
-            # not exported yet but Flux2Pipeline exists.
-            pipeline_cls = getattr(diffusers, "Flux2Pipeline", None)
+        from huggingface_hub import hf_hub_download, list_repo_files
 
-        transformer_cls = getattr(diffusers, "Flux2Transformer2DModel", None)
-        quant_cls = getattr(diffusers, "GGUFQuantizationConfig", None)
+        repo_id, filename, revision = self._parse_hf_source(src)
+        if not repo_id:
+            raise RuntimeError(f"找不到 {kind} 模型檔: {src}")
 
-        missing = []
-        if pipeline_cls is None:
-            missing.append("Flux2KleinPipeline/Flux2Pipeline")
-        if transformer_cls is None:
-            missing.append("Flux2Transformer2DModel")
-        if quant_cls is None:
-            missing.append("GGUFQuantizationConfig")
-        if missing:
-            version = getattr(diffusers, "__version__", "unknown")
-            raise RuntimeError(
-                f"Current diffusers ({version}) is missing required FLUX.2 classes: {', '.join(missing)}. "
-                "Please run: pip install -U diffusers transformers gguf"
-            )
-
-        return pipeline_cls, transformer_cls, quant_cls
-
-    def _get_cached_gguf_files(self) -> List[str]:
-        from huggingface_hub import snapshot_download
-
-        try:
-            snapshot_dir = snapshot_download(
-                repo_id=self.model_name,
-                repo_type="model",
-                allow_patterns=["*.gguf"],
-                local_files_only=True,
-            )
-        except Exception:
-            return []
-        return sorted([p.name for p in Path(snapshot_dir).glob("*.gguf")])
-
-    def _resolve_gguf_filename(self) -> Tuple[str, bool]:
-        from huggingface_hub import list_repo_files
-
-        gguf_filename = str(self.config.get("gguf_filename", "")).strip()
-        if gguf_filename:
-            cached = gguf_filename in self._get_cached_gguf_files()
-            return gguf_filename, cached
-
-        cached = self._get_cached_gguf_files()
-        if cached:
-            picked = self._pick_gguf_filename(cached)
-            if picked:
-                return picked, True
-
-        if self.local_files_only:
-            raise RuntimeError(
-                f"No cached GGUF file found for {self.model_name}. "
-                "Disable local_files_only or pre-download the GGUF file."
-            )
-
-        repo_files = list_repo_files(self.model_name)
-        picked = self._pick_gguf_filename(repo_files or [])
-        if not picked:
-            raise RuntimeError(f"No GGUF file found in repository: {self.model_name}")
-        return picked, False
-
-    def _resolve_base_model_source(self) -> str:
-        from huggingface_hub import snapshot_download
-
-        # Prefer an already cached snapshot to avoid unnecessary network HEAD
-        # requests on environments with restricted proxy settings.
-        if not self.local_files_only:
+        if not filename:
             try:
-                return snapshot_download(
-                    repo_id=self.base_model_name,
-                    repo_type="model",
-                    local_files_only=True,
-                )
-            except Exception:
-                return self.base_model_name
+                repo_files = list_repo_files(repo_id, repo_type="model")
+            except Exception as exc:
+                if self.local_files_only:
+                    raise RuntimeError(f"{kind} local_files_only 已啟用，且快取中沒有可用檔案: {repo_id}") from exc
+                raise RuntimeError(f"無法列出 {kind} repo 檔案: {repo_id}") from exc
+            filename = self._pick_repo_file(repo_files, kind)
+            if not filename:
+                raise RuntimeError(f"在 repo 中找不到可用的 {kind} 檔案: {repo_id}")
 
         try:
-            return snapshot_download(
-                repo_id=self.base_model_name,
+            return hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
                 repo_type="model",
-                local_files_only=True,
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Base model is not available in local cache: {self.base_model_name}. "
-                "Disable local_files_only for first-time download."
-            ) from e
-
-    @staticmethod
-    def _format_load_error(prefix: str, err: Exception) -> str:
-        message = str(err).replace("\n", " ").strip()
-        if len(message) > 600:
-            message = message[:600] + "..."
-
-        lower = message.lower()
-        hints = []
-        if "meta tensor" in lower:
-            hints.append("try: pip install -U diffusers accelerate")
-        if "size mismatch" in lower or "in_layer.bias" in lower:
-            hints.append("GGUF may be incompatible with current FLUX.2 config")
-        if "proxyerror" in lower or "connection refused" in lower:
-            hints.append("check network/proxy access to huggingface.co")
-        if hints:
-            message += " (" + "; ".join(hints) + ")"
-
-        return f"{prefix}: {message}"
-
-    def _place_pipeline(self, pipe):
-        import torch
-
-        if torch.cuda.is_available():
-            try:
-                pipe.to("cuda")
-            except Exception:
-                if hasattr(pipe, "enable_model_cpu_offload"):
-                    pipe.enable_model_cpu_offload()
-        else:
-            pipe.to("cpu")
-        return pipe
-
-    def _build_pipeline(self):
-        import torch
-        from huggingface_hub import hf_hub_download
-
-        pipe_cls, transformer_cls, quant_cls = self._resolve_diffusers_classes()
-        compute_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-        load_errors = []
-        base_model_source = self._resolve_base_model_source()
-        from_pretrained_target = base_model_source
-
-        gguf_filename, gguf_cached = self._resolve_gguf_filename()
-        gguf_local_only = self.local_files_only or gguf_cached
-        gguf_path = hf_hub_download(
-            repo_id=self.model_name,
-            filename=gguf_filename,
-            repo_type="model",
-            local_files_only=gguf_local_only,
-        )
-        quant_config = quant_cls(compute_dtype=compute_dtype)
-
-        transformer = None
-        try:
-            transformer = transformer_cls.from_single_file(
-                gguf_path,
-                quantization_config=quant_config,
-                config=base_model_source,
-                subfolder="transformer",
-                torch_dtype=compute_dtype,
+                revision=revision or "main",
                 local_files_only=self.local_files_only,
             )
-        except Exception as e:
-            load_errors.append(self._format_load_error("GGUF transformer load failed", e))
+        except Exception as exc:
+            hint = "請先執行 setup.bat 預下載模型，或關閉 local_files_only。" if self.local_files_only else "請檢查 Hugging Face 網路連線或模型路徑。"
+            raise RuntimeError(f"下載/解析 {kind} 模型失敗: {src}。{hint}") from exc
 
-        if transformer is not None:
+    def _resolve_sd_server_executable(self) -> str:
+        if self.server_exe and os.path.exists(self.server_exe):
+            return self.server_exe
+
+        runtime_root = Path(os.getcwd()) / "tasks" / "runtime" / "stable-diffusion-cpp"
+        if runtime_root.exists():
+            candidates = sorted(runtime_root.glob("**/sd-server.exe"), reverse=True)
+            if candidates:
+                return str(candidates[0])
+
+        found = shutil.which("sd-server")
+        if found:
+            return found
+
+        raise RuntimeError("找不到 sd-server.exe。請先執行 setup.bat，或在設定中指定 stable-diffusion.cpp server 路徑。")
+
+    def _check_server_ready(self, models_url: str, timeout_seconds: float = 8.0):
+        req = urllib.request.Request(models_url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            _ = resp.read()
+
+    @classmethod
+    def _stop_managed_server(cls):
+        proc = cls._server_proc
+        if proc is None:
+            return
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+        except Exception:
+            pass
+        cls._server_proc = None
+        cls._server_key = None
+
+    def _wait_server_ready(self, models_url: str, timeout_seconds: int):
+        deadline = time.time() + max(1, timeout_seconds)
+        last_error = "unknown"
+        while time.time() < deadline:
             try:
-                pipe = pipe_cls.from_pretrained(
-                    from_pretrained_target,
-                    transformer=transformer,
-                    torch_dtype=compute_dtype,
-                    local_files_only=self.local_files_only,
-                )
-                return self._place_pipeline(pipe)
-            except Exception as e:
-                load_errors.append(self._format_load_error(f"{pipe_cls.__name__} GGUF pipeline load failed", e))
+                self._check_server_ready(models_url, timeout_seconds=6.0)
+                return
+            except Exception as exc:
+                last_error = str(exc)
+            time.sleep(2.0)
+        raise RuntimeError(f"等待 sd-server 就緒逾時（{timeout_seconds}s）：{last_error}")
 
-        if self.allow_full_model_fallback:
-            try:
-                pipe = pipe_cls.from_pretrained(
-                    from_pretrained_target,
-                    torch_dtype=compute_dtype,
-                    local_files_only=self.local_files_only,
-                )
-                return self._place_pipeline(pipe)
-            except Exception as e:
-                load_errors.append(self._format_load_error(f"{pipe_cls.__name__} full-model fallback failed", e))
-        else:
-            load_errors.append("Full-model fallback disabled (allow_full_model_fallback=False).")
-
-        raise RuntimeError("Unable to load FLUX.2 [klein] GGUF pipeline. " + " | ".join(load_errors))
-
-    def _get_pipeline(self):
+    def _ensure_server_ready(self):
+        models_url = self._resolve_models_url(self.base_url)
         key = (
-            self.model_name,
-            self.base_model_name,
-            str(self.config.get("gguf_filename", "")),
+            self.base_url,
+            self.diffusion_model_path,
+            self.vae_path,
+            self.llm_path,
+            self.num_inference_steps,
+            self.guidance_scale,
+            self.seed,
+            self.server_args_extra,
             self.local_files_only,
-            self.allow_full_model_fallback,
         )
-        with self._pipeline_lock:
-            if self.__class__._pipeline_key != key:
-                self.__class__._pipeline = None
-                self.__class__._pipeline_error = None
-                self.__class__._pipeline_key = key
 
-            if self.__class__._pipeline is not None:
-                return self.__class__._pipeline
-
-            if self.__class__._pipeline_error:
-                raise RuntimeError(self.__class__._pipeline_error)
+        with self._server_lock:
+            proc = self.__class__._server_proc
+            if proc is not None:
+                if proc.poll() is not None:
+                    self.__class__._server_proc = None
+                    self.__class__._server_key = None
+                elif self.__class__._server_key == key:
+                    self._wait_server_ready(models_url, self.server_start_timeout)
+                    return
+                else:
+                    self.__class__._stop_managed_server()
 
             try:
-                self.__class__._pipeline = self._build_pipeline()
-                self.__class__._pipeline_error = None
-            except Exception as e:
-                self.__class__._pipeline_error = str(e)
-                raise
-        return self.__class__._pipeline
+                self._check_server_ready(models_url, timeout_seconds=4.0)
+                return
+            except Exception:
+                pass
 
-    def _prepare_image(self, image_path: str):
+            if not self.server_autostart:
+                raise RuntimeError("sd-server 未就緒，且 image_process_server_autostart 已關閉。")
+
+            exe = self._resolve_sd_server_executable()
+            diffusion_path = self._resolve_asset_to_local_path(self.diffusion_model_path, "diffusion")
+            vae_path = self._resolve_asset_to_local_path(self.vae_path, "vae")
+            llm_path = self._resolve_asset_to_local_path(self.llm_path, "llm")
+
+            port = self._parse_port_from_endpoint(self.base_url)
+            cmd = [
+                exe,
+                "--listen-ip",
+                "127.0.0.1",
+                "--listen-port",
+                str(port),
+                "--diffusion-model",
+                diffusion_path,
+                "--vae",
+                vae_path,
+                "--llm",
+                llm_path,
+                "--steps",
+                str(max(1, self.num_inference_steps)),
+                "--guidance",
+                str(self.guidance_scale),
+                "--sampling-method",
+                "euler",
+                "--diffusion-fa",
+            ]
+            if self.seed >= 0:
+                cmd.extend(["-s", str(self.seed)])
+            if self.server_args_extra:
+                cmd.extend(shlex.split(self.server_args_extra, posix=False))
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=str(Path(exe).resolve().parent),
+            )
+            self.__class__._server_proc = proc
+            self.__class__._server_key = key
+
+            try:
+                self._wait_server_ready(models_url, self.server_start_timeout)
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                raise
+
+    def _prepare_image(self, image_path: str) -> Tuple[Image.Image, Tuple[int, int]]:
         img = Image.open(image_path).convert("RGB")
         original_size = img.size
 
@@ -326,52 +361,61 @@ class ImageFlux2KleinGGUFLocalWorker(BaseWorker):
             h = max(64, int(h * scale))
             img = img.resize((w, h), Image.Resampling.LANCZOS)
 
-        w = max(64, (img.width // 16) * 16)
-        h = max(64, (img.height // 16) * 16)
-        if (w, h) != img.size:
-            img = img.resize((w, h), Image.Resampling.LANCZOS)
-
         return img, original_size
 
     @staticmethod
-    def _extract_output_image(result):
-        if hasattr(result, "images") and result.images:
-            return result.images[0]
-        if isinstance(result, list) and result:
-            return result[0]
-        return None
+    def _encode_png(image: Image.Image) -> bytes:
+        buf = BytesIO()
+        image.save(buf, format="PNG")
+        return buf.getvalue()
 
-    def _run_pipeline(self, pipe, prompt: str, input_image: Image.Image):
-        import torch
+    @staticmethod
+    def _build_multipart(fields: List[Tuple[str, str]], files: List[Tuple[str, str, bytes, str]]):
+        boundary = f"----CodexBoundary{uuid.uuid4().hex}"
+        body = BytesIO()
 
-        base_kwargs = {
-            "prompt": prompt,
-            "num_inference_steps": self.num_inference_steps,
-        }
-        if self.seed >= 0:
-            generator_device = "cuda" if torch.cuda.is_available() else "cpu"
-            base_kwargs["generator"] = torch.Generator(device=generator_device).manual_seed(self.seed)
+        for name, value in fields:
+            body.write(f"--{boundary}\r\n".encode("utf-8"))
+            body.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+            body.write(str(value).encode("utf-8"))
+            body.write(b"\r\n")
 
-        # Different pipeline classes may accept different optional args.
-        optional_sets = (
-            {"guidance_scale": self.guidance_scale, "strength": self.strength},
-            {"guidance_scale": self.guidance_scale},
-            {"strength": self.strength},
-            {},
-        )
-        image_arg_names = ("image", "input_image", "images", "reference_images")
+        for name, filename, content, content_type in files:
+            body.write(f"--{boundary}\r\n".encode("utf-8"))
+            body.write(
+                f'Content-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'.encode("utf-8")
+            )
+            body.write(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+            body.write(content)
+            body.write(b"\r\n")
 
-        for arg_name in image_arg_names:
-            for optional_kwargs in optional_sets:
-                try:
-                    result = pipe(**{**base_kwargs, **optional_kwargs, arg_name: input_image})
-                    output_image = self._extract_output_image(result)
-                    if output_image is not None:
-                        return output_image
-                except TypeError:
-                    continue
+        body.write(f"--{boundary}--\r\n".encode("utf-8"))
+        return body.getvalue(), boundary
 
-        raise RuntimeError("Loaded pipeline does not accept image input for editing.")
+    def _call_image_edit(self, image_bytes: bytes, prompt: str, size_text: str) -> Image.Image:
+        endpoint = self._resolve_images_edits_url(self.base_url)
+        fields = [
+            ("prompt", prompt),
+            ("size", size_text),
+            ("n", "1"),
+            ("output_format", "png"),
+        ]
+        files = [("image", "input.png", image_bytes, "image/png")]
+        body, boundary = self._build_multipart(fields, files)
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=600.0) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+
+        data = payload.get("data") or []
+        if not data:
+            raise RuntimeError("sd-server 未回傳圖片資料")
+        b64 = str(data[0].get("b64_json", "")).strip()
+        if not b64:
+            raise RuntimeError("sd-server 回傳空的 b64_json")
+
+        decoded = base64.b64decode(b64)
+        return Image.open(BytesIO(decoded)).convert("RGB")
 
     @staticmethod
     def _save_image(image: Image.Image, target_path: str):
@@ -399,17 +443,16 @@ class ImageFlux2KleinGGUFLocalWorker(BaseWorker):
             if not prompt:
                 return WorkerOutput(success=False, error="Image process prompt is empty")
 
-            pipe = self._get_pipeline()
+            self._ensure_server_ready()
+
             input_image, original_size = self._prepare_image(image_path)
-            output_image = self._run_pipeline(pipe, prompt, input_image)
-            if output_image is None:
-                return WorkerOutput(success=False, error="No image result returned by pipeline")
+            image_bytes = self._encode_png(input_image)
+            result_image = self._call_image_edit(image_bytes, prompt, f"{input_image.width}x{input_image.height}")
 
-            if output_image.size != original_size:
-                output_image = output_image.resize(original_size, Image.Resampling.LANCZOS)
+            if result_image.size != original_size:
+                result_image = result_image.resize(original_size, Image.Resampling.LANCZOS)
 
-            self._save_image(output_image, image_path)
-
+            self._save_image(result_image, image_path)
             return WorkerOutput(
                 success=True,
                 image=image_data,
@@ -417,13 +460,24 @@ class ImageFlux2KleinGGUFLocalWorker(BaseWorker):
                     "original_path": image_path,
                     "result_path": image_path,
                     "model_name": self.model_name,
+                    "backend": "stable-diffusion.cpp",
                 },
             )
-        except Exception as e:
-            traceback.print_exc()
-            return WorkerOutput(success=False, error=str(e))
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            return WorkerOutput(success=False, error=f"HTTP {exc.code}: {body[:500]}")
+        except Exception as exc:
+            return WorkerOutput(success=False, error=str(exc))
 
     def validate_input(self, input_data: WorkerInput) -> Optional[str]:
         if not input_data.image:
             return "Missing image data"
+        if not self.base_url:
+            return "Missing sd-server base URL"
+        if not self.diffusion_model_path:
+            return "Missing diffusion model path"
+        if not self.vae_path:
+            return "Missing VAE path"
+        if not self.llm_path:
+            return "Missing LLM path"
         return None

@@ -118,7 +118,10 @@ class PipelineHandlerMixin:
                  model = model.split("/")[-1]
             model_info = f"TAGGER ({model})"
         elif "llm" in task_name:
-            model = self.settings.get("llm_model", "")
+            if self.settings.get("llm_provider") == "llm_llama_cpp_local":
+                model = self.settings.get("llama_cpp_model_alias", "qwen35-vl-gguf")
+            else:
+                model = self.settings.get("llm_model", "")
             model_info = f"LLM ({model})"
         elif "image_process" in task_name:
             model = self.settings.get("image_process_model", "unsloth/FLUX.2-klein-4B-GGUF")

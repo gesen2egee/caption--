@@ -46,6 +46,19 @@ A short English sentence about the subject
 
 DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE = "幫我移除圖中所有的文字、文字氣泡、文字框"
+DEFAULT_LLAMA_CPP_MMPROJ_URL = (
+    "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+)
+DEFAULT_IMAGE_PROCESS_BASE_URL = "http://127.0.0.1:8001/v1"
+DEFAULT_IMAGE_PROCESS_DIFFUSION_MODEL = (
+    "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-BF16.gguf"
+)
+DEFAULT_IMAGE_PROCESS_VAE_MODEL = (
+    "https://huggingface.co/black-forest-labs/FLUX.2-dev/resolve/main/ae.safetensors"
+)
+DEFAULT_IMAGE_PROCESS_LLM_MODEL = (
+    "https://huggingface.co/unsloth/Qwen3-4B-GGUF/blob/main/Qwen3-4B-Q4_K_M.gguf"
+)
 
 
 # --------------------------
@@ -69,6 +82,29 @@ DEFAULT_APP_SETTINGS = {
     "llm_temperature": 1.0,
     "llm_top_p": 0.95,
     "llm_thinking_mode": True,
+    "llama_cpp_base_url": "http://127.0.0.1:8000/v1",
+    "llama_cpp_api_key": "",
+    "llama_cpp_model_alias": "qwen35-vl-gguf",
+    # Local llama.cpp (GGUF)
+    "llama_cpp_model_path": "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+    "llama_cpp_n_ctx": 8192,
+    "llama_cpp_n_threads": 0,  # 0 = auto
+    "llama_cpp_n_gpu_layers": 99,
+    "llama_cpp_max_tokens": 81920,
+    "llama_cpp_temperature": 1.0,
+    "llama_cpp_top_p": 0.8,
+    "llama_cpp_top_k": 20,
+    "llama_cpp_min_p": 0.0,
+    "llama_cpp_presence_penalty": 1.5,
+    "llama_cpp_repeat_penalty": 1.0,
+    "llama_cpp_chat_format": "chatml",
+    "llama_cpp_local_files_only": False,
+    "llama_cpp_mmproj_path": DEFAULT_LLAMA_CPP_MMPROJ_URL,
+    "llama_cpp_enable_vision": True,
+    "llama_cpp_server_autostart": True,
+    "llama_cpp_server_exe": "",
+    "llama_cpp_server_workers": 8,
+    "llama_cpp_server_start_timeout": 900,
     "last_open_dir": "",
     # Startup / performance
     "startup_defer_worker_scan": True,
@@ -79,6 +115,7 @@ DEFAULT_APP_SETTINGS = {
     "image_process_worker": "image_flux2_klein_gguf_local",
     "image_process_model": "unsloth/FLUX.2-klein-4B-GGUF",
     "image_process_prompt_template": DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE,
+    "image_process_base_url": DEFAULT_IMAGE_PROCESS_BASE_URL,
     "image_process_steps": 6,
     "image_process_guidance_scale": 3.5,
     "image_process_max_dimension": 1536,
@@ -86,6 +123,13 @@ DEFAULT_APP_SETTINGS = {
     "image_process_local_files_only": False,
     "image_process_allow_full_model_fallback": False,
     "image_process_gguf_filename": "",
+    "image_process_server_autostart": True,
+    "image_process_server_exe": "",
+    "image_process_server_start_timeout": 900,
+    "image_process_server_args_extra": "",
+    "image_process_diffusion_model_path": DEFAULT_IMAGE_PROCESS_DIFFUSION_MODEL,
+    "image_process_vae_path": DEFAULT_IMAGE_PROCESS_VAE_MODEL,
+    "image_process_llm_path": DEFAULT_IMAGE_PROCESS_LLM_MODEL,
 
     # Worker Selection
     "tagger_worker": "tagger_imgutils_generic",
@@ -190,6 +234,10 @@ def load_app_settings() -> dict:
                 # Return defaults (which we already have in cfg)
             except Exception as e:
                 print(f"[Settings] Unexpected error loading settings: {e}")
+        if cfg.get("llama_cpp_enable_vision", True):
+            mmproj_path = str(cfg.get("llama_cpp_mmproj_path", "")).strip()
+            if not mmproj_path:
+                cfg["llama_cpp_mmproj_path"] = DEFAULT_APP_SETTINGS["llama_cpp_mmproj_path"]
     except Exception as e:
         print(f"[Settings] load failed: {e}")
     return cfg

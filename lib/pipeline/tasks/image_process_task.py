@@ -68,6 +68,7 @@ class ImageProcessTask(BaseTask):
                 )
 
             config = {
+                "base_url": getattr(settings, "image_process_base_url", "http://127.0.0.1:8001/v1"),
                 "model_name": getattr(settings, "image_process_model", "unsloth/FLUX.2-klein-4B-GGUF"),
                 "num_inference_steps": getattr(settings, "image_process_steps", 6),
                 "guidance_scale": getattr(settings, "image_process_guidance_scale", 3.5),
@@ -76,6 +77,25 @@ class ImageProcessTask(BaseTask):
                 "local_files_only": getattr(settings, "image_process_local_files_only", False),
                 "allow_full_model_fallback": getattr(settings, "image_process_allow_full_model_fallback", False),
                 "gguf_filename": getattr(settings, "image_process_gguf_filename", ""),
+                "server_autostart": getattr(settings, "image_process_server_autostart", True),
+                "server_exe": getattr(settings, "image_process_server_exe", ""),
+                "server_start_timeout": getattr(settings, "image_process_server_start_timeout", 900),
+                "server_args_extra": getattr(settings, "image_process_server_args_extra", ""),
+                "diffusion_model_path": getattr(
+                    settings,
+                    "image_process_diffusion_model_path",
+                    "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-BF16.gguf",
+                ),
+                "vae_path": getattr(
+                    settings,
+                    "image_process_vae_path",
+                    "https://huggingface.co/black-forest-labs/FLUX.2-dev/resolve/main/ae.safetensors",
+                ),
+                "llm_path": getattr(
+                    settings,
+                    "image_process_llm_path",
+                    "https://huggingface.co/unsloth/Qwen3-4B-GGUF/blob/main/Qwen3-4B-Q4_K_M.gguf",
+                ),
             }
 
             worker_input = context.to_worker_input()

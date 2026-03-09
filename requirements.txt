@@ -2,6 +2,7 @@ natsort
 PyQt6
 Pillow
 openai
+llama-cpp-python
 dghs-imgutils
 transformers
 transparent-background

@@ -69,18 +69,52 @@ class LLMTask(BaseTask):
 
             config = {}
             if context.settings:
-                config = {
-                    "base_url": context.settings.llm_base_url,
-                    "api_key": context.settings.llm_api_key,
-                    "model_name": context.settings.llm_model,
-                    "max_image_dim": context.settings.llm_max_image_dimension,
-                    "use_gray_mask": context.settings.llm_use_gray_mask,
-                }
+                if worker_name == "llm_llama_cpp_local":
+                    config = {
+                        "base_url": getattr(context.settings, "llama_cpp_base_url", "http://127.0.0.1:8000/v1"),
+                        "api_key": getattr(context.settings, "llama_cpp_api_key", ""),
+                        "model_name": getattr(context.settings, "llama_cpp_model_alias", "qwen35-vl-gguf"),
+                        "max_image_dim": context.settings.llm_max_image_dimension,
+                        "use_gray_mask": context.settings.llm_use_gray_mask,
+                        "temperature": float(getattr(context.settings, "llama_cpp_temperature", 1.0)),
+                        "top_p": float(getattr(context.settings, "llama_cpp_top_p", 0.8)),
+                        "top_k": int(getattr(context.settings, "llama_cpp_top_k", 20)),
+                        "min_p": float(getattr(context.settings, "llama_cpp_min_p", 0.0)),
+                        "presence_penalty": float(getattr(context.settings, "llama_cpp_presence_penalty", 1.5)),
+                        "repetition_penalty": float(getattr(context.settings, "llama_cpp_repeat_penalty", 1.0)),
+                        "model_path": context.settings.llama_cpp_model_path,
+                        "n_gpu_layers": int(context.settings.llama_cpp_n_gpu_layers),
+                        "max_tokens": int(context.settings.llama_cpp_max_tokens),
+                        "mmproj_path": context.settings.llama_cpp_mmproj_path,
+                        "enable_vision": bool(context.settings.llama_cpp_enable_vision),
+                        "server_autostart": bool(getattr(context.settings, "llama_cpp_server_autostart", True)),
+                        "server_exe": str(getattr(context.settings, "llama_cpp_server_exe", "")),
+                        "server_workers": int(getattr(context.settings, "llama_cpp_server_workers", 8)),
+                        "server_start_timeout": int(
+                            getattr(context.settings, "llama_cpp_server_start_timeout", 900)
+                        ),
+                    }
+                else:
+                    config = {
+                        "base_url": context.settings.llm_base_url,
+                        "api_key": context.settings.llm_api_key,
+                        "model_name": context.settings.llm_model,
+                        "max_image_dim": context.settings.llm_max_image_dimension,
+                        "use_gray_mask": context.settings.llm_use_gray_mask,
+                        "temperature": context.settings.llm_temperature,
+                        "top_p": context.settings.llm_top_p,
+                        "reasoning_enabled": bool(context.settings.llm_thinking_mode),
+                    }
             
             # 將 prompt 放入 extra
             worker_input = context.to_worker_input()
             worker_input.extra["user_prompt"] = user_prompt
             worker_input.extra["system_prompt"] = system_prompt
+            if context.settings:
+                worker_input.extra["llm_input_repeat_count"] = int(context.settings.llm_input_repeat_count)
+                worker_input.extra["temperature"] = float(context.settings.llm_temperature)
+                worker_input.extra["top_p"] = float(context.settings.llm_top_p)
+                worker_input.extra["thinking_mode"] = bool(context.settings.llm_thinking_mode)
             
             worker = WorkerCls(config)
             worker_output = worker.process(worker_input)

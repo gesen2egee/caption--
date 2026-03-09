@@ -49,7 +49,10 @@ class VLMOpenRouterAPIWorker(BaseWorker):
     description = "Use remote VLM APIs compatible with OpenAI format"
     default_config = {
          "base_url": "https://openrouter.ai/api/v1",
-         "model_name": "mistralai/mistral-large-2512"
+         "model_name": "mistralai/mistral-large-2512",
+         "temperature": 1.0,
+         "top_p": 0.95,
+         "reasoning_enabled": False,
     }
     
     def __init__(self, config: Dict = None):
@@ -62,6 +65,9 @@ class VLMOpenRouterAPIWorker(BaseWorker):
         self.max_tokens = self.config.get("max_tokens", 40960)
         self.max_image_dim = self.config.get("max_image_dim", 1024)
         self.use_gray_mask = self.config.get("use_gray_mask", True)
+        self.temperature = float(self.config.get("temperature", 1.0))
+        self.top_p = float(self.config.get("top_p", 0.95))
+        self.reasoning_enabled = bool(self.config.get("reasoning_enabled", False))
     
     @property
     def name(self) -> str:
@@ -188,14 +194,19 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 "content": user_content
             })
 
-            # User requested forced Instant Mode (No Thinking)
-            # Ignoring settings for these specific params
-            temperature = 0.6 
-            top_p = 0.95
+            temperature = self.temperature
+            top_p = self.top_p
+            reasoning_enabled = self.reasoning_enabled
             
-            # Allow manual override via extra input only (not global settings)
+            # Allow runtime override via input extra.
             temperature = float(input_data.extra.get("temperature", temperature))
             top_p = float(input_data.extra.get("top_p", top_p))
+            reasoning_enabled = bool(input_data.extra.get("thinking_mode", reasoning_enabled))
+            # UI already marks this as Kimi-only. Force-disable for non-Kimi models
+            # to avoid provider-side validation errors.
+            model_lower = str(self.model_name or "").lower()
+            if "kimi" not in model_lower and "moonshot" not in model_lower:
+                reasoning_enabled = False
             
             kwargs = {
                 "model": self.model_name,
@@ -204,7 +215,7 @@ class VLMOpenRouterAPIWorker(BaseWorker):
                 "max_tokens": self.max_tokens,
                 "temperature": temperature,
                 "top_p": top_p,
-                "extra_body": {"reasoning": {"enabled": False}}
+                "extra_body": {"reasoning": {"enabled": reasoning_enabled}}
             }
             
             response = client.chat.completions.create(**kwargs)

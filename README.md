@@ -21,12 +21,14 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 
 ### 🤖 LLM 描述生成
 - **OpenRouter API** 整合 (支援各種 LLM 模型)
+- **LLaMA.cpp Local Worker** - 支援 GGUF 本地模型 / Hugging Face URL
 - **自然語言描述** - 生成英文句子 + 中文翻譯
 - **Default/Custom Prompt** - 雙模板切換
 - **NL 歷史** - 保留多次生成結果
 - **Batch LLM to txt** - 批次將 NL 描述直接寫入實體 `.txt` 檔案
 
 ### 🎨 圖片處理工具
+- **FLUX.2-klein Image Edit** - 使用 `stable-diffusion.cpp / sd-server` 做本地修圖
 - **Remove Background** - 一鍵去背 (transparent_background)
 - **Batch Unmask** - 批次去除含 `background` 標籤的圖片背景
 - **Stroke Eraser** - 手繪橡皮擦，塗抹區域變透明
@@ -45,13 +47,17 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 ## 安裝
 
 ### 1. 快速安裝 (Windows)
-雙擊執行 `setup.bat` 即可自動建立虛擬環境並安裝所有依賴 (包含修復版 pilmoji 與 GPU 版 imgutils)。
+雙擊執行 `setup.bat` 即可自動建立虛擬環境並安裝所有依賴，另外會：
+
+- 下載 `stable-diffusion.cpp` Windows GPU Release 到 `tasks/runtime/stable-diffusion-cpp/`
+- 預下載 FLUX.2-klein 修圖所需資產到 `tasks/runtime/models/flux2-klein/`
+- 保留 `llama.cpp / llama-server` 給 Qwen LLM 視覺描述使用
 
 ### 2. 啟動
 雙擊執行 `run.bat`。
 
 ### 3. 更新
-若需更新程式碼與依賴，請執行 `update.bat`。
+若需更新程式碼、依賴與 `stable-diffusion.cpp` runtime，請執行 `update.bat`。
 
 ---
 
@@ -62,7 +68,10 @@ python -m venv venv
 venv\Scripts\activate
 
 # 基礎依賴
-pip install PyQt6 Pillow natsort openai -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install PyQt6 Pillow natsort openai llama-cpp-python huggingface-hub -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 若鏡像無 llama-cpp-python，可回退官方 PyPI
+pip install llama-cpp-python huggingface-hub
 
 # Pilmoji (Source fixed)
 pip install git+https://github.com/jay3332/pilmoji.git
@@ -91,12 +100,40 @@ pip install transparent-background transformers -i https://pypi.tuna.tsinghua.ed
 | 滾輪 (圖片區) | 瀏覽圖片 |
 
 ### 設定 (Settings)
-- **LLM** - API Key、Model、Prompt 模板
+- **LLM** - Provider、API Key、Model、Prompt 模板
+- **LLaMA.cpp** - GGUF 模型路徑/URL、n_ctx、n_gpu_layers、max_tokens
+- **LLaMA.cpp Vision** - 可選 mmproj 路徑，未填時會嘗試從同一個 Hugging Face repo 自動抓取
+- **Image Edit / stable-diffusion.cpp** - `sd-server` URL、自動啟動、模型路徑、steps、guidance、seed、extra args
 - **Tagger** - WD14 閾值、模型選擇
 - **Text** - 英文強制小寫、自動格式化、Batch 寫入模式 (附加/覆寫)、資料夾觸發詞
 - **Tags Filter** - 特徵標籤黑白名單 (Prefixes/Suffixes/Words)
 - **Mask** - 預設透明度、格式、OCR 開關、舊圖移動時刪除對應 npz
 - **UI (介面)** - 語言切換、日夜間模式切換
+
+> LLaMA.cpp 預設 GGUF URL：  
+> `https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/blob/main/Qwen3.5-9B-Q8_0.gguf`
+
+> FLUX.2-klein 預設 Diffusion GGUF URL：  
+> `https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-BF16.gguf`
+
+> Image Edit 預設 `sd-server` URL：  
+> `http://127.0.0.1:8001/v1`
+
+## 本地 C++ 後端分工
+
+- `Qwen LLM` 使用 `llama.cpp / llama-server`
+  - 預設 URL: `http://127.0.0.1:8000/v1`
+- `FLUX.2-klein 修圖` 使用 `stable-diffusion.cpp / sd-server`
+  - 預設 URL: `http://127.0.0.1:8001/v1`
+
+這樣兩套 server 會各自使用自己的 port，避免互相搶占。
+
+如果你想接外部 server：
+
+- 到 Settings 把 `Base URL` 改成你自己的 endpoint
+- 程式會先檢查該 URL 是否已可用
+- 若可用，就直接重用外部 server，不會強制重啟它
+- 若不可用，且有開啟 autostart，才會啟動內建 managed server
 
 ---
 

@@ -88,6 +88,28 @@ class Settings:
     llm_temperature: float = 1.0
     llm_top_p: float = 0.95
     llm_thinking_mode: bool = True
+    llama_cpp_base_url: str = "http://127.0.0.1:8000/v1"
+    llama_cpp_api_key: str = ""
+    llama_cpp_model_alias: str = "qwen35-vl-gguf"
+    llama_cpp_model_path: str = "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf"
+    llama_cpp_n_ctx: int = 8192
+    llama_cpp_n_threads: int = 0
+    llama_cpp_n_gpu_layers: int = 99
+    llama_cpp_max_tokens: int = 81920
+    llama_cpp_temperature: float = 1.0
+    llama_cpp_top_p: float = 0.8
+    llama_cpp_top_k: int = 20
+    llama_cpp_min_p: float = 0.0
+    llama_cpp_presence_penalty: float = 1.5
+    llama_cpp_repeat_penalty: float = 1.0
+    llama_cpp_chat_format: str = "chatml"
+    llama_cpp_local_files_only: bool = False
+    llama_cpp_mmproj_path: str = "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+    llama_cpp_enable_vision: bool = True
+    llama_cpp_server_autostart: bool = True
+    llama_cpp_server_exe: str = ""
+    llama_cpp_server_workers: int = 8
+    llama_cpp_server_start_timeout: int = 900
     startup_defer_worker_scan: bool = True
     tokenizer_local_only: bool = True
     tokenizer_retry_on_failure: bool = False
@@ -96,6 +118,7 @@ class Settings:
     image_process_worker: str = "image_flux2_klein_gguf_local"
     image_process_model: str = "unsloth/FLUX.2-klein-4B-GGUF"
     image_process_prompt_template: str = "幫我移除圖中所有的文字、文字氣泡、文字框"
+    image_process_base_url: str = "http://127.0.0.1:8001/v1"
     image_process_steps: int = 6
     image_process_guidance_scale: float = 3.5
     image_process_max_dimension: int = 1536
@@ -103,6 +126,13 @@ class Settings:
     image_process_local_files_only: bool = False
     image_process_allow_full_model_fallback: bool = False
     image_process_gguf_filename: str = ""
+    image_process_server_autostart: bool = True
+    image_process_server_exe: str = ""
+    image_process_server_start_timeout: int = 900
+    image_process_server_args_extra: str = ""
+    image_process_diffusion_model_path: str = "https://huggingface.co/unsloth/FLUX.2-klein-4B-GGUF/blob/main/flux-2-klein-4b-BF16.gguf"
+    image_process_vae_path: str = "https://huggingface.co/black-forest-labs/FLUX.2-dev/resolve/main/ae.safetensors"
+    image_process_llm_path: str = "https://huggingface.co/unsloth/Qwen3-4B-GGUF/blob/main/Qwen3-4B-Q4_K_M.gguf"
     
     # Tagger 設定
     tagger_worker: str = "tagger_imgutils_generic"

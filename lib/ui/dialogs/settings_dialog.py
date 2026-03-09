@@ -14,7 +14,7 @@ from lib.core.settings import (
     DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CUSTOM_PROMPT_TEMPLATE,
     DEFAULT_CUSTOM_TAGS, _coerce_float, _coerce_int
 )
-from lib.workers.registry import get_registry
+from lib.workers.registry import get_registry, scan_workers
 
 class SettingsDialog(QDialog):
     def __init__(self, cfg: dict, parent=None):
@@ -74,6 +74,7 @@ class SettingsDialog(QDialog):
         # LLM Provider Selection
         self.cb_llm_provider = QComboBox()
         self._populate_workers(self.cb_llm_provider, "LLM", self.cfg.get("llm_provider"))
+        self.cb_llm_provider.currentIndexChanged.connect(self._on_llm_provider_changed)
         form.addRow("Provider (Source)", self.cb_llm_provider)
 
         self.ed_base_url = QLineEdit(str(self.cfg.get("llm_base_url", "")))
@@ -125,7 +126,59 @@ class SettingsDialog(QDialog):
         self.chk_llm_thinking.toggled.connect(self._on_thinking_toggled)
         form.addRow("", self.chk_llm_thinking)
 
+        default_llama_model = str(
+            DEFAULT_APP_SETTINGS.get(
+                "llama_cpp_model_path",
+                "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+            )
+        )
+        self.cb_llama_model_path = QComboBox()
+        self.cb_llama_model_path.setEditable(True)
+        self.cb_llama_model_path.addItems([
+            default_llama_model,
+            "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive",
+        ])
+        current_llama_model = str(self.cfg.get("llama_cpp_model_path", default_llama_model))
+        if self.cb_llama_model_path.findText(current_llama_model) < 0:
+            self.cb_llama_model_path.addItem(current_llama_model)
+        self.cb_llama_model_path.setCurrentText(current_llama_model)
+        form.addRow("LLaMA.cpp GGUF Path/URL", self.cb_llama_model_path)
+
+        self.spin_llama_max_tokens = QSpinBox()
+        self.spin_llama_max_tokens.setRange(64, 262144)
+        self.spin_llama_max_tokens.setValue(int(self.cfg.get("llama_cpp_max_tokens", 81920)))
+        form.addRow("LLaMA.cpp Max Tokens", self.spin_llama_max_tokens)
+
+        self.spin_llama_temperature = QDoubleSpinBox()
+        self.spin_llama_temperature.setRange(0.0, 2.0)
+        self.spin_llama_temperature.setSingleStep(0.1)
+        self.spin_llama_temperature.setValue(float(self.cfg.get("llama_cpp_temperature", 1.0)))
+        form.addRow("LLaMA.cpp Temperature", self.spin_llama_temperature)
+
+        self.spin_llama_top_p = QDoubleSpinBox()
+        self.spin_llama_top_p.setRange(0.0, 1.0)
+        self.spin_llama_top_p.setSingleStep(0.05)
+        self.spin_llama_top_p.setValue(float(self.cfg.get("llama_cpp_top_p", 0.8)))
+        form.addRow("LLaMA.cpp Top P", self.spin_llama_top_p)
+
+        self._llm_form = form
+        self._llm_openai_widgets = [
+            self.ed_base_url,
+            self.ed_api_key,
+            self.ed_model,
+            self.spin_llm_temp,
+            self.spin_llm_top_p,
+            self.chk_llm_thinking,
+        ]
+        self._llm_llama_widgets = [
+            self.cb_llama_model_path,
+            self.spin_llama_max_tokens,
+            self.spin_llama_temperature,
+            self.spin_llama_top_p,
+        ]
+
         llm_layout.addLayout(form)
+        self._on_llm_provider_changed()
 
         llm_layout.addWidget(QLabel(self.tr("setting_llm_sys_prompt")))
         self.ed_system_prompt = QPlainTextEdit()
@@ -157,6 +210,126 @@ class SettingsDialog(QDialog):
         llm_layout.addWidget(self.ed_default_custom_tags)
 
         self.tabs.addTab(tab_llm, self.tr("setting_tab_llm"))
+
+        # ---- Image Process ----
+        tab_imgproc = QWidget()
+        imgproc_layout = QVBoxLayout(tab_imgproc)
+        form_img = QFormLayout()
+
+        self.ed_imgproc_prompt = QPlainTextEdit()
+        self.ed_imgproc_prompt.setPlainText(
+            str(self.cfg.get("image_process_prompt_template", DEFAULT_APP_SETTINGS.get("image_process_prompt_template", "")))
+        )
+        self.ed_imgproc_prompt.setMinimumHeight(80)
+        form_img.addRow(self.tr("label_imgproc_prompt"), self.ed_imgproc_prompt)
+
+        self.ed_imgproc_base_url = QLineEdit(
+            str(self.cfg.get("image_process_base_url", DEFAULT_APP_SETTINGS.get("image_process_base_url", "http://127.0.0.1:8001/v1")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_base_url"), self.ed_imgproc_base_url)
+
+        self.chk_imgproc_autostart = QCheckBox(self.tr("setting_imgproc_autostart"))
+        self.chk_imgproc_autostart.setChecked(
+            bool(self.cfg.get("image_process_server_autostart", DEFAULT_APP_SETTINGS.get("image_process_server_autostart", True)))
+        )
+        form_img.addRow("", self.chk_imgproc_autostart)
+
+        self.ed_imgproc_server_exe = QLineEdit(
+            str(self.cfg.get("image_process_server_exe", DEFAULT_APP_SETTINGS.get("image_process_server_exe", "")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_server_exe"), self.ed_imgproc_server_exe)
+
+        self.spin_imgproc_server_timeout = QSpinBox()
+        self.spin_imgproc_server_timeout.setRange(10, 3600)
+        self.spin_imgproc_server_timeout.setValue(
+            int(self.cfg.get("image_process_server_start_timeout", DEFAULT_APP_SETTINGS.get("image_process_server_start_timeout", 900)))
+        )
+        form_img.addRow(self.tr("setting_imgproc_server_timeout"), self.spin_imgproc_server_timeout)
+
+        self.ed_imgproc_server_args = QLineEdit(
+            str(self.cfg.get("image_process_server_args_extra", DEFAULT_APP_SETTINGS.get("image_process_server_args_extra", "")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_server_args"), self.ed_imgproc_server_args)
+
+        self.ed_imgproc_model_name = QLineEdit(
+            str(self.cfg.get("image_process_model", DEFAULT_APP_SETTINGS.get("image_process_model", "")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_model_name"), self.ed_imgproc_model_name)
+
+        self.ed_imgproc_diffusion = QLineEdit(
+            str(
+                self.cfg.get(
+                    "image_process_diffusion_model_path",
+                    DEFAULT_APP_SETTINGS.get("image_process_diffusion_model_path", ""),
+                )
+            )
+        )
+        form_img.addRow(self.tr("setting_imgproc_diffusion_model"), self.ed_imgproc_diffusion)
+
+        self.ed_imgproc_vae = QLineEdit(
+            str(self.cfg.get("image_process_vae_path", DEFAULT_APP_SETTINGS.get("image_process_vae_path", "")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_vae_model"), self.ed_imgproc_vae)
+
+        self.ed_imgproc_llm = QLineEdit(
+            str(self.cfg.get("image_process_llm_path", DEFAULT_APP_SETTINGS.get("image_process_llm_path", "")))
+        )
+        form_img.addRow(self.tr("setting_imgproc_llm_model"), self.ed_imgproc_llm)
+
+        self.spin_imgproc_steps = QSpinBox()
+        self.spin_imgproc_steps.setRange(1, 100)
+        self.spin_imgproc_steps.setValue(
+            int(self.cfg.get("image_process_steps", DEFAULT_APP_SETTINGS.get("image_process_steps", 6)))
+        )
+        form_img.addRow(self.tr("setting_imgproc_steps"), self.spin_imgproc_steps)
+
+        self.spin_imgproc_guidance = QDoubleSpinBox()
+        self.spin_imgproc_guidance.setRange(0.0, 20.0)
+        self.spin_imgproc_guidance.setSingleStep(0.1)
+        self.spin_imgproc_guidance.setValue(
+            float(
+                self.cfg.get(
+                    "image_process_guidance_scale",
+                    DEFAULT_APP_SETTINGS.get("image_process_guidance_scale", 3.5),
+                )
+            )
+        )
+        form_img.addRow(self.tr("setting_imgproc_guidance"), self.spin_imgproc_guidance)
+
+        self.spin_imgproc_max_dim = QSpinBox()
+        self.spin_imgproc_max_dim.setRange(256, 4096)
+        self.spin_imgproc_max_dim.setSingleStep(128)
+        self.spin_imgproc_max_dim.setValue(
+            int(
+                self.cfg.get(
+                    "image_process_max_dimension",
+                    DEFAULT_APP_SETTINGS.get("image_process_max_dimension", 1536),
+                )
+            )
+        )
+        form_img.addRow(self.tr("setting_imgproc_max_dim"), self.spin_imgproc_max_dim)
+
+        self.spin_imgproc_seed = QSpinBox()
+        self.spin_imgproc_seed.setRange(-1, 2147483647)
+        self.spin_imgproc_seed.setValue(
+            int(self.cfg.get("image_process_seed", DEFAULT_APP_SETTINGS.get("image_process_seed", -1)))
+        )
+        form_img.addRow(self.tr("setting_imgproc_seed"), self.spin_imgproc_seed)
+
+        self.chk_imgproc_local_only = QCheckBox(self.tr("setting_imgproc_local_only"))
+        self.chk_imgproc_local_only.setChecked(
+            bool(
+                self.cfg.get(
+                    "image_process_local_files_only",
+                    DEFAULT_APP_SETTINGS.get("image_process_local_files_only", False),
+                )
+            )
+        )
+        form_img.addRow("", self.chk_imgproc_local_only)
+
+        imgproc_layout.addLayout(form_img)
+        imgproc_layout.addStretch(1)
+        self.tabs.addTab(tab_imgproc, self.tr("setting_tab_imgproc"))
 
         # ---- Tagger ----
         tab_tagger = QWidget()
@@ -445,6 +618,12 @@ class SettingsDialog(QDialog):
         combo.clear()
         reg = get_registry()
         workers = reg.get_workers(category)
+        if not workers:
+            try:
+                scan_workers()
+                workers = get_registry().get_workers(category)
+            except Exception:
+                workers = []
         
         for w in workers:
             combo.addItem(w["display_name"], w["name"])
@@ -461,6 +640,18 @@ class SettingsDialog(QDialog):
             self.spin_llm_temp.setValue(1.0)
         else:
             self.spin_llm_temp.setValue(0.6)
+
+    def _on_llm_provider_changed(self, _index: int = -1):
+        provider = self.cb_llm_provider.currentData()
+        is_llama_cpp = provider == "llm_llama_cpp_local"
+        form = getattr(self, "_llm_form", None)
+        if form is None:
+            return
+
+        for w in self._llm_openai_widgets:
+            form.setRowVisible(w, not is_llama_cpp)
+        for w in self._llm_llama_widgets:
+            form.setRowVisible(w, is_llama_cpp)
 
     def _parse_tags(self, s: str):
         raw = (s or "").strip()
@@ -534,7 +725,95 @@ class SettingsDialog(QDialog):
         cfg["llm_temperature"] = self.spin_llm_temp.value()
         cfg["llm_top_p"] = self.spin_llm_top_p.value()
         cfg["llm_thinking_mode"] = self.chk_llm_thinking.isChecked()
+        cfg["llama_cpp_model_path"] = (
+            self.cb_llama_model_path.currentText().strip()
+            or DEFAULT_APP_SETTINGS.get("llama_cpp_model_path", "")
+        )
+        cfg["llama_cpp_max_tokens"] = self.spin_llama_max_tokens.value()
+        cfg["llama_cpp_temperature"] = float(f"{self.spin_llama_temperature.value():.2f}")
+        cfg["llama_cpp_top_p"] = float(f"{self.spin_llama_top_p.value():.2f}")
+        # Hidden advanced options keep defaults/existing values to reduce UI complexity.
+        cfg["llama_cpp_base_url"] = cfg.get(
+            "llama_cpp_base_url", DEFAULT_APP_SETTINGS.get("llama_cpp_base_url", "http://127.0.0.1:8000/v1")
+        )
+        cfg["llama_cpp_api_key"] = cfg.get("llama_cpp_api_key", DEFAULT_APP_SETTINGS.get("llama_cpp_api_key", ""))
+        cfg["llama_cpp_model_alias"] = cfg.get(
+            "llama_cpp_model_alias", DEFAULT_APP_SETTINGS.get("llama_cpp_model_alias", "qwen35-vl-gguf")
+        )
+        cfg["llama_cpp_n_ctx"] = int(cfg.get("llama_cpp_n_ctx", DEFAULT_APP_SETTINGS.get("llama_cpp_n_ctx", 8192)))
+        cfg["llama_cpp_n_threads"] = int(
+            cfg.get("llama_cpp_n_threads", DEFAULT_APP_SETTINGS.get("llama_cpp_n_threads", 0))
+        )
+        cfg["llama_cpp_n_gpu_layers"] = int(
+            cfg.get("llama_cpp_n_gpu_layers", DEFAULT_APP_SETTINGS.get("llama_cpp_n_gpu_layers", 99))
+        )
+        cfg["llama_cpp_top_k"] = int(cfg.get("llama_cpp_top_k", DEFAULT_APP_SETTINGS.get("llama_cpp_top_k", 20)))
+        cfg["llama_cpp_min_p"] = float(
+            cfg.get("llama_cpp_min_p", DEFAULT_APP_SETTINGS.get("llama_cpp_min_p", 0.0))
+        )
+        cfg["llama_cpp_presence_penalty"] = float(
+            cfg.get("llama_cpp_presence_penalty", DEFAULT_APP_SETTINGS.get("llama_cpp_presence_penalty", 1.5))
+        )
+        cfg["llama_cpp_repeat_penalty"] = float(
+            cfg.get("llama_cpp_repeat_penalty", DEFAULT_APP_SETTINGS.get("llama_cpp_repeat_penalty", 1.0))
+        )
+        cfg["llama_cpp_chat_format"] = cfg.get(
+            "llama_cpp_chat_format", DEFAULT_APP_SETTINGS.get("llama_cpp_chat_format", "chatml")
+        )
+        cfg["llama_cpp_local_files_only"] = bool(
+            cfg.get("llama_cpp_local_files_only", DEFAULT_APP_SETTINGS.get("llama_cpp_local_files_only", False))
+        )
+        cfg["llama_cpp_mmproj_path"] = (
+            str(cfg.get("llama_cpp_mmproj_path", "")).strip()
+            or DEFAULT_APP_SETTINGS.get("llama_cpp_mmproj_path", "")
+        )
+        cfg["llama_cpp_enable_vision"] = bool(
+            cfg.get("llama_cpp_enable_vision", DEFAULT_APP_SETTINGS.get("llama_cpp_enable_vision", True))
+        )
+        cfg["llama_cpp_server_autostart"] = bool(
+            cfg.get("llama_cpp_server_autostart", DEFAULT_APP_SETTINGS.get("llama_cpp_server_autostart", True))
+        )
+        cfg["llama_cpp_server_exe"] = cfg.get(
+            "llama_cpp_server_exe", DEFAULT_APP_SETTINGS.get("llama_cpp_server_exe", "")
+        )
+        cfg["llama_cpp_server_workers"] = int(
+            cfg.get("llama_cpp_server_workers", DEFAULT_APP_SETTINGS.get("llama_cpp_server_workers", 8))
+        )
+        cfg["llama_cpp_server_start_timeout"] = int(
+            cfg.get(
+                "llama_cpp_server_start_timeout",
+                DEFAULT_APP_SETTINGS.get("llama_cpp_server_start_timeout", 900),
+            )
+        )
         cfg["default_custom_tags"] = self._parse_tags(self.ed_default_custom_tags.toPlainText())
+
+        cfg["image_process_prompt_template"] = self.ed_imgproc_prompt.toPlainText().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_prompt_template", ""
+        )
+        cfg["image_process_base_url"] = self.ed_imgproc_base_url.text().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_base_url", "http://127.0.0.1:8001/v1"
+        )
+        cfg["image_process_server_autostart"] = self.chk_imgproc_autostart.isChecked()
+        cfg["image_process_server_exe"] = self.ed_imgproc_server_exe.text().strip()
+        cfg["image_process_server_start_timeout"] = self.spin_imgproc_server_timeout.value()
+        cfg["image_process_server_args_extra"] = self.ed_imgproc_server_args.text().strip()
+        cfg["image_process_model"] = self.ed_imgproc_model_name.text().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_model", "unsloth/FLUX.2-klein-4B-GGUF"
+        )
+        cfg["image_process_diffusion_model_path"] = self.ed_imgproc_diffusion.text().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_diffusion_model_path", ""
+        )
+        cfg["image_process_vae_path"] = self.ed_imgproc_vae.text().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_vae_path", ""
+        )
+        cfg["image_process_llm_path"] = self.ed_imgproc_llm.text().strip() or DEFAULT_APP_SETTINGS.get(
+            "image_process_llm_path", ""
+        )
+        cfg["image_process_steps"] = self.spin_imgproc_steps.value()
+        cfg["image_process_guidance_scale"] = float(f"{self.spin_imgproc_guidance.value():.2f}")
+        cfg["image_process_max_dimension"] = self.spin_imgproc_max_dim.value()
+        cfg["image_process_seed"] = self.spin_imgproc_seed.value()
+        cfg["image_process_local_files_only"] = self.chk_imgproc_local_only.isChecked()
 
         cfg["tagger_worker"] = self.cb_tagger_worker.currentData()
         cfg["tagger_model"] = self.cb_tagger_model.currentText().strip() or DEFAULT_APP_SETTINGS["tagger_model"]
