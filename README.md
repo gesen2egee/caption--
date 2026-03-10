@@ -56,6 +56,14 @@ AI 驅動的圖片標註工具，專為機器學習訓練資料集設計。
 ### 2. 啟動
 雙擊執行 `run.bat`。
 
+- `run.bat` 預設會啟動原本的 PyQt 介面。
+- 新 runtime web/service 模式改為明確指定，不再自動取代原本桌面介面。
+- 也可明確指定：
+  - `run.bat qt`：傳統 PyQt 視窗
+  - `run.bat web`：純 Python headless backend + build 後的 runtime web UI
+  - `run.bat shell`：啟動 Vite dev shell + runtime bridge，適合開發
+  - `run.bat service`：只啟動 headless runtime backend/bridge，不自動開瀏覽器
+
 ### 3. 更新
 若需更新程式碼、依賴與 `stable-diffusion.cpp` runtime，請執行 `update.bat`。
 
@@ -173,6 +181,91 @@ your_dataset/
 | imgutils | WD14 Tagger | ✅ |
 | transparent-background | 去背 | ❌ |
 | transformers | Token 計數 | ❌ |
+
+## Runtime 架構現況
+
+- `qt` / `shell` 模式仍保留 legacy PyQt host，方便相容與開發。
+- `web` / `service` 模式已改成純 Python headless host，不再建立 `QApplication` 或 `MainWindow`。
+- headless host 啟動路徑現在也不會被動 import `PyQt6`；Qt 只會在 `qt` / `shell` 模式，或真的呼叫桌面 dialog / stroke 畫布相關功能時才載入。
+- task runtime 已是 `python-thread`，不再依賴 `QThread`。
+- worker 可切 `worker_runtime_mode=service`，模型執行會移到獨立 Python service process。
+- worker service 支援 runtime `reload` / `stop`，可透過：
+  - `workers.services_status`
+  - `workers.services_reload`
+  - `workers.services_stop`
+- pure backend service 模組也支援 runtime reload，不必整個 app 重開即可吃到新邏輯：
+  - `backend.list_reloadables`
+  - `backend.get_reload_policy`
+  - `backend.reload_services`
+  - `backend.watch_reload_start`
+  - `backend.watch_reload_status`
+  - `backend.watch_reload_stop`
+- 目前可 hot-reload 的 backend service 包含：
+  - `selection`
+  - `editor`
+  - `batch`
+  - `processing`
+  - `task`
+  - `state_projection`
+- `run.bat web` / `run.bat shell` / `run.bat service` 現在會預設開啟 backend service auto-reload watcher。
+- backend service auto-reload watcher 會在 task 執行中暫緩 reload，先累積 `pending_changes`，等 task 空檔再套用，避免執行中換 module。
+- reload policy 現在已正式化：
+  - `backend.get_reload_policy(changed_path=...)`
+  - runtime service 模組建議走 `backend.reload_services`
+  - worker 實作在 `worker_runtime_mode=service` 下建議走 `workers.services_reload`
+  - `lib/pipeline/tasks/*` 這類深層 task 變更目前仍建議 `restart_host`
+- runtime capabilities 現在會回報：
+  - `runtime_host_backend`
+  - `task_runtime_backend`
+  - `task_runtime_dispatcher`
+  - `worker_runtime_mode`
+- `qt_residual_components`
+- `reload_policy_available`
+- `worker_error_taxonomy_available`
+
+### Runtime Regression
+
+- 可直接執行：
+  - `python scripts/runtime_regression.py`
+- `python scripts/runtime_regression.py --json`
+- `python scripts/feature_smoke_matrix.py --image "E:\NE\20_miss valentine\Generated Image November 28, 2025 - 2_28AM.webp" --json`
+
+`feature_smoke_matrix.py` 目前會跑：
+- runtime regression
+- worker inventory
+- selection/editor
+- real-image tagger + llm
+- delete bundle
+- real-image unmask
+- OCR fixture mask_text + restore
+- real-image stroke eraser + restore
+- real-image image_process
+
+其中 `image_process` smoke 會自動起一個假的 `sd-server`，驗證 `/v1/models` 與 `/v1/images/edits` 這整條 client/task 流程，不必先下載完整 FLUX runtime。
+- regression 現在另外驗證 worker 錯誤 taxonomy：
+  - missing worker 會在 `inprocess` 與 `service` 兩條路都回 `worker_not_found`
+- regression 也會用輕量 `text_filter_lists` worker 驗證真實 service lifecycle：
+  - `invoke -> workers.services_reload -> workers.services_stop -> invoke`
+- 也可直接從 runtime command surface 執行：
+  - `test.run_runtime_regression`
+- 這個 harness 會驗證：
+  - runtime command surface
+  - selection/filter 流程
+  - ui spec patch/reset
+  - runtime settings update
+  - pipeline progress/error callbacks
+  - command result tracking
+  - lightweight task runner / event flow
+  - reload policy recommendation
+- `feature_smoke_matrix.py` 會逐項跑：
+  - runtime regression
+  - worker inventory
+  - selection/editor smoke
+  - 真圖 tagger + llm smoke
+  - delete current bundle
+  - heavy feature preflight
+- 更完整的功能盤點與全面測試矩陣請見：
+  - `tasks/feature_inventory_and_test_plan.md`
 
 ---
 

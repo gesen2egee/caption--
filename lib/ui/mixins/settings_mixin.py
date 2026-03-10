@@ -32,45 +32,49 @@ class SettingsMixin:
         for btn in self.findChildren(TagButton):
             btn.update_style()
 
-    def open_settings(self):
-        dlg = SettingsDialog(self.settings, self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            new_cfg = dlg.get_cfg()
+    def apply_runtime_settings(self, new_cfg: dict):
+        if hasattr(self, "_replace_runtime_settings_dict"):
+            new_cfg = self._replace_runtime_settings_dict(new_cfg, persist=True)
+        else:
             self.settings = new_cfg
             save_app_settings(new_cfg)
 
-            # 現在設定會在 Task 啟動時動態抓取，不需手動同步到已移除的 pipeline_manager
-            
-            # Check worker availability again (in case worker settings changed effectively enabling/disabling features)
-            self.check_worker_availability()
+        # Check worker availability again in case worker settings changed.
+        self.check_worker_availability()
 
-            # apply immediately
-            self.apply_theme()
-            self.retranslate_ui()
+        self.apply_theme()
+        self.retranslate_ui()
 
-            # update LLM props
-            self.llm_base_url = str(new_cfg.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
-            self.api_key = str(new_cfg.get("llm_api_key", ""))
-            self.model_name = str(new_cfg.get("llm_model", DEFAULT_APP_SETTINGS["llm_model"]))
-            self.llm_system_prompt = str(new_cfg.get("llm_system_prompt", DEFAULT_APP_SETTINGS["llm_system_prompt"]))
-            self.default_user_prompt_template = str(new_cfg.get("llm_user_prompt_template", DEFAULT_APP_SETTINGS["llm_user_prompt_template"]))
-            self.custom_prompt_template = str(new_cfg.get("llm_custom_prompt_template", DEFAULT_APP_SETTINGS.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
-            self.default_custom_tags_global = list(new_cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
-            self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
-            self.image_process_prompt_template = str(new_cfg.get("image_process_prompt_template", DEFAULT_APP_SETTINGS.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")))
+        self.llm_base_url = str(new_cfg.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
+        self.api_key = str(new_cfg.get("llm_api_key", ""))
+        self.model_name = str(new_cfg.get("llm_model", DEFAULT_APP_SETTINGS["llm_model"]))
+        self.llm_system_prompt = str(new_cfg.get("llm_system_prompt", DEFAULT_APP_SETTINGS["llm_system_prompt"]))
+        self.default_user_prompt_template = str(new_cfg.get("llm_user_prompt_template", DEFAULT_APP_SETTINGS["llm_user_prompt_template"]))
+        self.custom_prompt_template = str(new_cfg.get("llm_custom_prompt_template", DEFAULT_APP_SETTINGS.get("llm_custom_prompt_template", DEFAULT_CUSTOM_PROMPT_TEMPLATE)))
+        self.default_custom_tags_global = list(new_cfg.get("default_custom_tags", list(DEFAULT_CUSTOM_TAGS)))
+        self.english_force_lowercase = bool(new_cfg.get("english_force_lowercase", True))
+        self.image_process_prompt_template = str(new_cfg.get("image_process_prompt_template", DEFAULT_APP_SETTINGS.get("image_process_prompt_template", "幫我移除圖中所有的文字、文字氣泡、文字框")))
 
-            if hasattr(self, "prompt_edit") and self.prompt_edit:
-                try:
-                    self.prompt_edit.setPlainText(self.default_user_prompt_template)
-                except Exception:
-                    pass
-            if hasattr(self, "img_prompt_edit") and self.img_prompt_edit:
-                try:
-                    self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
-                except Exception:
-                    pass
+        if hasattr(self, "prompt_edit") and self.prompt_edit:
+            try:
+                self.prompt_edit.setPlainText(self.default_user_prompt_template)
+            except Exception:
+                pass
+        if hasattr(self, "img_prompt_edit") and self.img_prompt_edit:
+            try:
+                self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
+            except Exception:
+                pass
 
-            self.statusBar().showMessage(self.tr("status_ready"), 4000)
+        if hasattr(self, "_sync_runtime_settings_state"):
+            self._sync_runtime_settings_state()
+
+        self.statusBar().showMessage(self.tr("status_ready"), 4000)
+
+    def open_settings(self):
+        dlg = SettingsDialog(self.settings, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.apply_runtime_settings(dlg.get_cfg())
 
     def retranslate_ui(self):
         self.setWindowTitle(self.tr("app_title"))

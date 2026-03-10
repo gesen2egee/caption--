@@ -1,9 +1,14 @@
-from typing import TYPE_CHECKING, List, Type, Optional, Dict, Any
-import os
+from typing import TYPE_CHECKING, List, Optional, Dict, Any
 
-from lib.pipeline.context import TaskResult
-from lib.core.dataclasses import ImageData, Settings, Prompt, FolderMeta
-
+import lib.runtime.command_actions as command_actions
+import lib.runtime.control_plane as control_plane
+import lib.runtime.command_catalog as command_catalog
+import lib.runtime.host_support as host_support
+import lib.runtime.pipeline_callbacks as pipeline_callbacks
+import lib.runtime.runtime_api as runtime_api
+import lib.runtime.runtime_regression as runtime_regression
+import lib.runtime.state_adapter as state_adapter
+import lib.runtime.task_facade as task_facade
 if TYPE_CHECKING:
     from lib.ui.main_window import MainWindow
 
@@ -16,248 +21,164 @@ class PipelineHandlerMixin:
     # ============================================================
     # Task Execution Management
     # ============================================================
-    
-    def is_task_running(self) -> bool:
-        """Check if any task is currently running."""
-        return getattr(self, "_current_task", None) is not None and self._current_task.isRunning()
-    
-    def stop_current_task(self):
-        """Request stop for the current task."""
-        if self._current_task:
-            self._current_task.stop()
 
-    def run_task(self, TaskClass: Type[Any], images: List[ImageData], extra: Optional[Dict[str, Any]] = None):
-        """Run a specified Task."""
-        if self.is_task_running():
-            self.on_pipeline_error("已有任務正在執行 (Task Running)")
+    _get_runtime_event_bus = host_support.get_runtime_event_bus
+    _get_command_registry = host_support.get_command_registry
+    _build_initial_runtime_state = host_support.build_initial_runtime_state
+    _get_runtime_app_state = host_support.get_runtime_app_state
+    _get_runtime_state_store = host_support.get_runtime_state_store
+    _update_runtime_state_section = host_support.update_runtime_state_section
+    _replace_runtime_state_section = host_support.replace_runtime_state_section
+    _get_task_runner = host_support.get_task_runner
+    _subscribe_runtime_command_state = host_support.subscribe_runtime_command_state
+    _get_runtime_ui_spec_store = host_support.get_runtime_ui_spec_store
+    _get_runtime_service_watcher = host_support.get_runtime_service_watcher
+    _start_runtime_http_bridge = host_support.start_runtime_http_bridge
+    _maybe_start_runtime_http_bridge = host_support.maybe_start_runtime_http_bridge
+    _maybe_start_runtime_service_watch = host_support.maybe_start_runtime_service_watch
+    _stop_runtime_http_bridge = host_support.stop_runtime_http_bridge
+    _stop_runtime_service_watch = host_support.stop_runtime_service_watch
+    _register_runtime_command = host_support.register_runtime_command
+
+    def _register_runtime_commands(self) -> None:
+        if getattr(self, "_runtime_commands_registered", False):
             return
+        command_catalog.register_runtime_commands(self)
+        self._runtime_commands_registered = True
 
-        settings_obj = self._get_current_settings_obj()
-        
-        # Create Task (Thread)
-        self._current_task = TaskClass(
-            images=images,
-            settings=settings_obj,
-            prompt=None, 
-            folder=None, 
-            extra=extra,
-        )
-        
-        # Connect Signals directly to UI handlers
-        self._current_task.progress.connect(self.on_pipeline_progress)
-        self._current_task.image_done.connect(self.on_pipeline_image_done)
-        self._current_task.batch_done.connect(
-            lambda results: self._on_task_done(self._current_task.name, results)
-        )
-        self._current_task.error.connect(self.on_pipeline_error)
-        
-        # Start Thread
-        self._current_task.start()
+    get_runtime_events = runtime_api.get_runtime_events
+    get_runtime_event_profiles = runtime_api.get_runtime_event_profiles_api
+    get_runtime_state = runtime_api.get_runtime_state
 
-    def _get_current_settings_obj(self) -> Settings:
-        """Helper to create Settings dataclass from current UI dict settings."""
-        valid_keys = Settings.__annotations__.keys()
-        clean_settings = {k: v for k, v in self.settings.items() if k in valid_keys}
-        return Settings(**clean_settings)
+    get_agent_manifest = control_plane.get_agent_manifest
 
-    def _on_task_done(self, name: str, results: List[TaskResult]):
-        """Internal callback when task thread finishes."""
-        self.on_pipeline_done(name, results)
-        self._current_task = None
+    get_ui_spec = runtime_api.get_ui_spec
+    get_ui_spec_override = runtime_api.get_ui_spec_override
+    _emit_ui_spec_updated = runtime_api.emit_ui_spec_updated
+    update_ui_spec = runtime_api.update_ui_spec
+    replace_ui_spec_override = runtime_api.replace_ui_spec_override
+    patch_ui_node = runtime_api.patch_ui_node
+    reset_ui_spec = runtime_api.reset_ui_spec
+
+    get_runtime_capabilities = control_plane.get_runtime_capabilities
+
+    command_shutdown_app = runtime_api.command_shutdown_app
+
+    get_runtime_bridge_status = control_plane.get_runtime_bridge_status
+
+    _runtime_settings_dict = runtime_api.runtime_settings_dict
+    _replace_runtime_settings_dict = runtime_api.replace_runtime_settings_dict
+    get_runtime_settings = runtime_api.get_runtime_settings
+    get_runtime_settings_schema = runtime_api.get_runtime_settings_schema
+    update_runtime_settings = runtime_api.update_runtime_settings
+
+    get_runtime_workers = control_plane.get_runtime_workers
+    command_list_reloadable_runtime_services = control_plane.command_list_reloadable_runtime_services
+    command_get_reload_policy = control_plane.command_get_reload_policy
+    command_reload_runtime_services = control_plane.command_reload_runtime_services
+    get_runtime_service_watch_status = control_plane.get_runtime_service_watch_status
+    command_start_runtime_service_watch = control_plane.command_start_runtime_service_watch
+    command_stop_runtime_service_watch = control_plane.command_stop_runtime_service_watch
+    get_worker_services_status = control_plane.get_worker_services_status
+    command_reload_worker_services = control_plane.command_reload_worker_services
+    command_stop_worker_services = control_plane.command_stop_worker_services
+
+    get_task_status = runtime_api.get_task_status
+
+    _sync_runtime_settings_state = state_adapter.sync_runtime_settings_state
+    _runtime_state_section = state_adapter.runtime_state_section
+    _runtime_selection_value = state_adapter.runtime_selection_value
+    _runtime_controls_value = state_adapter.runtime_controls_value
+    _runtime_content_value = state_adapter.runtime_content_value
+    _runtime_current_image_path = state_adapter.runtime_current_image_path
+    _runtime_loaded_image_paths = state_adapter.runtime_loaded_image_paths
+    _runtime_all_image_paths = state_adapter.runtime_all_image_paths
+    _runtime_filtered_image_paths = state_adapter.runtime_filtered_image_paths
+    _runtime_prompt_text = state_adapter.runtime_prompt_text
+    _runtime_image_process_prompt_text = state_adapter.runtime_image_process_prompt_text
+    _runtime_txt_content = state_adapter.runtime_txt_content
+    _runtime_tagger_save_to_txt = state_adapter.runtime_tagger_save_to_txt
+    _runtime_llm_save_to_txt = state_adapter.runtime_llm_save_to_txt
+    _selection_command_result = state_adapter.selection_command_result
+    _ui_command_result = state_adapter.ui_command_result
+    _content_command_result = state_adapter.content_command_result
+    _set_runtime_selection_values = state_adapter.set_runtime_selection_values
+    _sync_runtime_selection_state = state_adapter.sync_runtime_selection_state
+    _sync_runtime_task_state = state_adapter.sync_runtime_task_state
+    _sync_runtime_ui_state = state_adapter.sync_runtime_ui_state
+    _sync_runtime_content_state = state_adapter.sync_runtime_content_state
+    _sync_runtime_controls_state = state_adapter.sync_runtime_controls_state
+    _sync_runtime_tags_state = state_adapter.sync_runtime_tags_state
+
+    execute_command = runtime_api.execute_command
+
+    _build_images_from_paths = task_facade.build_images_from_paths
+    _get_loaded_image_paths = task_facade.get_loaded_image_paths
+    _start_named_runtime_task = task_facade.start_named_runtime_task
+
+    command_open_directory = command_actions.command_open_directory
+    command_set_root_dir = command_actions.command_set_root_dir
+    command_apply_filter = command_actions.command_apply_filter
+    command_clear_filter = command_actions.command_clear_filter
+    command_prev_image = command_actions.command_prev_image
+    command_next_image = command_actions.command_next_image
+    command_first_image = command_actions.command_first_image
+    command_last_image = command_actions.command_last_image
+    command_jump_to_index = command_actions.command_jump_to_index
+    command_set_view_mode = command_actions.command_set_view_mode
+    command_set_active_tab = command_actions.command_set_active_tab
+    command_set_control_value = command_actions.command_set_control_value
+    command_delete_current_image = command_actions.command_delete_current_image
+    command_add_custom_tag = command_actions.command_add_custom_tag
+    command_use_default_prompt = command_actions.command_use_default_prompt
+    command_use_custom_prompt = command_actions.command_use_custom_prompt
+    command_use_default_image_prompt = command_actions.command_use_default_image_prompt
+    command_set_prompt_text = command_actions.command_set_prompt_text
+    command_set_image_process_prompt_text = command_actions.command_set_image_process_prompt_text
+    command_set_txt_content = command_actions.command_set_txt_content
+    command_open_find_replace = command_actions.command_open_find_replace
+    command_editor_undo = command_actions.command_editor_undo
+    command_editor_redo = command_actions.command_editor_redo
+    command_prev_nl_page = command_actions.command_prev_nl_page
+    command_next_nl_page = command_actions.command_next_nl_page
+    command_start_runtime_bridge = command_actions.command_start_runtime_bridge
+    command_stop_runtime_bridge = command_actions.command_stop_runtime_bridge
+    command_scan_workers = command_actions.command_scan_workers
+    command_run_tagger = command_actions.command_run_tagger
+    command_run_tagger_loaded = command_actions.command_run_tagger_loaded
+    command_run_llm = command_actions.command_run_llm
+    command_run_llm_loaded = command_actions.command_run_llm_loaded
+    command_run_image_process = command_actions.command_run_image_process
+    command_run_image_process_loaded = command_actions.command_run_image_process_loaded
+    command_run_unmask = command_actions.command_run_unmask
+    command_run_unmask_loaded = command_actions.command_run_unmask_loaded
+    command_run_mask_text = command_actions.command_run_mask_text
+    command_run_mask_text_loaded = command_actions.command_run_mask_text_loaded
+    command_run_restore = command_actions.command_run_restore
+    command_run_restore_loaded = command_actions.command_run_restore_loaded
+    command_smoke_command = command_actions.command_smoke_command
+    command_run_runtime_regression = runtime_regression.command_run_runtime_regression
+    
+    is_task_running = task_facade.is_task_running
+    stop_current_task = task_facade.stop_current_task
+    run_task = task_facade.run_task
+    _get_current_settings_obj = task_facade.get_current_settings_obj
+    _on_task_done = task_facade.on_task_done
 
     # ============================================================
     # Convenience Methods (Helpers)
     # ============================================================
 
-    def run_tagger(self, images: List[ImageData]):
-        from lib.pipeline.tasks import TaggerTask
-        self.run_task(TaggerTask, images)
-
-    def run_llm(self, images: List[ImageData], user_prompt: str = None, system_prompt: str = None):
-        from lib.pipeline.tasks import LLMTask
-        extra = {}
-        if user_prompt: extra["user_prompt"] = user_prompt
-        if system_prompt: extra["system_prompt"] = system_prompt
-        self.run_task(LLMTask, images, extra=extra)
-
-    def run_unmask(self, images: List[ImageData]):
-        from lib.pipeline.tasks import UnmaskTask
-        self.run_task(UnmaskTask, images)
-
-    def run_mask_text(self, images: List[ImageData]):
-        from lib.pipeline.tasks import MaskTextTask
-        self.run_task(MaskTextTask, images)
-
-    def run_image_process(self, images: List[ImageData], edit_prompt: str = None):
-        from lib.pipeline.tasks import ImageProcessTask
-        extra = {}
-        if edit_prompt:
-            extra["edit_prompt"] = edit_prompt
-        self.run_task(ImageProcessTask, images, extra=extra)
-
-    def run_restore(self, images: List[ImageData]):
-        from lib.pipeline.tasks import RestoreTask
-        self.run_task(RestoreTask, images)
+    run_tagger = task_facade.run_tagger
+    run_llm = task_facade.run_llm
+    run_unmask = task_facade.run_unmask
+    run_mask_text = task_facade.run_mask_text
+    run_image_process = task_facade.run_image_process
+    run_restore = task_facade.run_restore
 
     # ============================================================
     # Signal Handlers
     # ============================================================
-    def on_pipeline_progress(self, current, total, filename, speed=0.0):
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(total)
-        self.progress_bar.setValue(current)
-        
-        # 取得任務與模型資訊
-        task_name = self._current_task.name if self._current_task else "TASK"
-        model_info = task_name.upper()
-        
-        if "tagger" in task_name:
-            # 簡化顯示，只取最後一個斜線後的名稱
-            model = self.settings.get("tagger_model", "")
-            if "/" in model: 
-                 model = model.split("/")[-1]
-            model_info = f"TAGGER ({model})"
-        elif "llm" in task_name:
-            if self.settings.get("llm_provider") == "llm_llama_cpp_local":
-                model = self.settings.get("llama_cpp_model_alias", "qwen35-vl-gguf")
-            else:
-                model = self.settings.get("llm_model", "")
-            model_info = f"LLM ({model})"
-        elif "image_process" in task_name:
-            model = self.settings.get("image_process_model", "unsloth/FLUX.2-klein-4B-GGUF")
-            model_info = f"IMG ({model})"
-        elif "unmask" in task_name:
-             mode = self.settings.get("mask_remover_mode", "base")
-             model_info = f"UNMASK ({mode})"
-        elif "mask_text" in task_name:
-             model_info = "MASK TEXT (OCR)"
-        elif "restore" in task_name:
-             model_info = "RESTORE"
-        
-        if speed > 0:
-            if speed < 1:
-                speed_str = f"{1/speed:.2f} s/it"
-            else:
-                speed_str = f"{speed:.2f} it/s"
-        else:
-            speed_str = "..."
-
-        # Format: [MODEL] Filename at StatusBar
-        self.statusBar().showMessage(f"{model_info} | {os.path.basename(filename)}")
-
-        # Helper text on ProgressBar: (current/total) - Speed
-        final_msg = f"{current}/{total} | {speed_str}"
-            
-        self.progress_bar.setFormat(final_msg)
-        self.btn_cancel_batch.setVisible(True)
-        self.btn_cancel_batch.setEnabled(True)
-
-    def on_pipeline_error(self, err_msg):
-        self.statusBar().showMessage(self.tr("msg_error_fmt").replace("{msg}", str(err_msg)), 8000)
-        self.progress_bar.setVisible(False)
-        self.btn_auto_tag.setEnabled(True)
-        self.btn_auto_tag.setText(self.tr("btn_auto_tag"))
-        self.btn_run_llm.setEnabled(True)
-        self.btn_run_llm.setText(self.tr("btn_run_llm"))
-        if hasattr(self, "btn_run_imgproc"):
-            self.btn_run_imgproc.setEnabled(True)
-            self.btn_run_imgproc.setText(self.tr("btn_run_imgproc"))
-        self.set_batch_ui_enabled(True) 
-
-    def on_pipeline_image_done(self, image_path: str, output: TaskResult):
-        if not output.success:
-            print(f"Error for {image_path}: {output.error}")
-            return
-            
-        if output.skipped:
-             reason = output.skip_reason or self.tr("msg_task_skipped")
-             self.statusBar().showMessage(f"{os.path.basename(image_path)}: {reason}", 5000)
-             # If strictly single image mode, maybe show alert? But status bar is less intrusive.
-             return
-
-        task_name = self._current_task.name if self._current_task else ""
-        
-        # Tagger
-        if "tagger" in task_name:
-             if output.result_text:
-                 self.save_tagger_tags_for_image(image_path, output.result_text)
-                 
-             if self.current_image_path and os.path.abspath(image_path) == os.path.abspath(self.current_image_path):
-                 self.tagger_tags = self.load_tagger_tags_for_current_image()
-                 self.refresh_tags_tab()
-             
-             # Check write to txt (Batch Task flag OR UI Checkbox)
-             write_to_txt = getattr(self, "_is_batch_to_txt", False)
-             if not write_to_txt and hasattr(self, 'chk_tags_save_txt') and self.chk_tags_save_txt.isChecked():
-                 write_to_txt = True
-
-             if write_to_txt and output.result_text:
-                  self.write_batch_result_to_txt(image_path, output.result_text, is_tagger=True)
-
-        # LLM
-        elif "llm" in task_name:
-             from lib.utils.parsing import extract_llm_content_and_postprocess
-             content = output.result_text or ""
-             final_content = extract_llm_content_and_postprocess(content, self.english_force_lowercase)
-             
-             if final_content:
-                 self.save_nl_for_image(image_path, final_content)
-                 if self.current_image_path and os.path.abspath(image_path) == os.path.abspath(self.current_image_path):
-                     if final_content not in self.nl_pages:
-                        self.nl_pages.append(final_content)
-                     self.nl_page_index = len(self.nl_pages) - 1
-                     self.nl_latest = final_content
-                     self.refresh_nl_tab()
-                     self.update_nl_page_controls()
-                     self.on_text_changed()
-                     
-                 # Check write to txt (Batch Task flag OR UI Checkbox)
-                 write_to_txt = getattr(self, "_is_batch_to_txt", False)
-                 if not write_to_txt and hasattr(self, 'chk_llm_save_txt') and self.chk_llm_save_txt.isChecked():
-                     write_to_txt = True
-
-                 if write_to_txt:
-                      self.write_batch_result_to_txt(image_path, final_content, is_tagger=False)
-
-        # Image Process
-        elif "image_process" in task_name:
-             if output.result_data:
-                  old_path = output.result_data.get("original_path", image_path)
-                  new_path = output.result_data.get("result_path", image_path)
-                  if new_path and old_path and os.path.abspath(new_path) != os.path.abspath(old_path):
-                      self._replace_image_path_in_list(old_path, new_path)
-
-             if self.current_image_path and os.path.abspath(image_path) == os.path.abspath(self.current_image_path):
-                 self.load_image()
-             elif self.current_image_path and output.result_data:
-                 old_path = output.result_data.get("original_path")
-                 if old_path and os.path.abspath(old_path) == os.path.abspath(self.current_image_path):
-                     self.load_image()
-
-        # Unmask or Mask Text
-        elif "unmask" in task_name or "mask_text" in task_name:
-             if output.result_data:
-                  old_path = output.result_data.get("original_path")
-                  new_path = output.result_data.get("result_path")
-                  
-                  # Mask Text special case: 0 boxes found
-                  if "mask_text" in task_name and output.result_data.get("box_count", 0) == 0:
-                      self.statusBar().showMessage(self.tr("msg_no_text_detected"), 4000)
-                      # No new file created usually if box_count is 0, so new_path might be None
-                  
-                  elif new_path:
-                      self._replace_image_path_in_list(old_path, new_path)
-                      self.statusBar().showMessage(self.tr("status_done"), 3000)
-                  
-                  else:
-                      # Result data exists but no new path? Maybe skipped internally without flag
-                      pass
-
-             if self.current_image_path:
-                 self.load_image()
-
-                 
-        # Restore
-        elif "restore" in task_name:
-             if self.current_image_path and os.path.abspath(image_path) == os.path.abspath(self.current_image_path):
-                 self.load_image()
+    on_pipeline_progress = pipeline_callbacks.on_pipeline_progress
+    on_pipeline_error = pipeline_callbacks.on_pipeline_error
+    on_pipeline_image_done = pipeline_callbacks.on_pipeline_image_done

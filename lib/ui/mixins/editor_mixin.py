@@ -1,13 +1,10 @@
 from typing import TYPE_CHECKING
 import os
 import re
-from PyQt6.QtWidgets import QMessageBox, QDialog
-from PyQt6.QtGui import QTextCursor
-from PyQt6.QtCore import Qt
 
+import lib.runtime.editor_service as editor_service
 from lib.core.settings import DEFAULT_USER_PROMPT_TEMPLATE, DEFAULT_CUSTOM_PROMPT_TEMPLATE, DEFAULT_APP_SETTINGS
 from lib.utils.parsing import cleanup_csv_like_text
-from lib.ui.dialogs.find_replace import AdvancedFindReplaceDialog
 
 AutoTokenizer = None
 CLIPTokenizer = None
@@ -38,10 +35,16 @@ class EditorMixin:
             return False
 
     def on_text_changed(self):
-        if not self.current_image_path:
+        current_image_path = self._runtime_current_image_path() if hasattr(self, "_runtime_current_image_path") else str(getattr(self, "current_image_path", "") or "")
+        if not current_image_path:
             return
         
-        content = self.txt_edit.toPlainText()
+        if hasattr(self, "txt_edit") and self.txt_edit is not None:
+            content = self.txt_edit.toPlainText()
+        elif hasattr(self, "_runtime_txt_content"):
+            content = self._runtime_txt_content()
+        else:
+            content = ""
         original_content = content
         
         # 自動移除空行
@@ -58,7 +61,7 @@ class EditorMixin:
                 content = ", ".join(parts)
         
         # 如果內容有變動，更新編輯框
-        if content != original_content:
+        if content != original_content and hasattr(self, "txt_edit") and self.txt_edit is not None:
             cursor_pos = self.txt_edit.textCursor().position()
             self.txt_edit.blockSignals(True)
             self.txt_edit.setPlainText(content)
@@ -70,19 +73,25 @@ class EditorMixin:
         
         # 自動儲存 txt
         if self.settings.get("text_auto_save", True):
-            txt_path = os.path.splitext(self.current_image_path)[0] + ".txt"
+            txt_path = os.path.splitext(current_image_path)[0] + ".txt"
             try:
                 with open(txt_path, 'w', encoding='utf-8') as f:
                     f.write(content)
             except Exception:
                 pass
 
-        self.flow_top.sync_state(content)
-        self.flow_custom.sync_state(content)
-        self.flow_tagger.sync_state(content)
-        self.flow_nl.sync_state(content)
+        if hasattr(self, "flow_top") and self.flow_top is not None:
+            self.flow_top.sync_state(content)
+        if hasattr(self, "flow_custom") and self.flow_custom is not None:
+            self.flow_custom.sync_state(content)
+        if hasattr(self, "flow_tagger") and self.flow_tagger is not None:
+            self.flow_tagger.sync_state(content)
+        if hasattr(self, "flow_nl") and self.flow_nl is not None:
+            self.flow_nl.sync_state(content)
 
         self.update_txt_token_count()
+        if hasattr(self, "_sync_runtime_content_state"):
+            self._sync_runtime_content_state()
 
     def _get_clip_tokenizer(self):
         if not self._ensure_transformers() or CLIPTokenizer is None:
@@ -122,7 +131,12 @@ class EditorMixin:
         return self._hf_tokenizer
 
     def update_txt_token_count(self):
-            content = self.txt_edit.toPlainText()
+            if hasattr(self, "txt_edit") and self.txt_edit is not None:
+                content = self.txt_edit.toPlainText()
+            elif hasattr(self, "_runtime_txt_content"):
+                content = self._runtime_txt_content()
+            else:
+                content = ""
             tokenizer = None
             if getattr(self, "_app_startup_complete", True):
                 tokenizer = self._get_tokenizer()
@@ -142,14 +156,17 @@ class EditorMixin:
                 
                 # 設定顏色：超過 225 才變紅，否則全黑
                 text_color = "red" if count > 225 else "black"
-                self.txt_token_label.setStyleSheet(f"color: {text_color}")
+                if hasattr(self, "txt_token_label") and self.txt_token_label is not None:
+                    self.txt_token_label.setStyleSheet(f"color: {text_color}")
                 
                 # 設定文字：只顯示 "Tokens: 數字"
-                self.txt_token_label.setText(f"{self.tr('label_tokens')}{count}")
+                if hasattr(self, "txt_token_label") and self.txt_token_label is not None:
+                    self.txt_token_label.setText(f"{self.tr('label_tokens')}{count}")
                 
             except Exception as e:
                 print(f"Token count error: {e}")
-                self.txt_token_label.setText(self.tr("label_tokens_err"))
+                if hasattr(self, "txt_token_label") and self.txt_token_label is not None:
+                    self.txt_token_label.setText(self.tr("label_tokens_err"))
 
     def on_tag_button_toggled(self, tag, checked):
         if not self.current_image_path:
@@ -167,6 +184,8 @@ class EditorMixin:
         self.on_text_changed()
 
     def insert_token_at_cursor(self, token: str):
+        from PyQt6.QtGui import QTextCursor
+
         token = token.strip()
         if not token:
             return
@@ -233,6 +252,10 @@ class EditorMixin:
             self.prompt_edit.setPlainText(self.default_user_prompt_template)
         except Exception:
             pass
+        if hasattr(self, "_sync_runtime_ui_state"):
+            self._sync_runtime_ui_state()
+        if hasattr(self, "_sync_runtime_content_state"):
+            self._sync_runtime_content_state()
 
     def use_custom_prompt(self):
         """Switch prompt editor to Custom Prompt template."""
@@ -241,65 +264,87 @@ class EditorMixin:
             self.prompt_edit.setPlainText(self.custom_prompt_template)
         except Exception:
             pass
+        if hasattr(self, "_sync_runtime_ui_state"):
+            self._sync_runtime_ui_state()
+        if hasattr(self, "_sync_runtime_content_state"):
+            self._sync_runtime_content_state()
 
-    def open_find_replace(self):
-        dlg = AdvancedFindReplaceDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            settings = dlg.get_settings()
-            find_str = settings['find']
-            rep_str = settings['replace']
-            if not find_str:
-                return
-            target_files = self.image_files if settings['scope_all'] else [self.current_image_path]
-            count = 0
-            for img_path in target_files:
-                if not img_path:
-                    continue
-                txt_path = os.path.splitext(img_path)[0] + ".txt"
-                if os.path.exists(txt_path):
-                    with open(txt_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    
-                    new_content = content
-                    flags = 0 if settings['case_sensitive'] else re.IGNORECASE
-                    try:
-                        # 1. 先執行取代
-                        if settings['regex']:
-                            new_content, n = re.subn(find_str, rep_str, content, flags=flags)
-                            count += n
-                        else:
-                            if not settings['case_sensitive']:
-                                pattern = re.compile(re.escape(find_str), re.IGNORECASE)
-                                new_content, n = pattern.subn(rep_str, content)
-                                count += n
-                            else:
-                                n = content.count(find_str)
-                                if n > 0:
-                                    new_content = content.replace(find_str, rep_str)
-                                    count += n
-                        
-                        # 2. 如果有變動，執行自動格式化 (Format Refresh)
-                        if new_content != content:
-                            # === 修改重點開始：格式重整 ===
-                            # 用逗號分割 -> 去除前後空白 -> 過濾空字串 -> 用 ", " 接回
-                            parts = [p.strip() for p in new_content.split(",") if p.strip()]
-                            new_content = ", ".join(parts)
-                            # === 修改重點結束 ===
+    def run_find_replace(
+        self,
+        find_text: str,
+        replace_text: str = "",
+        *,
+        scope_all: bool = False,
+        case_sensitive: bool = False,
+        regex: bool = False,
+    ):
+        find_text = str(find_text or "")
+        replace_text = str(replace_text or "")
+        if not find_text:
+            raise ValueError("find_text is required")
 
-                            with open(txt_path, 'w', encoding='utf-8') as f:
-                                f.write(new_content)
+        if scope_all:
+            if hasattr(self, "_runtime_loaded_image_paths"):
+                target_files = list(self._runtime_loaded_image_paths())
+            else:
+                target_files = list(self.image_files)
+        else:
+            current_runtime_image = self._runtime_current_image_path() if hasattr(self, "_runtime_current_image_path") else str(getattr(self, "current_image_path", "") or "")
+            target_files = [current_runtime_image]
+        current_image_path = self._runtime_current_image_path() if hasattr(self, "_runtime_current_image_path") else str(getattr(self, "current_image_path", "") or "")
+        result = editor_service.run_find_replace_on_images(
+            target_files,
+            find_text=find_text,
+            replace_text=replace_text,
+            case_sensitive=case_sensitive,
+            regex=regex,
+        )
 
-                    except Exception as e:
-                        print(f"Replace error in {img_path}: {e}")
-
-            self.load_image() # 重新載入當前圖片以顯示結果
-            
-            # 嘗試將焦點放回編輯框並捲動到底部 (非必要，但體驗較好)
+        current_reloaded = False
+        changed_files = list(result.get("changed_files", []) or [])
+        if current_image_path and (not scope_all or current_image_path in changed_files or current_image_path in target_files):
+            self.load_image()
+            current_reloaded = True
             try:
+                from PyQt6.QtGui import QTextCursor
+
                 self.txt_edit.moveCursor(QTextCursor.MoveOperation.End)
                 self.txt_edit.setFocus()
                 self.txt_edit.ensureCursorVisible()
             except Exception:
                 pass
-                
-            QMessageBox.information(self, self.tr("title_info"), self.tr("msg_replace_result").replace("{count}", str(count)))
+
+        if hasattr(self, "_sync_runtime_content_state"):
+            self._sync_runtime_content_state()
+
+        result.update(
+            {
+            "scope_all": bool(scope_all),
+            "current_reloaded": current_reloaded,
+            }
+        )
+        return result
+
+    def open_find_replace(self):
+        from PyQt6.QtWidgets import QDialog, QMessageBox
+
+        from lib.ui.dialogs.find_replace import AdvancedFindReplaceDialog
+
+        dlg = AdvancedFindReplaceDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            settings = dlg.get_settings()
+            try:
+                result = self.run_find_replace(
+                    settings["find"],
+                    settings["replace"],
+                    scope_all=bool(settings["scope_all"]),
+                    case_sensitive=bool(settings["case_sensitive"]),
+                    regex=bool(settings["regex"]),
+                )
+            except ValueError:
+                return
+            QMessageBox.information(
+                self,
+                self.tr("title_info"),
+                self.tr("msg_replace_result").replace("{count}", str(result["replacement_count"])),
+            )

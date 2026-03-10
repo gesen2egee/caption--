@@ -13,8 +13,10 @@ import numpy as np
 
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.pipeline.context import TaskContext, TaskResult
+from lib.runtime.errors import build_runtime_error_info
 from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
 from lib.utils.file_ops import backup_raw_image
+from lib.workers import invoke_worker
 
 
 class UnmaskTask(BaseTask):
@@ -79,14 +81,7 @@ class UnmaskTask(BaseTask):
             
             # 3. 建立並呼叫 Worker
             # from lib.workers.mask_transparent_background_local import MaskTransparentBackgroundLocalWorker
-            from lib.workers.registry import get_registry
-            
             worker_name = settings.unmask_worker if (settings and settings.unmask_worker) else "mask_transparent_background_local"
-            WorkerCls = get_registry().get_worker_class("UNMASK", worker_name)
-            
-            if not WorkerCls:
-                 return TaskResult(success=False, error=f"Unmask Worker '{worker_name}' not found", image=context.image)
-
             config = {}
             if settings:
                 config = {
@@ -99,13 +94,19 @@ class UnmaskTask(BaseTask):
                     "max_foreground_ratio": settings.mask_batch_max_foreground_ratio,
                 }
             
-            worker = WorkerCls(config)
-            worker_output = worker.process(context.to_worker_input())
+            worker_output = invoke_worker(
+                "UNMASK",
+                worker_name,
+                config=config,
+                worker_input=context.to_worker_input(),
+                settings=context.settings,
+            )
             
             if not worker_output.success:
                 return TaskResult(
                     success=False,
                     error=worker_output.error,
+                    error_info=worker_output.error_info,
                     image=context.image,
                 )
             
@@ -188,5 +189,6 @@ class UnmaskTask(BaseTask):
             return TaskResult(
                 success=False,
                 error=str(e),
+                error_info=build_runtime_error_info(e, source="pipeline.task.unmask"),
                 image=context.image,
             )

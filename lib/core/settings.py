@@ -103,7 +103,7 @@ DEFAULT_APP_SETTINGS = {
     "llama_cpp_enable_vision": True,
     "llama_cpp_server_autostart": True,
     "llama_cpp_server_exe": "",
-    "llama_cpp_server_workers": 8,
+    "llama_cpp_server_workers": 1,
     "llama_cpp_server_start_timeout": 900,
     "last_open_dir": "",
     # Startup / performance
@@ -168,6 +168,9 @@ DEFAULT_APP_SETTINGS = {
     "unmask_worker": "mask_transparent_background_local",
     "mask_text_worker": "mask_text_local",
     "detect_text_worker": "detect_imgutils_ocr_local",
+    "worker_runtime_mode": "inprocess",
+    "worker_service_python_exe": "",
+    "worker_service_request_timeout": 1800,
     
     "mask_remover_mode": "base-nightly",
     "mask_default_alpha": 64,

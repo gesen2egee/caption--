@@ -3,11 +3,12 @@
 標籤流式顯示組件 (TagFlowWidget) 和標籤按鈕 (TagButton)
 """
 import re
+import threading
 from PyQt6.QtWidgets import (
     QPushButton, QSizePolicy, QVBoxLayout, QLabel, 
     QWidget, QScrollArea, QHBoxLayout
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import Qt
 
 from lib.core.settings import DEFAULT_APP_SETTINGS
 from lib.utils.parsing import (
@@ -16,13 +17,34 @@ from lib.utils.parsing import (
 )
 
 
-class TagButton(QPushButton):
-    toggled_tag = pyqtSignal(str, bool)
+class SignalProxy:
+    def __init__(self):
+        self._callbacks = []
+        self._lock = threading.Lock()
 
+    def connect(self, callback):
+        with self._lock:
+            if callback not in self._callbacks:
+                self._callbacks.append(callback)
+
+    def disconnect(self, callback):
+        with self._lock:
+            if callback in self._callbacks:
+                self._callbacks.remove(callback)
+
+    def emit(self, *args, **kwargs):
+        with self._lock:
+            callbacks = list(self._callbacks)
+        for callback in callbacks:
+            callback(*args, **kwargs)
+
+
+class TagButton(QPushButton):
     def __init__(self, text, translation=None, parent=None):
         super().__init__(parent)
         self.raw_text = text
         self.translation = translation
+        self.toggled_tag = SignalProxy()
         self.setCheckable(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
 
@@ -111,11 +133,10 @@ class TagButton(QPushButton):
 
 
 class TagFlowWidget(QWidget):
-    tag_clicked = pyqtSignal(str, bool)
-
     def __init__(self, parent=None, use_scroll=True):
         super().__init__(parent)
         self.use_scroll = use_scroll
+        self.tag_clicked = SignalProxy()
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 

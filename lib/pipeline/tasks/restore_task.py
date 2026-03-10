@@ -9,7 +9,9 @@ from typing import Tuple
 
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.pipeline.context import TaskContext, TaskResult
+from lib.runtime.errors import build_runtime_error_info
 from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
+from lib.workers import invoke_worker
 
 
 class RestoreTask(BaseTask):
@@ -47,16 +49,19 @@ class RestoreTask(BaseTask):
                     image=context.image,
                 )
             
-            # 2. 建立並呼叫 Worker
-            from lib.workers.image_restore_raw import ImageRestoreRawWorker
-            
-            worker = ImageRestoreRawWorker()
-            worker_output = worker.process(context.to_worker_input())
+            worker_output = invoke_worker(
+                "RESTORE",
+                "image_restore_raw",
+                config={},
+                worker_input=context.to_worker_input(),
+                settings=context.settings,
+            )
             
             if not worker_output.success:
                 return TaskResult(
                     success=False,
                     error=worker_output.error,
+                    error_info=worker_output.error_info,
                     image=context.image,
                 )
             
@@ -71,6 +76,11 @@ class RestoreTask(BaseTask):
             # 3. 更新 ImageData
             context.image.masked_background = False
             context.image.masked_text = False
+            result_path = ""
+            if worker_output.result_data:
+                result_path = str(worker_output.result_data.get("result_path", "") or "")
+            if result_path:
+                context.image.path = result_path
             
             return TaskResult(
                 success=True,
@@ -83,5 +93,6 @@ class RestoreTask(BaseTask):
             return TaskResult(
                 success=False,
                 error=str(e),
+                error_info=build_runtime_error_info(e, source="pipeline.task.restore"),
                 image=context.image,
             )

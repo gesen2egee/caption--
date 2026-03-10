@@ -66,22 +66,41 @@ class ImageRestoreRawWorker(BaseWorker):
                     image=image_data,
                 )
             
-            # 複製備份回原位置
-            shutil.copy2(raw_abs, image_path)
-            
+            # 還原時要回到原始副檔名/檔名，避免把 PNG 原圖直接覆回 .webp 路徑。
+            restore_target = os.path.join(src_dir, os.path.basename(raw_abs))
+
+            # 複製備份回資料集目錄的原始檔名位置。
+            shutil.copy2(raw_abs, restore_target)
+
+            # 若目前顯示的是處理後的新檔名，移除它，避免資料夾留下還原後的殘留處理檔。
+            removed_processed_path = None
+            if os.path.normcase(os.path.normpath(restore_target)) != os.path.normcase(os.path.normpath(image_path)):
+                if os.path.exists(image_path):
+                    try:
+                        os.remove(image_path)
+                        removed_processed_path = image_path
+                    except Exception:
+                        removed_processed_path = None
+
             # 更新 sidecar
             sidecar["masked_background"] = False
             sidecar["masked_text"] = False
-            save_image_sidecar(image_path, sidecar)
-            
+            save_image_sidecar(restore_target, sidecar)
+
             # 更新 ImageData
             image_data.masked_background = False
             image_data.masked_text = False
-            
+            image_data.path = restore_target
+
             return WorkerOutput(
                 success=True,
                 image=image_data,
-                result_data={"result_path": image_path},
+                result_data={
+                    "original_path": image_path,
+                    "result_path": restore_target,
+                    "raw_backup_path": raw_abs,
+                    "removed_processed_path": removed_processed_path,
+                },
             )
             
         except Exception as e:

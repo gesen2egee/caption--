@@ -193,6 +193,9 @@ class Settings:
     unmask_worker: str = "mask_transparent_background_local"
     mask_text_worker: str = "mask_text_local"
     detect_text_worker: str = "detect_imgutils_ocr_local"
+    worker_runtime_mode: str = "inprocess"
+    worker_service_python_exe: str = ""
+    worker_service_request_timeout: int = 1800
 
     # UI 設定
     ui_language: str = "zh_tw"

@@ -32,6 +32,8 @@ tasks/runtime/
 *.tmp
 *.log
 app_settings.json.bak
+frontend/node_modules/
+frontend/dist/
 .pycache_tmp/Users/gesen/AppData/Local/Programs/Python/Python310/lib/_collections_abc.cpython-310.pyc.2351074321200
 .pycache_tmp/Users/gesen/AppData/Local/Programs/Python/Python310/lib/_compression.cpython-310.pyc.2351080223440
 .pycache_tmp/Users/gesen/AppData/Local/Programs/Python/Python310/lib/_sitebuiltins.cpython-310.pyc.2351074326480

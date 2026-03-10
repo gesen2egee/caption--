@@ -24,6 +24,7 @@ from typing import Dict, Optional, Tuple
 from PIL import Image
 
 from lib.workers.base import BaseWorker, WorkerInput, WorkerOutput
+from lib.workers.errors import build_worker_error_info
 
 
 HF_BLOB_OR_RESOLVE_RE = re.compile(
@@ -46,6 +47,8 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         "api_key": "",
         "model_name": "qwen35-vl-gguf",
         "max_tokens": 81920,
+        "n_ctx": 8192,
+        "n_threads": 0,
         "max_image_dim": 1024,
         "use_gray_mask": True,
         "temperature": 1.0,
@@ -56,7 +59,7 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         "repetition_penalty": 1.0,
         "server_autostart": True,
         "server_exe": "",
-        "server_workers": 8,
+        "server_workers": 1,
         "server_start_timeout": 900,
         "n_gpu_layers": 99,
         "mmproj_path": DEFAULT_MMPROJ_URL,
@@ -76,6 +79,8 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         self.model_name = str(self.config.get("model_name", self.default_config["model_name"])).strip()
 
         self.max_tokens = int(self.config.get("max_tokens", self.default_config["max_tokens"]))
+        self.n_ctx = int(self.config.get("n_ctx", self.default_config["n_ctx"]))
+        self.n_threads = int(self.config.get("n_threads", self.default_config["n_threads"]))
         self.max_image_dim = int(self.config.get("max_image_dim", self.default_config["max_image_dim"]))
         self.use_gray_mask = bool(self.config.get("use_gray_mask", self.default_config["use_gray_mask"]))
 
@@ -256,6 +261,14 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
             _ = resp.read()
 
+    def _effective_server_ctx_size(self) -> int:
+        # llama-server splits KV cache across parallel slots. Treat configured
+        # n_ctx as desired per-request context and size the server cache so
+        # each slot still gets that amount.
+        per_request_ctx = max(512, int(self.n_ctx or 0))
+        slot_count = max(1, int(self.server_workers or 0))
+        return per_request_ctx * slot_count
+
     @classmethod
     def _stop_managed_server(cls):
         proc = cls._server_proc
@@ -278,6 +291,8 @@ class LLMLlamaCppLocalWorker(BaseWorker):
             endpoint,
             self.model_path,
             self.model_name,
+            self.n_ctx,
+            self.n_threads,
             self.n_gpu_layers,
             self.server_workers,
             self.mmproj_path,
@@ -322,9 +337,13 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                 self.model_name or "qwen35-vl-gguf",
                 "--port",
                 str(port),
+                "-c",
+                str(self._effective_server_ctx_size()),
                 "-ngl",
                 str(self.n_gpu_layers),
             ]
+            if self.n_threads > 0:
+                cmd.extend(["-t", str(self.n_threads)])
 
             src = self.model_path
             if src and os.path.exists(src):
@@ -487,6 +506,59 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                         "llama-server 回應：image input is not supported。"
                         "請確認 server 端使用 vision-capable 模型設定（qwen35-vl + mmproj），"
                         "並使用 b8189+ 版本。"
+                    ),
+                    error_info=build_worker_error_info(
+                        None,
+                        code="worker_image_input_unsupported",
+                        message="llama-server does not support image input for the current model/server setup",
+                        source="worker.llama_cpp_local",
+                        worker_name=self.name,
+                    ),
+                )
+            if "exceed_context_size_error" in lower or "available context size" in lower:
+                prompt_tokens = None
+                context_limit = None
+                try:
+                    payload = json.loads(body)
+                    error_obj = dict(payload.get("error", {}) or {})
+                    prompt_tokens = error_obj.get("n_prompt_tokens")
+                    context_limit = error_obj.get("n_ctx")
+                except Exception:
+                    pass
+                configured_ctx = int(self.n_ctx or 0)
+                slot_count = max(1, int(self.server_workers or 0))
+                slot_hint = ""
+                if context_limit and configured_ctx and context_limit < configured_ctx and slot_count > 1:
+                    slot_hint = (
+                        f" 目前設定的 llama_cpp_server_workers 為 {slot_count}，"
+                        "llama-server 會把總 context 分配到多個 slot；"
+                        "若要單次請求拿到完整 context，請把 Server Slots 改成 1，"
+                        "或提高總 context。"
+                    )
+                hint = (
+                    f"llama-server 可用 context 只有 {context_limit or '未知'} tokens，"
+                    f"但本次請求需要 {prompt_tokens or '更多'} tokens。"
+                    f" 目前應用設定的 llama_cpp_n_ctx 為 {configured_ctx}。"
+                    + slot_hint +
+                    " 如果你是用本程式自動啟動 llama-server，重開這次任務後會改用設定值啟動。"
+                    " 如果你是外部手動啟動 llama-server，請把 server 的 context size 調大後再試。"
+                )
+                return WorkerOutput(
+                    success=False,
+                    error=hint,
+                    error_info=build_worker_error_info(
+                        None,
+                        code="worker_context_limit_exceeded",
+                        message=hint,
+                        source="worker.llama_cpp_local",
+                        worker_name=self.name,
+                        details={
+                            "server_n_ctx": context_limit,
+                            "prompt_tokens": prompt_tokens,
+                            "configured_n_ctx": configured_ctx,
+                            "server_workers": slot_count,
+                            "spawned_ctx_size": self._effective_server_ctx_size(),
+                        },
                     ),
                 )
             return WorkerOutput(success=False, error=f"HTTP {e.code}: {body[:500]}")

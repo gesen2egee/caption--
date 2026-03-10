@@ -149,6 +149,26 @@ class SettingsDialog(QDialog):
         self.spin_llama_max_tokens.setValue(int(self.cfg.get("llama_cpp_max_tokens", 81920)))
         form.addRow("LLaMA.cpp Max Tokens", self.spin_llama_max_tokens)
 
+        self.spin_llama_n_ctx = QSpinBox()
+        self.spin_llama_n_ctx.setRange(512, 262144)
+        self.spin_llama_n_ctx.setSingleStep(512)
+        self.spin_llama_n_ctx.setValue(int(self.cfg.get("llama_cpp_n_ctx", 8192)))
+        form.addRow("LLaMA.cpp Context Size", self.spin_llama_n_ctx)
+
+        self.spin_llama_n_threads = QSpinBox()
+        self.spin_llama_n_threads.setRange(0, 256)
+        self.spin_llama_n_threads.setValue(int(self.cfg.get("llama_cpp_n_threads", 0)))
+        self.spin_llama_n_threads.setToolTip("0 = auto")
+        form.addRow("LLaMA.cpp Threads", self.spin_llama_n_threads)
+
+        self.spin_llama_server_workers = QSpinBox()
+        self.spin_llama_server_workers.setRange(1, 32)
+        self.spin_llama_server_workers.setValue(int(self.cfg.get("llama_cpp_server_workers", 1)))
+        self.spin_llama_server_workers.setToolTip(
+            "Server slots for llama-server. More than 1 splits available context across slots."
+        )
+        form.addRow("LLaMA.cpp Server Slots", self.spin_llama_server_workers)
+
         self.spin_llama_temperature = QDoubleSpinBox()
         self.spin_llama_temperature.setRange(0.0, 2.0)
         self.spin_llama_temperature.setSingleStep(0.1)
@@ -173,6 +193,9 @@ class SettingsDialog(QDialog):
         self._llm_llama_widgets = [
             self.cb_llama_model_path,
             self.spin_llama_max_tokens,
+            self.spin_llama_n_ctx,
+            self.spin_llama_n_threads,
+            self.spin_llama_server_workers,
             self.spin_llama_temperature,
             self.spin_llama_top_p,
         ]
@@ -730,6 +753,9 @@ class SettingsDialog(QDialog):
             or DEFAULT_APP_SETTINGS.get("llama_cpp_model_path", "")
         )
         cfg["llama_cpp_max_tokens"] = self.spin_llama_max_tokens.value()
+        cfg["llama_cpp_n_ctx"] = self.spin_llama_n_ctx.value()
+        cfg["llama_cpp_n_threads"] = self.spin_llama_n_threads.value()
+        cfg["llama_cpp_server_workers"] = self.spin_llama_server_workers.value()
         cfg["llama_cpp_temperature"] = float(f"{self.spin_llama_temperature.value():.2f}")
         cfg["llama_cpp_top_p"] = float(f"{self.spin_llama_top_p.value():.2f}")
         # Hidden advanced options keep defaults/existing values to reduce UI complexity.
@@ -739,10 +765,6 @@ class SettingsDialog(QDialog):
         cfg["llama_cpp_api_key"] = cfg.get("llama_cpp_api_key", DEFAULT_APP_SETTINGS.get("llama_cpp_api_key", ""))
         cfg["llama_cpp_model_alias"] = cfg.get(
             "llama_cpp_model_alias", DEFAULT_APP_SETTINGS.get("llama_cpp_model_alias", "qwen35-vl-gguf")
-        )
-        cfg["llama_cpp_n_ctx"] = int(cfg.get("llama_cpp_n_ctx", DEFAULT_APP_SETTINGS.get("llama_cpp_n_ctx", 8192)))
-        cfg["llama_cpp_n_threads"] = int(
-            cfg.get("llama_cpp_n_threads", DEFAULT_APP_SETTINGS.get("llama_cpp_n_threads", 0))
         )
         cfg["llama_cpp_n_gpu_layers"] = int(
             cfg.get("llama_cpp_n_gpu_layers", DEFAULT_APP_SETTINGS.get("llama_cpp_n_gpu_layers", 99))
@@ -777,7 +799,7 @@ class SettingsDialog(QDialog):
             "llama_cpp_server_exe", DEFAULT_APP_SETTINGS.get("llama_cpp_server_exe", "")
         )
         cfg["llama_cpp_server_workers"] = int(
-            cfg.get("llama_cpp_server_workers", DEFAULT_APP_SETTINGS.get("llama_cpp_server_workers", 8))
+            cfg.get("llama_cpp_server_workers", DEFAULT_APP_SETTINGS.get("llama_cpp_server_workers", 1))
         )
         cfg["llama_cpp_server_start_timeout"] = int(
             cfg.get(

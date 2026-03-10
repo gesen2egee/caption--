@@ -57,6 +57,7 @@ class TaskResult:
     skipped: bool = False                     # 是否跳過（不算失敗）
     skip_reason: Optional[str] = None         # 跳過原因
     error: Optional[str] = None               # 錯誤訊息
+    error_info: Optional[Dict[str, Any]] = None  # 結構化錯誤資訊
     
     # 元資料
     metadata: Dict[str, Any] = field(default_factory=dict)

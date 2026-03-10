@@ -9,8 +9,10 @@ from typing import Tuple
 
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.pipeline.context import TaskContext, TaskResult
+from lib.runtime.errors import build_runtime_error_info
 from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
 from lib.utils.parsing import extract_llm_content_and_postprocess
+from lib.workers import invoke_worker
 
 
 class LLMTask(BaseTask):
@@ -59,14 +61,7 @@ class LLMTask(BaseTask):
             
             # 3. 建立並呼叫 Worker
             # from lib.workers.vlm_openrouter_api import VLMOpenRouterAPIWorker
-            from lib.workers.registry import get_registry
-            
             worker_name = context.settings.llm_provider if (context.settings and context.settings.llm_provider) else "vlm_openrouter_api"
-            WorkerCls = get_registry().get_worker_class("LLM", worker_name)
-            
-            if not WorkerCls:
-                 return TaskResult(success=False, error=f"LLM Worker '{worker_name}' not found", image=context.image)
-
             config = {}
             if context.settings:
                 if worker_name == "llm_llama_cpp_local":
@@ -83,13 +78,15 @@ class LLMTask(BaseTask):
                         "presence_penalty": float(getattr(context.settings, "llama_cpp_presence_penalty", 1.5)),
                         "repetition_penalty": float(getattr(context.settings, "llama_cpp_repeat_penalty", 1.0)),
                         "model_path": context.settings.llama_cpp_model_path,
+                        "n_ctx": int(getattr(context.settings, "llama_cpp_n_ctx", 8192)),
+                        "n_threads": int(getattr(context.settings, "llama_cpp_n_threads", 0)),
                         "n_gpu_layers": int(context.settings.llama_cpp_n_gpu_layers),
                         "max_tokens": int(context.settings.llama_cpp_max_tokens),
                         "mmproj_path": context.settings.llama_cpp_mmproj_path,
                         "enable_vision": bool(context.settings.llama_cpp_enable_vision),
                         "server_autostart": bool(getattr(context.settings, "llama_cpp_server_autostart", True)),
                         "server_exe": str(getattr(context.settings, "llama_cpp_server_exe", "")),
-                        "server_workers": int(getattr(context.settings, "llama_cpp_server_workers", 8)),
+                        "server_workers": int(getattr(context.settings, "llama_cpp_server_workers", 1)),
                         "server_start_timeout": int(
                             getattr(context.settings, "llama_cpp_server_start_timeout", 900)
                         ),
@@ -116,13 +113,19 @@ class LLMTask(BaseTask):
                 worker_input.extra["top_p"] = float(context.settings.llm_top_p)
                 worker_input.extra["thinking_mode"] = bool(context.settings.llm_thinking_mode)
             
-            worker = WorkerCls(config)
-            worker_output = worker.process(worker_input)
+            worker_output = invoke_worker(
+                "LLM",
+                worker_name,
+                config=config,
+                worker_input=worker_input,
+                settings=context.settings,
+            )
             
             if not worker_output.success:
                 return TaskResult(
                     success=False,
                     error=worker_output.error,
+                    error_info=worker_output.error_info,
                     image=context.image,
                 )
             
@@ -156,5 +159,6 @@ class LLMTask(BaseTask):
             return TaskResult(
                 success=False,
                 error=str(e),
+                error_info=build_runtime_error_info(e, source="pipeline.task.llm"),
                 image=context.image,
             )

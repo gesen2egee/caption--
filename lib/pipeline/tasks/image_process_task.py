@@ -10,9 +10,11 @@ from typing import Tuple
 
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.pipeline.context import TaskContext, TaskResult
+from lib.runtime.errors import build_runtime_error_info
 from lib.core.settings import DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE
 from lib.utils.file_ops import backup_raw_image
 from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
+from lib.workers import invoke_worker
 
 
 class ImageProcessTask(BaseTask):
@@ -46,27 +48,11 @@ class ImageProcessTask(BaseTask):
 
             backup_raw_image(image_path)
 
-            from lib.workers.registry import get_registry
-
             worker_name = (
                 settings.image_process_worker
                 if (settings and getattr(settings, "image_process_worker", ""))
                 else "image_flux2_klein_gguf_local"
             )
-            WorkerCls = get_registry().get_worker_class("IMAGE_PROCESS", worker_name)
-            if not WorkerCls and worker_name == "image_flux2_klein_gguf_local":
-                try:
-                    from lib.workers.image_flux2_klein_gguf_local import ImageFlux2KleinGGUFLocalWorker
-                    WorkerCls = ImageFlux2KleinGGUFLocalWorker
-                except Exception:
-                    WorkerCls = None
-            if not WorkerCls:
-                return TaskResult(
-                    success=False,
-                    error=f"Image Process Worker '{worker_name}' not found",
-                    image=context.image,
-                )
-
             config = {
                 "base_url": getattr(settings, "image_process_base_url", "http://127.0.0.1:8001/v1"),
                 "model_name": getattr(settings, "image_process_model", "unsloth/FLUX.2-klein-4B-GGUF"),
@@ -101,12 +87,18 @@ class ImageProcessTask(BaseTask):
             worker_input = context.to_worker_input()
             worker_input.extra["edit_prompt"] = prompt
 
-            worker = WorkerCls(config)
-            worker_output = worker.process(worker_input)
+            worker_output = invoke_worker(
+                "IMAGE_PROCESS",
+                worker_name,
+                config=config,
+                worker_input=worker_input,
+                settings=context.settings,
+            )
             if not worker_output.success:
                 return TaskResult(
                     success=False,
                     error=worker_output.error,
+                    error_info=worker_output.error_info,
                     image=context.image,
                 )
 
@@ -151,5 +143,6 @@ class ImageProcessTask(BaseTask):
             return TaskResult(
                 success=False,
                 error=str(e),
+                error_info=build_runtime_error_info(e, source="pipeline.task.image_process"),
                 image=context.image,
             )

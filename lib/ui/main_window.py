@@ -4,6 +4,7 @@ import sys
 import shutil
 import json
 import re
+import threading
 from pathlib import Path
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +22,7 @@ from lib.ui.mixins.editor_mixin import EditorMixin
 from lib.ui.mixins.processing_mixin import ProcessingMixin
 from lib.ui.mixins.settings_mixin import SettingsMixin
 from lib.ui.mixins.pipeline_handler_mixin import PipelineHandlerMixin
-from PyQt6.QtCore import Qt, QTimer, QPoint, QSize, QUrl, QBuffer, QIODevice, QByteArray, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QPoint, QSize, QUrl, QBuffer, QIODevice, QByteArray
 from PyQt6.QtGui import QFont, QPixmap, QImage, QAction, QKeySequence, QShortcut, QDesktopServices, QPalette, QBrush, QIcon
 
 
@@ -49,18 +50,67 @@ from lib.ui.components.stroke import create_checkerboard_png_bytes
 
 from lib.utils.memory_utils import unload_all_models
 from lib.workers.registry import get_registry, scan_workers
+from lib.runtime.callback_dispatcher import RuntimeCallbackDispatcher
 
 CLIPTokenizer = None
 
-class WorkerScanThread(QThread):
-    done = pyqtSignal(bool, str)
+class SignalProxy:
+    def __init__(self):
+        self._callbacks = []
+        self._lock = threading.Lock()
+
+    def connect(self, callback):
+        with self._lock:
+            if callback not in self._callbacks:
+                self._callbacks.append(callback)
+
+    def emit(self, *args, **kwargs):
+        with self._lock:
+            callbacks = list(self._callbacks)
+        for callback in callbacks:
+            callback(*args, **kwargs)
+
+
+class WorkerScanThread:
+    def __init__(self, parent=None):
+        self._thread = None
+        self._dispatcher = RuntimeCallbackDispatcher.create_default()
+        self.done = SignalProxy()
+        self.finished = SignalProxy()
+
+    def _emit(self, signal: SignalProxy, *args):
+        if self._dispatcher is not None:
+            self._dispatcher.dispatch(signal.emit, *args)
+            return
+        signal.emit(*args)
+
+    def start(self):
+        if self.isRunning():
+            return
+        self._thread = threading.Thread(target=self.run, daemon=True, name="WorkerScanThread")
+        self._thread.start()
+
+    def isRunning(self):
+        return bool(self._thread is not None and self._thread.is_alive())
+
+    def wait(self, timeout=None):
+        if self._thread is None:
+            return True
+        self._thread.join(timeout=timeout)
+        return not self._thread.is_alive()
+
+    def deleteLater(self):
+        # Compatibility no-op for code paths that previously used QThread/QObject.
+        self._thread = None
 
     def run(self):
         try:
             scan_workers()
-            self.done.emit(True, "")
+            self._emit(self.done, True, "")
         except Exception as e:
-            self.done.emit(False, str(e))
+            self._emit(self.done, False, str(e))
+        finally:
+            self._emit(self.finished)
 
 class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, EditorMixin, ProcessingMixin, PipelineHandlerMixin):
     def __init__(self):
@@ -70,6 +120,11 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         
         # Init Task Tracking
         self._current_task = None
+        self._get_command_registry()
+        self._get_runtime_event_bus()
+        self._get_task_runner()
+        self._maybe_start_runtime_http_bridge()
+        self._maybe_start_runtime_service_watch()
 
         self.llm_base_url = str(self.settings.get("llm_base_url", DEFAULT_APP_SETTINGS["llm_base_url"]))
         self.api_key = str(self.settings.get("llm_api_key", DEFAULT_APP_SETTINGS["llm_api_key"]))
@@ -287,7 +342,8 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
 
     def on_worker_scan_finished(self):
         if self._workers_scan_thread is not None:
-            self._workers_scan_thread.deleteLater()
+            if hasattr(self._workers_scan_thread, "deleteLater"):
+                self._workers_scan_thread.deleteLater()
             self._workers_scan_thread = None
 
     def init_ui(self):
@@ -335,16 +391,22 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.filter_input.setPlaceholderText(self.tr("filter_placeholder"))
         self.filter_input.setToolTip(self.tr("tip_filter_input"))
         self.filter_input.returnPressed.connect(self.apply_filter)
+        self.filter_input.textChanged.connect(self._sync_runtime_selection_state)
+        self.filter_input.textChanged.connect(self._sync_runtime_controls_state)
         filter_bar.addWidget(self.filter_input, 1)
         
         self.chk_filter_tags = QCheckBox(self.tr("filter_by_tags"))
         self.chk_filter_tags.setChecked(True)
         self.chk_filter_tags.setToolTip(self.tr("tip_filter_tags"))
+        self.chk_filter_tags.stateChanged.connect(self._sync_runtime_selection_state)
+        self.chk_filter_tags.stateChanged.connect(self._sync_runtime_controls_state)
         filter_bar.addWidget(self.chk_filter_tags)
         
         self.chk_filter_text = QCheckBox(self.tr("filter_by_text"))
         self.chk_filter_text.setChecked(False)
         self.chk_filter_text.setToolTip(self.tr("tip_filter_text"))
+        self.chk_filter_text.stateChanged.connect(self._sync_runtime_selection_state)
+        self.chk_filter_text.stateChanged.connect(self._sync_runtime_controls_state)
         filter_bar.addWidget(self.chk_filter_text)
         
         self.btn_clear_filter = QPushButton("✕")
@@ -359,6 +421,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.cb_view_mode.setToolTip(self.tr("tip_view_mode"))
         self.cb_view_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus) # 避免搶走焦點影響快速鍵
         self.cb_view_mode.currentIndexChanged.connect(self.on_view_mode_changed)
+        self.cb_view_mode.currentIndexChanged.connect(self._sync_runtime_controls_state)
         filter_bar.addWidget(self.cb_view_mode)
         
         left_layout.addLayout(filter_bar)
@@ -421,6 +484,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
 
         # Tabs (TAGS / NL)
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self._sync_runtime_ui_state)
         self.right_splitter.addWidget(self.tabs)
 
         # ---- TAGS Tab ----
@@ -445,6 +509,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.chk_tags_save_txt = QCheckBox(self.tr("chk_save_to_txt"))
         self.chk_tags_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
         self.chk_tags_save_txt.setChecked(True) # Default Checked? User didn't specify, but "to txt" implies intent.
+        self.chk_tags_save_txt.stateChanged.connect(self._sync_runtime_controls_state)
         tags_toolbar.addWidget(self.chk_tags_save_txt)
 
         self.btn_add_custom_tag = QPushButton(self.tr("btn_add_tag"))
@@ -518,6 +583,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.chk_llm_save_txt = QCheckBox(self.tr("chk_save_to_txt"))
         self.chk_llm_save_txt.setToolTip(self.tr("tip_chk_save_to_txt"))
         self.chk_llm_save_txt.setChecked(True)
+        self.chk_llm_save_txt.stateChanged.connect(self._sync_runtime_controls_state)
         nl_toolbar.addWidget(self.chk_llm_save_txt)
 
         self.btn_prev_nl = QPushButton(self.tr("btn_prev"))
@@ -562,6 +628,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.prompt_edit = QTextEdit()
         self.prompt_edit.setFont(QFont("Consolas", 11))
         self.prompt_edit.setPlainText(self.default_user_prompt_template)
+        self.prompt_edit.textChanged.connect(self._sync_runtime_content_state)
         nl_layout.addWidget(self.prompt_edit, 1)
 
         self.tabs.addTab(nl_tab, self.tr("sec_nl"))
@@ -599,6 +666,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         self.img_prompt_edit = QTextEdit()
         self.img_prompt_edit.setFont(QFont("Consolas", 11))
         self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
+        self.img_prompt_edit.textChanged.connect(self._sync_runtime_content_state)
         img_layout.addWidget(self.img_prompt_edit, 1)
 
         self.tabs.addTab(img_tab, self.tr("sec_imgproc"))
@@ -669,6 +737,12 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         
         # Check workers availability
         self.check_worker_availability()
+        self._sync_runtime_settings_state()
+        self._sync_runtime_selection_state()
+        self._sync_runtime_ui_state()
+        self._sync_runtime_controls_state()
+        self._sync_runtime_content_state()
+        self._sync_runtime_tags_state()
 
     def make_hline(self):
         line = QFrame()
@@ -679,6 +753,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
     def use_default_image_prompt(self):
         if hasattr(self, "img_prompt_edit") and self.img_prompt_edit is not None:
             self.img_prompt_edit.setPlainText(self.image_process_prompt_template)
+        self._sync_runtime_content_state()
 
     def setup_shortcuts(self):
         # ✅ 圖片左右/翻頁鍵：用 ApplicationShortcut，焦點在 txt 也能翻
@@ -724,9 +799,11 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         if key == Qt.Key.Key_N:
             self.temp_view_mode = 1 # RGB
             self.update_image_display()
+            self._sync_runtime_ui_state()
         elif key == Qt.Key.Key_M:
             self.temp_view_mode = 2 # Alpha
             self.update_image_display()
+            self._sync_runtime_ui_state()
         else:
             super().keyPressEvent(event)
 
@@ -741,6 +818,7 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
             # 如果使用者同時按住 N 和 M，放開一個時會回到 View Mode
             self.temp_view_mode = None
             self.update_image_display()
+            self._sync_runtime_ui_state()
         else:
             super().keyReleaseEvent(event)
 
@@ -750,6 +828,14 @@ class MainWindow(SettingsMixin, QMainWindow, BatchMixin, NavigationMixin, Editor
         super().resizeEvent(event)
         # 使用 QTimer 避免縮放時過於頻繁的重繪造成卡頓
         QTimer.singleShot(10, self.update_image_display)
+
+    def closeEvent(self, event):
+        try:
+            self._stop_runtime_http_bridge()
+            self._stop_runtime_service_watch()
+            self.command_stop_worker_services()
+        finally:
+            super().closeEvent(event)
 
 
 

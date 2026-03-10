@@ -9,7 +9,9 @@ from typing import Tuple
 
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.pipeline.context import TaskContext, TaskResult
+from lib.runtime.errors import build_runtime_error_info
 from lib.utils.sidecar import load_image_sidecar, save_image_sidecar
+from lib.workers import invoke_worker
 
 
 class TaggerTask(BaseTask):
@@ -42,14 +44,7 @@ class TaggerTask(BaseTask):
             
             # 2. 建立並呼叫 Worker
             # from lib.workers.tagger_imgutils_tagging_local import TaggerImgutilsTaggingLocalWorker
-            from lib.workers.registry import get_registry
-            
             worker_name = context.settings.tagger_worker if (context.settings and context.settings.tagger_worker) else "tagger_imgutils_generic"
-            WorkerCls = get_registry().get_worker_class("TAGGER", worker_name)
-            
-            if not WorkerCls:
-                 return TaskResult(success=False, error=f"Tagger Worker '{worker_name}' not found", image=context.image)
-            
             config = {}
             if context.settings:
                 config = {
@@ -64,13 +59,19 @@ class TaggerTask(BaseTask):
                     "drop_overlap": context.settings.drop_overlap,
                 }
             
-            worker = WorkerCls(config)
-            worker_output = worker.process(context.to_worker_input())
+            worker_output = invoke_worker(
+                "TAGGER",
+                worker_name,
+                config=config,
+                worker_input=context.to_worker_input(),
+                settings=context.settings,
+            )
             
             if not worker_output.success:
                 return TaskResult(
                     success=False,
                     error=worker_output.error,
+                    error_info=worker_output.error_info,
                     image=context.image,
                 )
             
@@ -103,5 +104,6 @@ class TaggerTask(BaseTask):
             return TaskResult(
                 success=False,
                 error=str(e),
+                error_info=build_runtime_error_info(e, source="pipeline.task.tagger"),
                 image=context.image,
             )

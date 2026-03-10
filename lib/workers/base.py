@@ -7,7 +7,7 @@ Worker 是純粹的功能/模型包裝，不涉及 UI 互動。
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Any, Optional, Dict, List
 
 from lib.core.dataclasses import ImageData, Settings, Prompt, FolderMeta
 
@@ -45,6 +45,7 @@ class WorkerOutput:
     
     # 狀態
     error: Optional[str] = None               # 錯誤訊息
+    error_info: Optional[Dict[str, Any]] = None  # 結構化錯誤資訊
     skipped: bool = False                     # 是否跳過 (不算失敗)
     skip_reason: Optional[str] = None         # 跳過原因
     

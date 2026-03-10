@@ -2,15 +2,15 @@
 """
 Workers 兼容層
 
-提供舊式 QThread Workers 到新 Task 架構的橋接。
+提供舊式 threaded Workers 到新 Task 架構的橋接。
 這允許漸進式遷移，不需要一次性修改所有 UI 程式碼。
 """
+import threading
 from typing import Callable, List, Optional
-
-from PyQt6.QtCore import QThread, pyqtSignal
 
 from lib.core.dataclasses import ImageData, Settings
 from lib.core.settings import load_app_settings, DEFAULT_APP_SETTINGS
+from lib.runtime.callback_dispatcher import RuntimeCallbackDispatcher
 
 
 def create_image_data(image_path: str) -> ImageData:
@@ -163,19 +163,67 @@ def create_settings_from_dict(cfg: dict) -> Settings:
 # 兼容層 Workers (舊式 API，內部使用新架構)
 # ============================================================
 
-class TaggerWorkerCompat(QThread):
+class SignalProxy:
+    def __init__(self):
+        self._callbacks: List[Callable[..., None]] = []
+        self._lock = threading.Lock()
+
+    def connect(self, callback: Callable[..., None]) -> None:
+        with self._lock:
+            if callback not in self._callbacks:
+                self._callbacks.append(callback)
+
+    def disconnect(self, callback: Callable[..., None]) -> None:
+        with self._lock:
+            if callback in self._callbacks:
+                self._callbacks.remove(callback)
+
+    def emit(self, *args, **kwargs) -> None:
+        with self._lock:
+            callbacks = list(self._callbacks)
+        for callback in callbacks:
+            callback(*args, **kwargs)
+
+
+class ThreadedCompatWorker:
+    def __init__(self):
+        self._thread: Optional[threading.Thread] = None
+        self._dispatcher = RuntimeCallbackDispatcher.create_default()
+
+    def start(self) -> None:
+        if self.isRunning():
+            return
+        self._thread = threading.Thread(target=self.run, daemon=True, name=self.__class__.__name__)
+        self._thread.start()
+
+    def isRunning(self) -> bool:
+        return bool(self._thread is not None and self._thread.is_alive())
+
+    def wait(self, timeout: Optional[float] = None) -> bool:
+        if self._thread is None:
+            return True
+        self._thread.join(timeout=timeout)
+        return not self._thread.is_alive()
+
+    def emit_signal(self, signal: SignalProxy, *args) -> None:
+        if self._dispatcher is not None:
+            self._dispatcher.dispatch(signal.emit, *args)
+            return
+        signal.emit(*args)
+
+
+class TaggerWorkerCompat(ThreadedCompatWorker):
     """
     Tagger Worker 兼容層
     
     保持舊的 signal 介面，內部使用新的 Worker 架構。
     """
-    finished = pyqtSignal(str)
-    error = pyqtSignal(str)
-    
     def __init__(self, image_path: str, cfg: dict):
         super().__init__()
         self.image_path = image_path
         self.cfg = dict(cfg or {})
+        self.finished = SignalProxy()
+        self.error = SignalProxy()
     
     def run(self):
         try:
@@ -211,28 +259,27 @@ class TaggerWorkerCompat(QThread):
                 tags_list += list(chars.keys()) + list(features.keys())
                 tags_str = ", ".join(tags_list)
                 
-                self.finished.emit(tags_str)
+                self.emit_signal(self.finished, tags_str)
             else:
-                self.error.emit(output.error or "未知錯誤")
+                self.emit_signal(self.error, output.error or "未知錯誤")
                 
         except Exception as e:
-            self.error.emit(str(e))
+            self.emit_signal(self.error, str(e))
 
 
-class BatchTaggerWorkerCompat(QThread):
+class BatchTaggerWorkerCompat(ThreadedCompatWorker):
     """
     批量 Tagger Worker 兼容層
     """
-    progress = pyqtSignal(int, int, str)
-    per_image = pyqtSignal(str, str)
-    done = pyqtSignal()
-    error = pyqtSignal(str)
-    
     def __init__(self, image_paths: List[str], cfg: dict):
         super().__init__()
         self.image_paths = list(image_paths)
         self.cfg = dict(cfg or {})
         self._stop = False
+        self.progress = SignalProxy()
+        self.per_image = SignalProxy()
+        self.done = SignalProxy()
+        self.error = SignalProxy()
     
     def stop(self):
         self._stop = True
@@ -256,7 +303,7 @@ class BatchTaggerWorkerCompat(QThread):
                 if self._stop:
                     break
                 
-                self.progress.emit(i + 1, total, image_path)
+                self.emit_signal(self.progress, i + 1, total, image_path)
                 
                 try:
                     image_data = create_image_data(image_path)
@@ -264,25 +311,20 @@ class BatchTaggerWorkerCompat(QThread):
                     output = worker.process(input_data)
                     
                     if output.success:
-                        self.per_image.emit(image_path, output.result_text or "")
+                        self.emit_signal(self.per_image, image_path, output.result_text or "")
                 except Exception as e:
-                    self.per_image.emit(image_path, f"[錯誤] {e}")
+                    self.emit_signal(self.per_image, image_path, f"[錯誤] {e}")
                     
         except Exception as e:
-            self.error.emit(str(e))
+            self.emit_signal(self.error, str(e))
         finally:
-            self.done.emit()
+            self.emit_signal(self.done)
 
 
-class BatchUnmaskWorkerCompat(QThread):
+class BatchUnmaskWorkerCompat(ThreadedCompatWorker):
     """
     批量去背 Worker 兼容層
     """
-    progress = pyqtSignal(int, int, str)
-    per_image = pyqtSignal(str, str)
-    done = pyqtSignal()
-    error = pyqtSignal(str)
-    
     def __init__(self, image_paths: List[str], cfg: dict = None, 
                  background_tag_checker: Callable = None, is_batch: bool = True):
         super().__init__()
@@ -291,6 +333,10 @@ class BatchUnmaskWorkerCompat(QThread):
         self.background_tag_checker = background_tag_checker
         self.is_batch = is_batch
         self._stop = False
+        self.progress = SignalProxy()
+        self.per_image = SignalProxy()
+        self.done = SignalProxy()
+        self.error = SignalProxy()
     
     def stop(self):
         self._stop = True
@@ -317,19 +363,19 @@ class BatchUnmaskWorkerCompat(QThread):
                 if self._stop:
                     break
                 
-                self.progress.emit(i + 1, total, image_path)
+                self.emit_signal(self.progress, i + 1, total, image_path)
                 
                 try:
                     # 檢查是否需要處理
                     if self.is_batch:
                         sidecar = load_image_sidecar(image_path)
                         if self.cfg.get("mask_batch_skip_once_processed") and sidecar.get("masked_background"):
-                            self.per_image.emit(image_path, "[跳過] 已處理")
+                            self.emit_signal(self.per_image, image_path, "[跳過] 已處理")
                             continue
                         
                         if self.cfg.get("mask_batch_only_if_has_background_tag"):
                             if self.background_tag_checker and not self.background_tag_checker(image_path):
-                                self.per_image.emit(image_path, "[跳過] 無 background 標籤")
+                                self.emit_signal(self.per_image, image_path, "[跳過] 無 background 標籤")
                                 continue
                     
                     # 備份原圖
@@ -345,34 +391,33 @@ class BatchUnmaskWorkerCompat(QThread):
                         sidecar = load_image_sidecar(image_path)
                         sidecar["masked_background"] = True
                         save_image_sidecar(output.result_path or image_path, sidecar)
-                        self.per_image.emit(image_path, output.result_path or "完成")
+                        self.emit_signal(self.per_image, image_path, output.result_path or "完成")
                     elif output.skipped:
-                        self.per_image.emit(image_path, f"[跳過] {output.skip_reason or ''}")
+                        self.emit_signal(self.per_image, image_path, f"[跳過] {output.skip_reason or ''}")
                     else:
-                        self.per_image.emit(image_path, f"[錯誤] {output.error or ''}")
+                        self.emit_signal(self.per_image, image_path, f"[錯誤] {output.error or ''}")
                         
                 except Exception as e:
-                    self.per_image.emit(image_path, f"[錯誤] {e}")
+                    self.emit_signal(self.per_image, image_path, f"[錯誤] {e}")
                     
         except Exception as e:
-            self.error.emit(str(e))
+            self.emit_signal(self.error, str(e))
         finally:
-            self.done.emit()
+            self.emit_signal(self.done)
 
 
-class BatchRestoreWorkerCompat(QThread):
+class BatchRestoreWorkerCompat(ThreadedCompatWorker):
     """
     批量還原 Worker 兼容層
     """
-    progress = pyqtSignal(int, int, str)
-    per_image = pyqtSignal(str, str)
-    done = pyqtSignal()
-    error = pyqtSignal(str)
-    
     def __init__(self, image_paths: List[str]):
         super().__init__()
         self.image_paths = list(image_paths)
         self._stop = False
+        self.progress = SignalProxy()
+        self.per_image = SignalProxy()
+        self.done = SignalProxy()
+        self.error = SignalProxy()
     
     def stop(self):
         self._stop = True
@@ -389,7 +434,7 @@ class BatchRestoreWorkerCompat(QThread):
                 if self._stop:
                     break
                 
-                self.progress.emit(i + 1, total, image_path)
+                self.emit_signal(self.progress, i + 1, total, image_path)
                 
                 try:
                     image_data = create_image_data(image_path)
@@ -397,17 +442,17 @@ class BatchRestoreWorkerCompat(QThread):
                     output = worker.process(input_data)
                     
                     if output.success and not output.skipped:
-                        self.per_image.emit(image_path, "已還原")
+                        self.emit_signal(self.per_image, image_path, "已還原")
                     elif output.skipped:
-                        self.per_image.emit(image_path, f"[跳過] {output.skip_reason or ''}")
+                        self.emit_signal(self.per_image, image_path, f"[跳過] {output.skip_reason or ''}")
                     else:
-                        self.per_image.emit(image_path, f"[錯誤] {output.error or ''}")
+                        self.emit_signal(self.per_image, image_path, f"[錯誤] {output.error or ''}")
                         
                 except Exception as e:
-                    self.per_image.emit(image_path, f"[錯誤] {e}")
+                    self.emit_signal(self.per_image, image_path, f"[錯誤] {e}")
                     
         except Exception as e:
-            self.error.emit(str(e))
+            self.emit_signal(self.error, str(e))
         finally:
-            self.done.emit()
+            self.emit_signal(self.done)
 
