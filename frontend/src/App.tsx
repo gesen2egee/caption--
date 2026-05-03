@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import {
+  type AgentCaptureScope,
+  listCaptureTabs,
+  type PreparedAgentCapture,
+  prepareAgentCapture,
+} from "./agentCapture";
 import { CaptionRuntimeClient, CaptionRuntimeError } from "../runtime/client";
 import { SpecRenderer } from "./specRenderer";
 import type {
@@ -14,6 +20,7 @@ import type {
   RuntimeState,
   SettingField,
   SettingsSchema,
+  UiCaptureSavedArtifact,
   UiSpecNode,
   WorkersSummary,
 } from "../runtime/types";
@@ -210,6 +217,16 @@ const WEB_TEXT = {
     noSelection: "未選取項目",
     latestResult: "最近工具結果",
     settingsGroup: "設定群組",
+    agentCapture: "Agent 擷取",
+    captureWorkspace: "擷取工作區",
+    captureCurrentTab: "擷取目前分頁",
+    captureAllTabs: "擷取全部分頁",
+    capturePreview: "擷取預覽",
+    captureRightPanel: "擷取右欄",
+    captureSaved: "已儲存到",
+    captureTarget: "擷取目標",
+    captureBusy: "正在擷取",
+    capturePreset: "標準化 desktop 基準圖 1440px / DPR1",
   },
   en: {
     title: "Caption Tool",
@@ -249,6 +266,16 @@ const WEB_TEXT = {
     noSelection: "No selection",
     latestResult: "Last Tool Result",
     settingsGroup: "Settings Group",
+    agentCapture: "Agent Capture",
+    captureWorkspace: "Capture Workspace",
+    captureCurrentTab: "Capture Current Tab",
+    captureAllTabs: "Capture All Tabs",
+    capturePreview: "Capture Preview",
+    captureRightPanel: "Capture Right Panel",
+    captureSaved: "Saved to",
+    captureTarget: "Capture Target",
+    captureBusy: "Capturing",
+    capturePreset: "Normalized desktop baseline 1440px / DPR1",
   },
 } as const;
 
@@ -273,6 +300,37 @@ interface DesktopMenuGroup {
   id: Exclude<DesktopMenuId, "">;
   label: string;
   items: DesktopMenuItem[];
+}
+
+interface AgentCaptureRecord extends UiCaptureSavedArtifact {
+  preview_data_url?: string;
+}
+
+function formatCaptureToolResult(response: {
+  capture_dir: string;
+  captures: Array<Pick<UiCaptureSavedArtifact, "name" | "scope" | "image_path" | "metadata_path">>;
+}): string {
+  const lines = [
+    `Capture dir: ${response.capture_dir}`,
+    `Count: ${response.captures.length}`,
+    "",
+  ];
+  for (const capture of response.captures) {
+    lines.push(`[${capture.scope}] ${capture.name}`);
+    lines.push(`  PNG: ${capture.image_path}`);
+    lines.push(`  JSON: ${capture.metadata_path}`);
+  }
+  return lines.join("\n");
+}
+
+declare global {
+  interface Window {
+    __captionAgentCapture?: {
+      listTargets: () => string[];
+      capture: (scope: AgentCaptureScope) => Promise<AgentCaptureRecord[]>;
+      captureAllTabs: () => Promise<AgentCaptureRecord[]>;
+    };
+  }
 }
 
 export default function App() {
@@ -311,11 +369,14 @@ export default function App() {
   const [quickDialog, setQuickDialog] = useState<"" | "settings" | "findReplace" | "stroke" | "customTag">("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<DesktopMenuId>("");
+  const [captureBusy, setCaptureBusy] = useState<string | null>(null);
+  const [captureArtifacts, setCaptureArtifacts] = useState<AgentCaptureRecord[]>([]);
   const refreshTimerRef = useRef<number | null>(null);
   const currentImagePathRef = useRef("");
   const agentSurfaceModeRef = useRef(agentSurfaceMode);
   const rootDirInputRef = useRef<HTMLInputElement | null>(null);
   const menuBarRef = useRef<HTMLElement | null>(null);
+  const capturePanelRef = useRef<HTMLElement | null>(null);
 
   const refreshRuntime = async () => {
     const activeMode = agentSurfaceModeRef.current;
@@ -526,7 +587,7 @@ export default function App() {
   }, [runtimeState?.selection.current_image_path]);
 
   useEffect(() => {
-    if (!selectedSettingsGroup && settingsSchema?.groups.length) {
+    if (!selectedSettingsGroup && settingsSchema?.groups?.length) {
       setSelectedSettingsGroup(settingsSchema.groups[0]);
     }
   }, [selectedSettingsGroup, settingsSchema]);
@@ -604,6 +665,173 @@ export default function App() {
   const currentRootDir = runtimeState?.selection.root_dir_path || rootDirDraft;
   const uiLanguage = typeof runtimeState?.settings.ui_language === "string" ? runtimeState.settings.ui_language : undefined;
   const webText = getWebText(uiLanguage);
+  const availableCaptureTabs = listCaptureTabs(uiSpec);
+
+  const waitForLayout = () =>
+    new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => resolve());
+      });
+    });
+
+  const captureLabel = (scope: AgentCaptureScope): string => {
+    if (scope === "workspace") {
+      return webText.captureWorkspace;
+    }
+    if (scope === "current_tab") {
+      return webText.captureCurrentTab;
+    }
+    if (scope === "preview") {
+      return webText.capturePreview;
+    }
+    if (scope === "right_panel") {
+      return webText.captureRightPanel;
+    }
+    if (scope === "left_panel") {
+      return "Capture Left Panel";
+    }
+    if (scope === "text_editor") {
+      return "Capture Text Editor";
+    }
+    return "Capture Full App";
+  };
+
+  const openCapturePanel = () => {
+    setAdvancedOpen(true);
+    window.requestAnimationFrame(() => {
+      capturePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const buildCaptureMetadata = (
+    scope: string,
+    captureName: string,
+    extra: Record<string, JsonValue> = {},
+  ): JsonObject => ({
+    capture_name: captureName,
+    scope,
+    timestamp: new Date().toISOString(),
+    page_title: document.title,
+    route: window.location.pathname,
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    } as unknown as JsonValue,
+    device_pixel_ratio: window.devicePixelRatio,
+    ui_language: uiLanguage || "zh_tw",
+    agent_surface_mode: agentSurfaceMode,
+    event_stream_status: eventStreamStatus,
+    active_tab: activeTab,
+    active_tab_title:
+      availableCaptureTabs.find((tab) => tab.id === activeTab)?.title || activeTab,
+    quick_dialog: quickDialog || "",
+    root_dir_path: currentRootDir,
+    current_image_path: currentImagePath,
+    current_file_name: currentFileName,
+    selection: {
+      current_index: runtimeState?.selection.current_index || 0,
+      image_count: runtimeState?.selection.image_count || 0,
+      filter_active: !!runtimeState?.selection.filter_active,
+      filter_query: runtimeState?.selection.filter_query || "",
+    } as unknown as JsonValue,
+    controls: {
+      view_mode: runtimeState?.controls.view_mode || 0,
+      tagger_save_to_txt: !!runtimeState?.controls.tagger_save_to_txt,
+      llm_save_to_txt: !!runtimeState?.controls.llm_save_to_txt,
+    } as unknown as JsonValue,
+    available_tabs: availableCaptureTabs.map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+    })) as unknown as JsonValue,
+    ...extra,
+  });
+
+  const persistPreparedCaptures = async (preparedCaptures: PreparedAgentCapture[]) => {
+    const response = await client.saveUiCaptures(
+      preparedCaptures.map((capture) => ({
+        name: capture.name,
+        scope: capture.scope,
+        png_data_url: capture.png_data_url,
+        metadata: capture.metadata,
+      })),
+    );
+    const savedCaptures = response.captures.map((capture, index) => ({
+      ...capture,
+      preview_data_url: preparedCaptures[index]?.png_data_url || "",
+    }));
+    setCaptureArtifacts(savedCaptures);
+    setToolResult(
+      formatCaptureToolResult({
+        capture_dir: response.capture_dir,
+        captures: savedCaptures.map((capture) => ({
+          name: capture.name,
+          scope: capture.scope,
+          image_path: capture.image_path,
+          metadata_path: capture.metadata_path,
+        })),
+      }),
+    );
+    return savedCaptures;
+  };
+
+  const runCapture = async (
+    scope: AgentCaptureScope,
+    captureName = captureLabel(scope),
+    extra: Record<string, JsonValue> = {},
+  ): Promise<AgentCaptureRecord[]> => {
+    setCaptureBusy(scope);
+    try {
+      const prepared = await prepareAgentCapture(
+        scope,
+        captureName,
+        buildCaptureMetadata(scope, captureName, extra),
+      );
+      setError(null);
+      return await persistPreparedCaptures([prepared]);
+    } catch (nextError) {
+      setError(describeError(nextError));
+      return [];
+    } finally {
+      setCaptureBusy(null);
+    }
+  };
+
+  const runCaptureAllTabs = async (): Promise<AgentCaptureRecord[]> => {
+    if (!availableCaptureTabs.length) {
+      setError("No captureable tabs are available.");
+      return [];
+    }
+
+    setCaptureBusy("all_tabs");
+    const originalTab = activeTab;
+    const preparedCaptures = [];
+    try {
+      for (const tab of availableCaptureTabs) {
+        setActiveTab(tab.id);
+        await waitForLayout();
+        const captureName = `tab-${tab.id}-${tab.title}`;
+        preparedCaptures.push(
+          await prepareAgentCapture(
+            "current_tab",
+            captureName,
+            buildCaptureMetadata("current_tab", captureName, {
+              requested_tab_id: tab.id,
+              requested_tab_title: tab.title,
+            }),
+          ),
+        );
+      }
+      setError(null);
+      return await persistPreparedCaptures(preparedCaptures);
+    } catch (nextError) {
+      setError(describeError(nextError));
+      return [];
+    } finally {
+      setActiveTab(originalTab);
+      await waitForLayout();
+      setCaptureBusy(null);
+    }
+  };
 
   const focusRootDirInput = () => {
     rootDirInputRef.current?.focus();
@@ -688,6 +916,17 @@ export default function App() {
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
   }, []);
+
+  useEffect(() => {
+    window.__captionAgentCapture = {
+      listTargets: () => ["full_app", "workspace", "left_panel", "right_panel", "current_tab", "text_editor", "preview"],
+      capture: (scope) => runCapture(scope, captureLabel(scope)),
+      captureAllTabs: () => runCaptureAllTabs(),
+    };
+    return () => {
+      delete window.__captionAgentCapture;
+    };
+  }, [runCapture, runCaptureAllTabs, activeTab, currentImagePath, currentRootDir, uiLanguage, eventStreamStatus, agentSurfaceMode]);
 
   const menuGroups: DesktopMenuGroup[] = [
     {
@@ -788,6 +1027,10 @@ export default function App() {
           label: webText.advanced,
           onSelect: () => setAdvancedOpen((current) => !current),
         },
+        {
+          label: webText.agentCapture,
+          onSelect: openCapturePanel,
+        },
       ],
     },
   ];
@@ -876,7 +1119,56 @@ export default function App() {
         <summary>{webText.advancedPanels}</summary>
         <main className="workspace">
           <section className="column">
-          <Panel title="Workers" subtitle={`${workers?.available_categories.length || 0} categories available`}>
+          <Panel
+            title={webText.agentCapture}
+            subtitle="PNG + metadata bundle for agent review and visual diff"
+            panelRef={capturePanelRef}
+          >
+            <div className="stack compact">
+              <div className="button-row">
+                <button disabled={!!captureBusy} onClick={() => void runCapture("workspace", webText.captureWorkspace)}>
+                  {webText.captureWorkspace}
+                </button>
+                <button disabled={!!captureBusy} onClick={() => void runCapture("current_tab", webText.captureCurrentTab)}>
+                  {webText.captureCurrentTab}
+                </button>
+                <button disabled={!!captureBusy || !availableCaptureTabs.length} onClick={() => void runCaptureAllTabs()}>
+                  {webText.captureAllTabs}
+                </button>
+                <button disabled={!!captureBusy} onClick={() => void runCapture("preview", webText.capturePreview)}>
+                  {webText.capturePreview}
+                </button>
+                <button disabled={!!captureBusy} onClick={() => void runCapture("right_panel", webText.captureRightPanel)}>
+                  {webText.captureRightPanel}
+                </button>
+              </div>
+              <div className="hint-row">
+                {webText.captureTarget}: {captureBusy || "idle"} | {webText.captureSaved}{" "}
+                <code>E:\caption--\output\ui-captures</code> | {webText.capturePreset}
+              </div>
+              {captureArtifacts.length ? (
+                <div className="capture-grid">
+                  {captureArtifacts.map((artifact) => (
+                    <article key={`${artifact.scope}-${artifact.image_path}`} className="capture-card">
+                      {artifact.preview_data_url ? (
+                        <img src={artifact.preview_data_url} alt={artifact.name} className="capture-thumb" />
+                      ) : null}
+                      <div className="capture-meta">
+                        <strong>{artifact.name}</strong>
+                        <div className="field-meta">{artifact.scope}</div>
+                        <div className="path-pill" title={artifact.image_path}>{artifact.image_path}</div>
+                        <div className="path-pill" title={artifact.metadata_path}>{artifact.metadata_path}</div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">No agent captures yet.</div>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Workers" subtitle={`${workers?.available_categories?.length || 0} categories available`}>
             <div className="button-row">
               <button disabled={!canExecuteCommand("workers.scan")} onClick={() => void runCommand("workers.scan")}>Rescan Workers</button>
               <button disabled={!canExecuteCommand("workers.services_reload")} onClick={() => void runCommand("workers.services_reload")}>Reload Services</button>
@@ -1200,7 +1492,7 @@ export default function App() {
 
           <Panel
             title="Capabilities"
-            subtitle={`${agentSurfaceMode} | commands ${capabilities?.commands.length || 0}, destructive ${destructiveCapabilityCount}, spec ${capabilities?.ui_spec_version || "?"}`}
+            subtitle={`${agentSurfaceMode} | commands ${capabilities?.commands?.length || 0}, destructive ${destructiveCapabilityCount}, spec ${capabilities?.ui_spec_version || "?"}`}
           >
             <div className="tag-cloud">
               {(capabilities?.commands || []).slice(0, 18).map((command) => (
@@ -1252,8 +1544,8 @@ export default function App() {
                 <pre>{agentManifest?.skills_note || ""}</pre>
               </div>
               <div className="tag-cloud">
-                <span className="tag-chip">allowed {agentManifest?.allowed_commands.length || 0}</span>
-                <span className="tag-chip">restricted {agentManifest?.restricted_commands.length || 0}</span>
+                <span className="tag-chip">allowed {agentManifest?.allowed_commands?.length || 0}</span>
+                <span className="tag-chip">restricted {agentManifest?.restricted_commands?.length || 0}</span>
                 <span className="tag-chip">ui mutate {agentManifest?.ui_mutation_allowed ? "yes" : "no"}</span>
                 <span className="tag-chip">settings mutate {agentManifest?.settings_mutation_allowed ? "yes" : "no"}</span>
                 <span className="tag-chip">destructive ops {agentManifest?.destructive_file_ops_allowed ? "yes" : "no"}</span>
@@ -1309,7 +1601,7 @@ export default function App() {
 
           <Panel
             title="Settings Schema"
-            subtitle={`${settingsSchema?.field_count || 0} fields across ${settingsSchema?.groups.length || 0} groups`}
+            subtitle={`${settingsSchema?.field_count || 0} fields across ${settingsSchema?.groups?.length || 0} groups`}
           >
             <div className="tag-cloud">
               {(settingsSchema?.groups || []).map((group) => (
@@ -1656,9 +1948,16 @@ export default function App() {
   );
 }
 
-function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
+function Panel(props: { title: string; subtitle?: string; children: ReactNode; panelRef?: { current: HTMLElement | null } }) {
   return (
-    <section className="panel">
+    <section
+      className="panel"
+      ref={(node) => {
+        if (props.panelRef) {
+          props.panelRef.current = node;
+        }
+      }}
+    >
       <div className="panel-head">
         <div>
           <h2>{props.title}</h2>

@@ -47,7 +47,7 @@ A short English sentence about the subject
 DEFAULT_CUSTOM_TAGS = ["low res", "low quality", "low aesthetic"]
 DEFAULT_IMAGE_PROCESS_PROMPT_TEMPLATE = "幫我移除圖中所有的文字、文字氣泡、文字框"
 DEFAULT_LLAMA_CPP_MMPROJ_URL = (
-    "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+    "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/mmproj-F32.gguf"
 )
 DEFAULT_IMAGE_PROCESS_BASE_URL = "http://127.0.0.1:8001/v1"
 DEFAULT_IMAGE_PROCESS_DIFFUSION_MODEL = (
@@ -86,7 +86,7 @@ DEFAULT_APP_SETTINGS = {
     "llama_cpp_api_key": "",
     "llama_cpp_model_alias": "qwen35-vl-gguf",
     # Local llama.cpp (GGUF)
-    "llama_cpp_model_path": "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+    "llama_cpp_model_path": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/Qwen3.5-2B-BF16.gguf",
     "llama_cpp_n_ctx": 8192,
     "llama_cpp_n_threads": 0,  # 0 = auto
     "llama_cpp_n_gpu_layers": 99,

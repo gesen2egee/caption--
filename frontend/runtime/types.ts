@@ -211,6 +211,27 @@ export interface CommandRequest {
   kwargs?: JsonObject;
 }
 
+export interface UiCaptureSaveItem {
+  name: string;
+  scope: string;
+  png_data_url: string;
+  metadata: JsonObject;
+}
+
+export interface UiCaptureSavedArtifact {
+  name: string;
+  scope: string;
+  image_path: string;
+  metadata_path: string;
+  metadata: JsonObject;
+}
+
+export interface UiCaptureSaveResponse {
+  ok: boolean;
+  capture_dir: string;
+  captures: UiCaptureSavedArtifact[];
+}
+
 export interface CommandResponse<T = JsonValue> {
   ok: boolean;
   result?: T;

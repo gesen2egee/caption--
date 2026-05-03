@@ -219,10 +219,17 @@
 - command tracking
 - structured errors
 - safe / development access gating
+- web UI agent capture bundle
 
 對應 commands：
 - `test.smoke_command`
 - `test.run_runtime_regression`
+
+對應 UI / API：
+- Web UI `Agent 擷取`
+- `POST /captures/ui`
+- `window.__captionAgentCapture.capture(scope)`
+- `window.__captionAgentCapture.captureAllTabs()`
 
 ### 1.3 底層 worker / provider 面
 
@@ -259,6 +266,34 @@
 - 無 syntax/import error
 - 前端 build 成功
 
+### UI capture / visual diff 補充
+
+目的：
+- 不靠桌面截圖，改抓 web 工作區或局部元件
+- 讓 Agent 能固定用同一組 viewport 與同一套 metadata 比較前後差異
+
+建議固定流程：
+- 啟動 `run.bat web` 或 `run.bat service`
+- 載入測試資料夾
+- 用 `Agent 擷取` 面板或 `window.__captionAgentCapture.captureAllTabs()` 產生基準圖
+- 保存到 `output/ui-captures/`
+- 比對：
+  - 工作區整體
+  - 每個分頁
+  - 預覽區
+  - 右欄
+
+建議 metadata 檢查：
+- `viewport`
+- `device_pixel_ratio`
+- `visual_viewport_scale`
+- `ui_language`
+- `active_tab`
+- `capture_target.bounds`
+- `capture_target.baseline_bounds`
+- `capture_target.baseline_width_px`
+- `current_image_path`
+
 ### L1. Runtime smoke
 
 目的：
@@ -266,6 +301,8 @@
 
 必跑：
 - `python scripts/runtime_regression.py --json`
+- `python scripts/llama_local_smoke.py --json --timeout 60`
+- `python scripts/llama_local_smoke.py --json --timeout 90 --image "E:\NE\20_miss valentine\Generated Image November 28, 2025 - 2_28AM.webp"`
 - `test.smoke_command`
 - `app.get_capabilities`
 - `app.get_runtime_state`
@@ -533,6 +570,7 @@
 - `python -m compileall lib`
 - `cd frontend && npm run build`
 - `python scripts/runtime_regression.py --json`
+- `python scripts/llama_local_smoke.py --json --timeout 60`
 - `python scripts/feature_smoke_matrix.py --image "<real_image>" --json`
 
 ### P1 每次改動 LLM / prompt / server 都跑
@@ -600,6 +638,7 @@
 ## 9. 現有逐項 smoke 腳本
 
 已新增：
+- `scripts/llama_local_smoke.py`
 - `scripts/feature_smoke_matrix.py`
 
 目前會逐項執行：

@@ -1,0 +1,193 @@
+{
+  "capture_name": "擷取工作區",
+  "scope": "workspace",
+  "timestamp": "2026-03-11T08:27:34.508Z",
+  "page_title": "Caption Tool",
+  "route": "/",
+  "viewport": {
+    "width": 1180,
+    "height": 860
+  },
+  "device_pixel_ratio": 1,
+  "ui_language": "zh_tw",
+  "agent_surface_mode": "development",
+  "event_stream_status": "live",
+  "active_tab": "tags_tab",
+  "active_tab_title": "標籤",
+  "quick_dialog": "",
+  "root_dir_path": "E:/NE/20_miss valentine",
+  "current_image_path": "E:/NE/20_miss valentine\\0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "current_file_name": "0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "selection": {
+    "current_index": 0,
+    "image_count": 34,
+    "filter_active": false,
+    "filter_query": ""
+  },
+  "controls": {
+    "view_mode": 0,
+    "tagger_save_to_txt": true,
+    "llm_save_to_txt": true
+  },
+  "available_tabs": [
+    {
+      "id": "tags_tab",
+      "title": "標籤"
+    },
+    {
+      "id": "nl_tab",
+      "title": "提示 / NL"
+    },
+    {
+      "id": "image_process_tab",
+      "title": "修圖"
+    }
+  ],
+  "capture_mode": "normalized-desktop",
+  "capture_target": {
+    "scope": "workspace",
+    "selector": ".qt-main-panel",
+    "bounds": {
+      "x": 6,
+      "y": 101.8,
+      "width": 1153,
+      "height": 1361.2
+    },
+    "baseline_bounds": {
+      "width": 1440,
+      "height": 983.8
+    },
+    "baseline_width_px": 1440
+  },
+  "capture_environment": {
+    "device_pixel_ratio": 1,
+    "visual_viewport_scale": 1,
+    "inner_width": 1180,
+    "inner_height": 860
+  },
+  "semantic_snapshot": {
+    "tag": "section",
+    "bounds": {
+      "x": 6,
+      "y": 101.8,
+      "width": 1153,
+      "height": 1361.2
+    },
+    "role": "region",
+    "name": "/ 34 0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp 標籤 文字 × 原圖 RGB Alpha 上一張 下一張 刪除 去背 去文字 還原 取",
+    "children": [
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 11,
+          "y": 106.8,
+          "width": 1143,
+          "height": 1351.2
+        },
+        "name": "/ 34 0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp 標籤 文字 × 原圖 RGB Alpha 上一張 下一張 刪除 去背 去文字 還原 取",
+        "children": [
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 11,
+              "y": 106.8,
+              "width": 1143,
+              "height": 1351.2
+            },
+            "name": "/ 34 0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp 標籤 文字 × 原圖 RGB Alpha 上一張 下一張 刪除 去背 去文字 還原 取",
+            "children": [
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 11,
+                  "y": 106.8,
+                  "width": 538.6,
+                  "height": 1351.2
+                },
+                "name": "/ 34 0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp 標籤 文字 × 原圖 RGB Alpha 上一張 下一張 刪除 去背 去文字 還原 取",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 11,
+                      "y": 106.8,
+                      "width": 538.6,
+                      "height": 73.8
+                    },
+                    "name": "/ 34 0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp 標籤 文字 × 原圖 RGB Alpha"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 11,
+                      "y": 186.6,
+                      "width": 538.6,
+                      "height": 1191.1
+                    }
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 11,
+                      "y": 1383.7,
+                      "width": 538.6,
+                      "height": 34.1
+                    },
+                    "name": "上一張 下一張 刪除"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 11,
+                      "y": 1423.8,
+                      "width": 538.6,
+                      "height": 34.1
+                    },
+                    "name": "去背 去文字 還原 取消"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 555.6,
+                  "y": 106.8,
+                  "width": 598.4,
+                  "height": 1351.2
+                },
+                "name": "標籤 提示 / NL 修圖 標註目前圖片 標註已載入圖片 寫入 txt 新增自訂標籤 資料夾標籤 miss valentine 自訂標籤 low res low quality l",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 555.6,
+                      "y": 106.8,
+                      "width": 598.4,
+                      "height": 1125.2
+                    },
+                    "name": "標籤 提示 / NL 修圖 標註目前圖片 標註已載入圖片 寫入 txt 新增自訂標籤 資料夾標籤 miss valentine 自訂標籤 low res low quality l"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 555.6,
+                      "y": 1238,
+                      "width": 598.4,
+                      "height": 220
+                    },
+                    "name": "文字編輯器 尋找 / 取代 復原 重做 Caption 文字 144 chars Idle"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "saved_at": "2026-03-11T16:27:35.735944",
+  "saved_paths": {
+    "image_path": "E:\\caption--\\output\\ui-captures\\20260311-162735-c8daf1\\01-workspace.png",
+    "metadata_path": "E:\\caption--\\output\\ui-captures\\20260311-162735-c8daf1\\01-workspace.json"
+  }
+}

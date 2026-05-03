@@ -91,7 +91,7 @@ class Settings:
     llama_cpp_base_url: str = "http://127.0.0.1:8000/v1"
     llama_cpp_api_key: str = ""
     llama_cpp_model_alias: str = "qwen35-vl-gguf"
-    llama_cpp_model_path: str = "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf"
+    llama_cpp_model_path: str = "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/Qwen3.5-2B-BF16.gguf"
     llama_cpp_n_ctx: int = 8192
     llama_cpp_n_threads: int = 0
     llama_cpp_n_gpu_layers: int = 99
@@ -104,11 +104,11 @@ class Settings:
     llama_cpp_repeat_penalty: float = 1.0
     llama_cpp_chat_format: str = "chatml"
     llama_cpp_local_files_only: bool = False
-    llama_cpp_mmproj_path: str = "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+    llama_cpp_mmproj_path: str = "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/mmproj-F32.gguf"
     llama_cpp_enable_vision: bool = True
     llama_cpp_server_autostart: bool = True
     llama_cpp_server_exe: str = ""
-    llama_cpp_server_workers: int = 8
+    llama_cpp_server_workers: int = 1
     llama_cpp_server_start_timeout: int = 900
     startup_defer_worker_scan: bool = True
     tokenizer_local_only: bool = True

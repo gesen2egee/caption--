@@ -129,20 +129,41 @@ class SettingsDialog(QDialog):
         default_llama_model = str(
             DEFAULT_APP_SETTINGS.get(
                 "llama_cpp_model_path",
-                "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+                "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/Qwen3.5-2B-BF16.gguf",
+            )
+        )
+        default_llama_mmproj = str(
+            DEFAULT_APP_SETTINGS.get(
+                "llama_cpp_mmproj_path",
+                "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/mmproj-F32.gguf",
             )
         )
         self.cb_llama_model_path = QComboBox()
         self.cb_llama_model_path.setEditable(True)
         self.cb_llama_model_path.addItems([
             default_llama_model,
+            "unsloth/Qwen3.5-2B-GGUF",
             "HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive",
+            "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/blob/main/gemma-4-E4B-it-BF16.gguf",
         ])
         current_llama_model = str(self.cfg.get("llama_cpp_model_path", default_llama_model))
         if self.cb_llama_model_path.findText(current_llama_model) < 0:
             self.cb_llama_model_path.addItem(current_llama_model)
         self.cb_llama_model_path.setCurrentText(current_llama_model)
         form.addRow("LLaMA.cpp GGUF Path/URL", self.cb_llama_model_path)
+
+        self.cb_llama_mmproj_path = QComboBox()
+        self.cb_llama_mmproj_path.setEditable(True)
+        self.cb_llama_mmproj_path.addItems([
+            default_llama_mmproj,
+            "unsloth/Qwen3.5-2B-GGUF/mmproj-F32.gguf",
+            "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/blob/main/mmproj-BF16.gguf",
+        ])
+        current_llama_mmproj = str(self.cfg.get("llama_cpp_mmproj_path", default_llama_mmproj))
+        if self.cb_llama_mmproj_path.findText(current_llama_mmproj) < 0:
+            self.cb_llama_mmproj_path.addItem(current_llama_mmproj)
+        self.cb_llama_mmproj_path.setCurrentText(current_llama_mmproj)
+        form.addRow("LLaMA.cpp mmproj Path/URL", self.cb_llama_mmproj_path)
 
         self.spin_llama_max_tokens = QSpinBox()
         self.spin_llama_max_tokens.setRange(64, 262144)
@@ -192,6 +213,7 @@ class SettingsDialog(QDialog):
         ]
         self._llm_llama_widgets = [
             self.cb_llama_model_path,
+            self.cb_llama_mmproj_path,
             self.spin_llama_max_tokens,
             self.spin_llama_n_ctx,
             self.spin_llama_n_threads,
@@ -752,6 +774,10 @@ class SettingsDialog(QDialog):
             self.cb_llama_model_path.currentText().strip()
             or DEFAULT_APP_SETTINGS.get("llama_cpp_model_path", "")
         )
+        cfg["llama_cpp_mmproj_path"] = (
+            self.cb_llama_mmproj_path.currentText().strip()
+            or DEFAULT_APP_SETTINGS.get("llama_cpp_mmproj_path", "")
+        )
         cfg["llama_cpp_max_tokens"] = self.spin_llama_max_tokens.value()
         cfg["llama_cpp_n_ctx"] = self.spin_llama_n_ctx.value()
         cfg["llama_cpp_n_threads"] = self.spin_llama_n_threads.value()
@@ -784,10 +810,6 @@ class SettingsDialog(QDialog):
         )
         cfg["llama_cpp_local_files_only"] = bool(
             cfg.get("llama_cpp_local_files_only", DEFAULT_APP_SETTINGS.get("llama_cpp_local_files_only", False))
-        )
-        cfg["llama_cpp_mmproj_path"] = (
-            str(cfg.get("llama_cpp_mmproj_path", "")).strip()
-            or DEFAULT_APP_SETTINGS.get("llama_cpp_mmproj_path", "")
         )
         cfg["llama_cpp_enable_vision"] = bool(
             cfg.get("llama_cpp_enable_vision", DEFAULT_APP_SETTINGS.get("llama_cpp_enable_vision", True))

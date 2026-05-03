@@ -63,7 +63,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "} else { Write-Host ('stable-diffusion.cpp runtime already exists: ' + $versionDir) }"
 if errorlevel 1 goto :error
 
-echo [7/7] 預下載 FLUX.2-klein 修圖資產...
+echo [7/8] 下載 llama.cpp GPU Runtime...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$projectRoot = [System.IO.Path]::GetFullPath('%PROJECT_ROOT%');" ^
+  "$runtimeRoot = Join-Path $projectRoot 'tasks\runtime\llama-b8848';" ^
+  "$downloadRoot = Join-Path $runtimeRoot '_download';" ^
+  "New-Item -ItemType Directory -Force -Path $runtimeRoot, $downloadRoot | Out-Null;" ^
+  "$headers = @{ 'User-Agent' = 'CaptionSetup' };" ^
+  "$release = Invoke-RestMethod -Headers $headers -UseBasicParsing 'https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/b8848';" ^
+  "$cudart = $release.assets | Where-Object { $_.name -eq 'cudart-llama-bin-win-cuda-13.1-x64.zip' } | Select-Object -First 1;" ^
+  "$binary = $release.assets | Where-Object { $_.name -eq 'llama-b8848-bin-win-cuda-13.1-x64.zip' } | Select-Object -First 1;" ^
+  "if (-not $cudart -or -not $binary) { throw '找不到 llama.cpp Windows CUDA 13.1 Release 資產。' };" ^
+  "foreach ($asset in @($cudart, $binary)) {" ^
+  "  $zipPath = Join-Path $downloadRoot $asset.name;" ^
+  "  Write-Host ('Downloading ' + $asset.browser_download_url);" ^
+  "  Invoke-WebRequest -Headers $headers -UseBasicParsing -Uri $asset.browser_download_url -OutFile $zipPath;" ^
+  "  Expand-Archive -Path $zipPath -DestinationPath $runtimeRoot -Force;" ^
+  "}"
+if errorlevel 1 goto :error
+
+echo [8/8] 預下載 FLUX.2-klein 修圖資產...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop';" ^
   "$projectRoot = [System.IO.Path]::GetFullPath('%PROJECT_ROOT%');" ^
@@ -84,6 +104,7 @@ if errorlevel 1 goto :error
 
 echo 完成！
 echo stable-diffusion.cpp runtime 已放在 tasks\runtime\stable-diffusion-cpp\
+echo llama.cpp runtime 已放在 tasks\runtime\llama-b8848\
 echo 模型已放在 tasks\runtime\models\flux2-klein\
 if "%RUNTIME_ONLY%"=="1" exit /b 0
 echo 請使用 run.bat 啟動程式。

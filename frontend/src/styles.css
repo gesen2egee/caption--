@@ -24,7 +24,12 @@
 
 body {
   margin: 0;
-  min-width: 1280px;
+  min-width: 0;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+#root {
   min-height: 100vh;
 }
 
@@ -89,6 +94,7 @@ textarea {
 
 .qt-web-app {
   min-height: 100vh;
+  min-width: 1040px;
   display: grid;
   grid-template-rows: auto auto 1fr auto auto;
   gap: 6px;
@@ -125,9 +131,10 @@ textarea {
 
 .qt-toolbar-row {
   display: grid;
-  grid-template-columns: auto minmax(260px, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 6px;
   align-items: center;
+  min-width: 0;
 }
 
 .qt-toolbar-row label {
@@ -141,6 +148,7 @@ textarea {
 }
 
 .qt-toolbar-row input {
+  min-width: 0;
   padding: 0.25rem 0.42rem;
 }
 
@@ -225,14 +233,16 @@ textarea {
 
 .qt-main {
   min-height: 0;
+  display: grid;
 }
 
 .qt-main-panel {
-  min-height: 0;
+  min-height: clamp(620px, calc(100vh - 182px), 980px);
   border: 1px solid var(--panel-border);
   border-radius: 3px;
   background: #f8f8f8;
   padding: 4px;
+  overflow: auto;
 }
 
 .qt-statusbar {
@@ -348,6 +358,43 @@ textarea {
 
 .qt-dialog textarea {
   min-height: 96px;
+}
+
+.agent-capture-sandbox {
+  position: fixed;
+  left: -24000px;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.agent-capture-root {
+  background: var(--bg);
+}
+
+.agent-capture-normalized {
+  min-width: unset !important;
+}
+
+.agent-capture-normalized .qt-main-panel,
+.agent-capture-root.agent-capture-normalized.qt-main-panel {
+  min-height: 820px !important;
+  overflow: hidden !important;
+}
+
+.agent-capture-normalized .spec-split.horizontal {
+  grid-template-columns: minmax(420px, 0.8fr) minmax(560px, 1fr) !important;
+}
+
+.agent-capture-normalized .spec-split[data-node-id="right_panel"] {
+  grid-template-rows: minmax(420px, 1fr) minmax(220px, 260px) !important;
+}
+
+.agent-capture-normalized .qt-tag-grid.tagger {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
 }
 
 .hero {
@@ -634,15 +681,15 @@ textarea {
 
 .qt-tag-section {
   display: grid;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 5px;
+  padding: 5px 6px;
   border-radius: 3px;
   background: #ffffff;
   border: 1px solid #d5d5d5;
 }
 
 .qt-tag-section-title {
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 700;
 }
 
@@ -661,7 +708,7 @@ textarea {
 .qt-tag-input-box {
   display: grid;
   gap: 2px;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border: 1px solid #c9c9c9;
   border-radius: 2px;
   background: #fafafa;
@@ -678,7 +725,7 @@ textarea {
 
 .qt-tag-grid {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .qt-tag-grid.custom {
@@ -686,7 +733,7 @@ textarea {
 }
 
 .qt-tag-input-box {
-  min-height: 34px;
+  min-height: 32px;
   align-items: center;
 }
 
@@ -697,9 +744,9 @@ textarea {
 .qt-tag-card {
   display: grid;
   gap: 2px;
-  min-height: 54px;
+  min-height: 48px;
   align-content: center;
-  padding: 6px 8px;
+  padding: 5px 7px;
   border-radius: 2px;
   border: 1px solid #c6c6c6;
   background: #f7f7f7;
@@ -708,16 +755,16 @@ textarea {
 .qt-tag-card.active {
   background: #d8e5f7;
   border: 2px solid #2b5fa8;
-  padding: 5px 7px;
+  padding: 4px 6px;
 }
 
 .qt-tag-card.character:not(.active) {
   border: 2px solid #d94141;
-  padding: 5px 7px;
+  padding: 4px 6px;
 }
 
 .qt-tag-name {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   line-height: 1.2;
 }
 
@@ -774,7 +821,7 @@ textarea {
   justify-content: space-between;
   gap: 8px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .event-list {
@@ -786,6 +833,34 @@ textarea {
   border-radius: 3px;
   background: #ffffff;
   border: 1px solid #d5d5d5;
+}
+
+.capture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.capture-card {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 3px;
+  border: 1px solid #d5d5d5;
+  background: #ffffff;
+}
+
+.capture-thumb {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  border: 1px solid #d8d8d8;
+  background: #f1f1f1;
+}
+
+.capture-meta {
+  display: grid;
+  gap: 4px;
 }
 
 .event-card pre,
@@ -809,19 +884,29 @@ textarea {
 .spec-renderer {
   display: grid;
   gap: 6px;
+  min-height: 0;
+  height: 100%;
 }
 
 .spec-split {
   display: grid;
   gap: 6px;
+  min-height: 0;
 }
 
 .spec-split.horizontal {
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: minmax(390px, 0.82fr) minmax(520px, 1fr);
+  align-items: stretch;
 }
 
 .spec-split.vertical {
   grid-template-columns: 1fr;
+}
+
+.spec-split[data-node-id="right_panel"] {
+  grid-template-rows: minmax(420px, 1fr) minmax(220px, 260px);
+  height: 100%;
+  overflow: hidden;
 }
 
 .spec-panel,
@@ -851,6 +936,21 @@ textarea {
   padding: 0;
   background: transparent;
   border: 0;
+  min-height: 0;
+}
+
+.spec-root-panel.left {
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  height: 100%;
+}
+
+.spec-root-panel.right {
+  height: 100%;
+}
+
+.spec-root-panel > *,
+.spec-split[data-node-id="right_panel"] > * {
+  min-height: 0;
 }
 
 .qt-navigation-block {
@@ -862,8 +962,10 @@ textarea {
 .qt-filter-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   min-height: 28px;
+  min-width: 0;
 }
 
 .qt-clear-filter {
@@ -876,7 +978,7 @@ textarea {
 
 .qt-file-label {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -898,8 +1000,44 @@ textarea {
 }
 
 .qt-filter-input {
-  flex: 1 1 auto;
-  min-width: 190px;
+  flex: 1 1 190px;
+  min-width: 0;
+}
+
+.spec-tabs[data-node-id="feature_tabs"] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.spec-tab {
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+}
+
+.spec-tab > .spec-toolbar,
+.spec-toolbar.tag_actions,
+.spec-toolbar.llm_actions,
+.spec-toolbar.image_process_actions {
+  position: sticky;
+  top: -6px;
+  z-index: 2;
+  padding: 2px 0 6px;
+  background: linear-gradient(180deg, #ffffff 0%, #ffffff 82%, rgba(255, 255, 255, 0) 100%);
+}
+
+.spec-panel[data-node-id="text_editor_panel"] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px 6px 6px;
+}
+
+.spec-panel[data-node-id="text_editor_panel"] > * {
+  min-height: 0;
 }
 
 .qt-checkerboard {
@@ -922,9 +1060,9 @@ textarea {
 .spec-tab-strip button {
   border-radius: 4px 4px 0 0;
   border-bottom-color: transparent;
-  padding: 0.18rem 0.62rem;
+  padding: 0.14rem 0.56rem;
   min-height: 24px;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   background: linear-gradient(180deg, #ececec 0%, #dedede 100%);
 }
 
@@ -937,14 +1075,23 @@ textarea {
   top: 1px;
 }
 
+.text-editor-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
 .text-editor-card textarea {
-  min-height: 176px;
-  max-height: 230px;
+  min-height: 164px;
+  max-height: none;
+  height: 100%;
   font-size: 0.92rem;
+  line-height: 1.34;
+  padding: 0.38rem 0.48rem;
 }
 
 .editor-head.compact {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .editor-meta {
@@ -991,10 +1138,11 @@ textarea {
 .image_process_actions,
 .text_editor_toolbar {
   justify-content: flex-start;
+  gap: 5px;
 }
 
 .spec-preview {
-  min-height: 280px;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1003,10 +1151,18 @@ textarea {
   background: #e8e8e8;
 }
 
+.spec-preview[data-node-id="image_viewer"] {
+  height: 100%;
+  min-height: clamp(360px, 52vh, 620px);
+  align-items: flex-start;
+}
+
 .spec-preview img {
   width: 100%;
-  height: auto;
+  height: 100%;
+  max-height: 100%;
   object-fit: contain;
+  object-position: top center;
 }
 
 .spec-inline-input.small {
@@ -1049,11 +1205,74 @@ textarea {
   width: auto;
 }
 
-@media (max-width: 1100px) {
-  body {
-    min-width: 0;
+@media (max-width: 1520px) {
+  .qt-web-app {
+    min-width: 980px;
   }
 
+  .spec-split.horizontal {
+    grid-template-columns: minmax(360px, 0.82fr) minmax(470px, 1fr);
+  }
+
+  .spec-split[data-node-id="right_panel"] {
+    grid-template-rows: minmax(380px, 1fr) minmax(220px, 248px);
+  }
+
+  .qt-tag-grid.tagger {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1320px) {
+  .qt-web-app {
+    min-width: 920px;
+  }
+
+  .qt-toolbar-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .spec-split.horizontal {
+    grid-template-columns: minmax(340px, 0.88fr) minmax(390px, 1fr);
+  }
+
+  .spec-split[data-node-id="right_panel"] {
+    grid-template-rows: minmax(340px, 1fr) minmax(208px, 236px);
+  }
+
+  .qt-filter-input {
+    min-width: 140px;
+  }
+
+  .qt-tag-grid.tagger {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) {
+  .qt-web-app {
+    min-width: 860px;
+  }
+
+  .spec-split.horizontal {
+    grid-template-columns: minmax(300px, 0.9fr) minmax(340px, 1fr);
+  }
+
+  .spec-split[data-node-id="right_panel"] {
+    grid-template-rows: minmax(300px, 1fr) minmax(196px, 220px);
+  }
+
+  .qt-info-row,
+  .qt-filter-row {
+    gap: 3px;
+  }
+
+  .spec-preview[data-node-id="image_viewer"] {
+    min-height: clamp(300px, 48vh, 520px);
+  }
+}
+
+@media (max-width: 1100px) {
   .qt-toolbar {
     grid-template-columns: 1fr;
   }

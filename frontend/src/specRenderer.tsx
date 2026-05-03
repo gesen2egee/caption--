@@ -112,11 +112,14 @@ function renderNode(node: UiSpecNode | undefined, context: RenderContext): JSX.E
     return null;
   }
 
+  const nodeId = String(node.id || "");
+
   switch (node.type) {
     case "split":
       return (
         <div
           className={`spec-split ${node.direction === "vertical" ? "vertical" : "horizontal"}`}
+          data-node-id={nodeId || undefined}
           key={String(node.id || node.title || node.type)}
         >
           {(node.children || []).map((child) => renderNode(child, context))}
@@ -125,13 +128,17 @@ function renderNode(node: UiSpecNode | undefined, context: RenderContext): JSX.E
     case "panel":
       if (node.id === "left_panel" || node.id === "right_panel") {
         return (
-          <div className={`spec-panel spec-root-panel ${node.id === "left_panel" ? "left" : "right"}`} key={String(node.id || node.title || node.type)}>
+          <div
+            className={`spec-panel spec-root-panel ${node.id === "left_panel" ? "left" : "right"}`}
+            data-node-id={nodeId || undefined}
+            key={String(node.id || node.title || node.type)}
+          >
             {(node.sections || node.children || []).map((child) => renderNode(child, context))}
           </div>
         );
       }
       return (
-        <div className="spec-panel" key={String(node.id || node.title || node.type)}>
+        <div className="spec-panel" data-node-id={nodeId || undefined} key={String(node.id || node.title || node.type)}>
           {node.title ? <div className="spec-panel-title">{String(node.title)}</div> : null}
           {(node.sections || node.children || []).map((child) => renderNode(child, context))}
         </div>
@@ -181,7 +188,7 @@ function renderNode(node: UiSpecNode | undefined, context: RenderContext): JSX.E
       );
     case "tabs":
       return (
-        <div className="spec-tabs" key={String(node.id || node.title || node.type)}>
+        <div className="spec-tabs" data-node-id={nodeId || undefined} key={String(node.id || node.title || node.type)}>
           <div className="spec-tab-strip">
             {(node.tabs || [])
               .filter((tab) => !tab.hidden)
@@ -205,13 +212,13 @@ function renderNode(node: UiSpecNode | undefined, context: RenderContext): JSX.E
       );
     case "tab":
       return (
-        <div className="spec-tab" key={String(node.id || node.title || node.type)}>
+        <div className="spec-tab" data-node-id={nodeId || undefined} key={String(node.id || node.title || node.type)}>
           {(node.sections || []).map((section) => renderNode(section, context))}
         </div>
       );
     case "image_preview":
       return (
-        <div className="spec-preview qt-checkerboard" key={String(node.id || node.title || node.type)}>
+        <div className="spec-preview qt-checkerboard" data-node-id={nodeId || undefined} key={String(node.id || node.title || node.type)}>
           {context.previewUrl ? (
             <img src={context.previewUrl} alt={String(resolvePath(context.state, "selection.current_image_path") || "")} />
           ) : (
@@ -278,7 +285,7 @@ function renderTextArea(node: UiSpecNode, context: RenderContext): JSX.Element {
     target === "image_process" ? "content.set_image_process_prompt_text" : "content.set_prompt_text";
 
   return (
-    <div className="editor-card" key={String(node.id || node.title || node.type)}>
+    <div className="editor-card" data-node-id={String(node.id || "") || undefined} key={String(node.id || node.title || node.type)}>
       <div className="editor-head">
         <strong>{String(node.title || node.id || "Text Area")}</strong>
         <button onClick={() => void context.runCommand(commandName, { kwargs: { text: value } })}>
@@ -565,10 +572,14 @@ function renderTagFlow(node: UiSpecNode, context: RenderContext): JSX.Element {
 
   if (flowId === "folder_meta_tags") {
     return (
-      <div className="qt-tag-section meta" key={String(node.id || node.title || node.type)}>
-        {node.title ? <strong className="qt-tag-section-title">{String(node.title)}</strong> : null}
-        <div className="qt-tag-input-list">
-          {items.length ? (
+        <div
+          className="qt-tag-section meta"
+          data-node-id={flowId || undefined}
+          key={String(node.id || node.title || node.type)}
+        >
+          {node.title ? <strong className="qt-tag-section-title">{String(node.title)}</strong> : null}
+          <div className="qt-tag-input-list">
+            {items.length ? (
             items.map((item) => (
               <div key={item.key} className="qt-tag-input-row">
                 <div className="qt-tag-input-main">{item.text}</div>
@@ -585,7 +596,7 @@ function renderTagFlow(node: UiSpecNode, context: RenderContext): JSX.Element {
 
   if (flowId === "custom_tags") {
     return (
-      <div className="qt-tag-section custom" key={String(node.id || node.title || node.type)}>
+      <div className="qt-tag-section custom" data-node-id={flowId || undefined} key={String(node.id || node.title || node.type)}>
         {node.title ? <strong className="qt-tag-section-title">{String(node.title)}</strong> : null}
         <div className="qt-tag-grid custom">
           {items.length ? (
@@ -604,7 +615,7 @@ function renderTagFlow(node: UiSpecNode, context: RenderContext): JSX.Element {
 
   if (flowId === "tagger_tags") {
     return (
-      <div className="qt-tag-section tagger" key={String(node.id || node.title || node.type)}>
+      <div className="qt-tag-section tagger" data-node-id={flowId || undefined} key={String(node.id || node.title || node.type)}>
         {node.title ? <strong className="qt-tag-section-title">{String(node.title)}</strong> : null}
         <div className="qt-tag-grid tagger">
           {items.length ? (
@@ -633,7 +644,7 @@ function renderTagFlow(node: UiSpecNode, context: RenderContext): JSX.Element {
 
   if (flowId === "nl_result_tags") {
     return (
-      <div className="qt-tag-section nl" key={String(node.id || node.title || node.type)}>
+      <div className="qt-tag-section nl" data-node-id={flowId || undefined} key={String(node.id || node.title || node.type)}>
         {node.title ? <strong className="qt-tag-section-title">{String(node.title)}</strong> : null}
         <div className="qt-nl-list">
           {items.length ? (

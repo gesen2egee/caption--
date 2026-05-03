@@ -111,6 +111,7 @@ pip install transparent-background transformers -i https://pypi.tuna.tsinghua.ed
 - **LLM** - Provider、API Key、Model、Prompt 模板
 - **LLaMA.cpp** - GGUF 模型路徑/URL、n_ctx、n_gpu_layers、max_tokens
 - **LLaMA.cpp Vision** - 可選 mmproj 路徑，未填時會嘗試從同一個 Hugging Face repo 自動抓取
+- **Gemma 4 提醒** - `Gemma 4 E4B` 需要更新版 `llama.cpp / llama-server`，舊版 bundled runtime 會直接報 `unknown model architecture: 'gemma4'`
 - **Image Edit / stable-diffusion.cpp** - `sd-server` URL、自動啟動、模型路徑、steps、guidance、seed、extra args
 - **Tagger** - WD14 閾值、模型選擇
 - **Text** - 英文強制小寫、自動格式化、Batch 寫入模式 (附加/覆寫)、資料夾觸發詞
@@ -131,6 +132,7 @@ pip install transparent-background transformers -i https://pypi.tuna.tsinghua.ed
 
 - `Qwen LLM` 使用 `llama.cpp / llama-server`
   - 預設 URL: `http://127.0.0.1:8000/v1`
+- 如果你要改用 `Gemma 4 E4B`，請把 `llama_cpp_server_exe` 指向支援 `gemma4` 的較新版 `llama-server`
 - `FLUX.2-klein 修圖` 使用 `stable-diffusion.cpp / sd-server`
   - 預設 URL: `http://127.0.0.1:8001/v1`
 
@@ -228,6 +230,8 @@ your_dataset/
 - 可直接執行：
   - `python scripts/runtime_regression.py`
 - `python scripts/runtime_regression.py --json`
+- `python scripts/llama_local_smoke.py --json --timeout 60`
+- `python scripts/llama_local_smoke.py --json --timeout 90 --image "E:\NE\20_miss valentine\Generated Image November 28, 2025 - 2_28AM.webp"`
 - `python scripts/feature_smoke_matrix.py --image "E:\NE\20_miss valentine\Generated Image November 28, 2025 - 2_28AM.webp" --json`
 
 `feature_smoke_matrix.py` 目前會跑：
@@ -242,30 +246,72 @@ your_dataset/
 - real-image image_process
 
 其中 `image_process` smoke 會自動起一個假的 `sd-server`，驗證 `/v1/models` 與 `/v1/images/edits` 這整條 client/task 流程，不必先下載完整 FLUX runtime。
-- regression 現在另外驗證 worker 錯誤 taxonomy：
+
+`runtime_regression.py` / `llama_local_smoke.py` / `feature_smoke_matrix.py` 額外涵蓋：
+- worker 錯誤 taxonomy
   - missing worker 會在 `inprocess` 與 `service` 兩條路都回 `worker_not_found`
-- regression 也會用輕量 `text_filter_lists` worker 驗證真實 service lifecycle：
+- 輕量 worker service lifecycle
   - `invoke -> workers.services_reload -> workers.services_stop -> invoke`
-- 也可直接從 runtime command surface 執行：
-  - `test.run_runtime_regression`
-- 這個 harness 會驗證：
-  - runtime command surface
-  - selection/filter 流程
-  - ui spec patch/reset
-  - runtime settings update
-  - pipeline progress/error callbacks
-  - command result tracking
-  - lightweight task runner / event flow
-  - reload policy recommendation
-- `feature_smoke_matrix.py` 會逐項跑：
-  - runtime regression
-  - worker inventory
-  - selection/editor smoke
-  - 真圖 tagger + llm smoke
-  - delete current bundle
-  - heavy feature preflight
+- runtime command surface
+- selection/filter 流程
+- ui spec patch/reset
+- runtime settings update
+- pipeline progress/error callbacks
+- command result tracking
+- lightweight task runner / event flow
+- reload policy recommendation
+
+也可直接從 runtime command surface 執行：
+- `test.run_runtime_regression`
+
+### Web Agent 擷取
+
+- web UI 內建 `Agent 擷取` 面板，位置在 `檢視 -> Agent 擷取` 或 `Advanced Runtime Panels`
+- 支援擷取：
+  - 工作區
+  - 目前分頁
+  - 全部分頁
+  - 預覽區
+  - 右欄
+- 每次擷取都會輸出：
+  - `.png`
+  - `.json`
+- capture 預設使用標準化 desktop 基準圖：
+  - `workspace = 1440px`
+  - `full_app = 1600px`
+  - `right_panel/current_tab/text_editor = 860px`
+  - `preview = 700px`
+  - `pixelRatio = 1`
+- 儲存目錄：
+  - `output/ui-captures/<timestamp-id>/`
+- metadata 會附帶：
+  - route
+  - viewport
+  - devicePixelRatio
+  - visualViewport scale
+  - ui_language
+  - active tab
+  - current image / root dir
+  - capture target bounds
+  - baseline bounds / baseline width
+  - semantic snapshot
+
+若要讓 Agent 直接調用，不必點 UI，可在頁面內使用：
+
+- `window.__captionAgentCapture.listTargets()`
+- `window.__captionAgentCapture.capture("workspace")`
+- `window.__captionAgentCapture.capture("current_tab")`
+- `window.__captionAgentCapture.captureAllTabs()`
+
+目前可參考的最近基準圖：
+- `output/playwright/web-ui-1600.png`
+- `output/playwright/web-ui-1366.png`
+- `output/playwright/web-ui-1180-v2.png`
+- `output/playwright/web-ui-right-panel-refined.png`
+
 - 更完整的功能盤點與全面測試矩陣請見：
   - `tasks/feature_inventory_and_test_plan.md`
+  - `tasks/current_status_progress.md`
 
 ---
 

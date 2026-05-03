@@ -22,7 +22,7 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple || (
 )
 if errorlevel 1 goto :error
 
-echo [4/4] 同步 stable-diffusion.cpp GPU Runtime...
+echo [4/4] 同步 stable-diffusion.cpp / llama.cpp GPU Runtime...
 call "%~dp0setup.bat" --refresh-runtime
 if errorlevel 1 goto :error
 

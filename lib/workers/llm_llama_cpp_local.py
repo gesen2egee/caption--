@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import time
 import urllib.error
@@ -24,7 +25,7 @@ from typing import Dict, Optional, Tuple
 from PIL import Image
 
 from lib.workers.base import BaseWorker, WorkerInput, WorkerOutput
-from lib.workers.errors import build_worker_error_info
+from lib.workers.errors import WorkerError, build_worker_error_info
 
 
 HF_BLOB_OR_RESOLVE_RE = re.compile(
@@ -34,7 +35,9 @@ HF_BLOB_OR_RESOLVE_RE = re.compile(
     r"(?P<revision>[^/]+)/"
     r"(?P<filename>.+)$"
 )
-DEFAULT_MMPROJ_URL = "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf"
+DEFAULT_MMPROJ_URL = "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/mmproj-F32.gguf"
+MIN_SERVER_BUILD_QWEN35_VL = 8189
+MIN_SERVER_BUILD_GEMMA4 = 8828
 
 
 class LLMLlamaCppLocalWorker(BaseWorker):
@@ -42,7 +45,7 @@ class LLMLlamaCppLocalWorker(BaseWorker):
     display_name = "LLaMA.cpp Local (GGUF)"
     description = "Run local GGUF models via llama-server OpenAI-compatible API"
     default_config = {
-        "model_path": "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+        "model_path": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/blob/main/Qwen3.5-2B-BF16.gguf",
         "base_url": "http://127.0.0.1:8000/v1",
         "api_key": "",
         "model_name": "qwen35-vl-gguf",
@@ -69,6 +72,8 @@ class LLMLlamaCppLocalWorker(BaseWorker):
     _server_proc = None
     _server_key = None
     _server_lock = Lock()
+    _server_log_path = None
+    _server_launch_summary = None
 
     def __init__(self, config: Dict = None):
         super().__init__(config)
@@ -198,6 +203,19 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         return None, None
 
     @staticmethod
+    def _normalize_hf_download_url(model_source: str) -> str:
+        src = (model_source or "").strip()
+        if not src.lower().startswith(("http://", "https://")):
+            return src
+        parsed = HF_BLOB_OR_RESOLVE_RE.match(src)
+        if not parsed:
+            return src
+        repo = parsed.group("repo")
+        revision = parsed.group("revision")
+        filename = parsed.group("filename")
+        return f"https://huggingface.co/{repo}/resolve/{revision}/{filename}"
+
+    @staticmethod
     def _parse_port_from_endpoint(endpoint: str) -> int:
         from urllib.parse import urlparse
         parsed = urlparse(endpoint)
@@ -211,9 +229,13 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         if self.server_exe and os.path.exists(self.server_exe):
             return self.server_exe
 
-        bundled = os.path.join(os.getcwd(), "tasks", "runtime", "llama-b8189", "llama-server.exe")
-        if os.path.exists(bundled):
-            return bundled
+        bundled_candidates = [
+            os.path.join(os.getcwd(), "tasks", "runtime", "llama-b8848", "llama-server.exe"),
+            os.path.join(os.getcwd(), "tasks", "runtime", "llama-b8189", "llama-server.exe"),
+        ]
+        for bundled in bundled_candidates:
+            if os.path.exists(bundled):
+                return bundled
 
         found = shutil.which("llama-server")
         if found:
@@ -231,8 +253,349 @@ class LLMLlamaCppLocalWorker(BaseWorker):
             return fallback
 
         raise RuntimeError(
-            "找不到 llama-server。請先安裝 b8189+，或在設定中指定 llama-server.exe 路徑。"
+            "找不到 llama-server。請先安裝支援目前模型的新版 llama-server，或在設定中指定 llama-server.exe 路徑。"
         )
+
+    @staticmethod
+    def _summarize_model_source(model_source: str) -> Dict[str, Optional[str]]:
+        src = (model_source or "").strip()
+        if not src:
+            return {"raw": "", "source_type": "empty", "repo": None, "file": None, "size_label": None}
+        if os.path.exists(src):
+            text = Path(src).name
+            source_type = "local_file"
+            repo = None
+            filename = Path(src).name
+        else:
+            repo, filename = LLMLlamaCppLocalWorker._parse_hf_source(src)
+            text = src
+            source_type = "hf" if repo else "unknown"
+        # Only treat standalone size tokens as size labels.
+        # This avoids false positives such as "Gemma-4-E4B" -> "4b".
+        size_match = re.search(r"(?<![0-9a-z])(\d{1,3}(?:\.\d+)?b)(?![0-9a-z])", text.lower())
+        return {
+            "raw": src,
+            "source_type": source_type,
+            "repo": repo,
+            "file": filename,
+            "size_label": size_match.group(1) if size_match else None,
+        }
+
+    @staticmethod
+    def _is_port_open(endpoint: str) -> bool:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or "127.0.0.1"
+        port = int(parsed.port or (443 if parsed.scheme == "https" else 80))
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1.0)
+            return sock.connect_ex((host, port)) == 0
+
+    @classmethod
+    def _tail_server_log(cls, max_lines: int = 40) -> list[str]:
+        log_path = str(cls._server_log_path or "").strip()
+        if not log_path or not os.path.exists(log_path):
+            return []
+        try:
+            text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return []
+        return text.splitlines()[-max_lines:]
+
+    def _build_config_summary(self, endpoint: str) -> Dict[str, object]:
+        model_summary = self._summarize_model_source(self.model_path)
+        mmproj_summary = self._summarize_model_source(self.mmproj_path)
+        model_family = self._infer_model_family(model_summary)
+        return {
+            "endpoint": endpoint,
+            "base_url": self.base_url,
+            "model_name": self.model_name,
+            "model_source": model_summary,
+            "mmproj_source": mmproj_summary,
+            "model_family": model_family,
+            "required_server_build": self._required_server_build(model_family),
+            "enable_vision": bool(self.enable_vision),
+            "n_ctx": int(self.n_ctx),
+            "effective_server_ctx": int(self._effective_server_ctx_size()),
+            "server_workers": int(self.server_workers),
+            "server_autostart": bool(self.server_autostart),
+            "server_exe": self.server_exe,
+            "n_gpu_layers": int(self.n_gpu_layers),
+            "n_threads": int(self.n_threads),
+            "normalized_model_source": self._normalize_hf_download_url(self.model_path),
+            "normalized_mmproj_source": self._normalize_hf_download_url(self.mmproj_path),
+        }
+
+    @staticmethod
+    def _size_label_from_param_count(n_params: object) -> Optional[str]:
+        try:
+            value = int(n_params)
+        except Exception:
+            return None
+        if value <= 0:
+            return None
+        billions = max(1, round(value / 1_000_000_000))
+        return f"{billions}b"
+
+    @staticmethod
+    def _infer_model_family(model_summary: Dict[str, Optional[str]]) -> Optional[str]:
+        raw = str(model_summary.get("raw") or "")
+        repo = str(model_summary.get("repo") or "")
+        file_name = str(model_summary.get("file") or "")
+        haystack = " ".join([raw, repo, file_name]).lower()
+        if "gemma-4" in haystack or "gemma4" in haystack:
+            return "gemma4"
+        if "qwen3.5" in haystack or "qwen3-5" in haystack or "qwen35" in haystack:
+            return "qwen35-vl"
+        return None
+
+    @staticmethod
+    def _required_server_build(model_family: Optional[str]) -> Optional[int]:
+        if model_family == "gemma4":
+            return MIN_SERVER_BUILD_GEMMA4
+        if model_family == "qwen35-vl":
+            return MIN_SERVER_BUILD_QWEN35_VL
+        return None
+
+    def _extract_server_state(self, models_payload: Dict[str, object]) -> Dict[str, object]:
+        entries = list(models_payload.get("data", []) or [])
+        aliases: list[str] = []
+        capabilities: list[str] = []
+        size_labels: list[str] = []
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "").strip()
+            if item_id:
+                aliases.append(item_id)
+            for alias in list(item.get("aliases", []) or []):
+                alias_text = str(alias or "").strip()
+                if alias_text:
+                    aliases.append(alias_text)
+            meta = dict(item.get("meta", {}) or {})
+            size_label = self._size_label_from_param_count(meta.get("n_params"))
+            if size_label:
+                size_labels.append(size_label)
+        legacy_entries = list(models_payload.get("models", []) or [])
+        for item in legacy_entries:
+            if not isinstance(item, dict):
+                continue
+            capabilities.extend([str(cap or "").strip() for cap in list(item.get("capabilities", []) or []) if str(cap or "").strip()])
+        dedup_aliases = sorted({value for value in aliases if value})
+        dedup_capabilities = sorted({value for value in capabilities if value})
+        dedup_sizes = sorted({value for value in size_labels if value})
+        return {
+            "aliases": dedup_aliases,
+            "capabilities": dedup_capabilities,
+            "size_labels": dedup_sizes,
+        }
+
+    @staticmethod
+    def _find_listening_pid_for_port(port: int) -> Optional[int]:
+        try:
+            proc = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except Exception:
+            return None
+        output = (proc.stdout or "").splitlines()
+        for line in output:
+            text = " ".join(str(line or "").split())
+            if not text or "LISTENING" not in text.upper():
+                continue
+            parts = text.split()
+            if len(parts) < 5:
+                continue
+            local_address = parts[1]
+            state = parts[3].upper()
+            pid_text = parts[4]
+            if state != "LISTENING":
+                continue
+            if local_address.endswith(f":{port}"):
+                try:
+                    return int(pid_text)
+                except Exception:
+                    return None
+        return None
+
+    @staticmethod
+    def _get_process_details(pid: int) -> Dict[str, object]:
+        try:
+            proc = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    (
+                        f"$p = Get-Process -Id {int(pid)} -ErrorAction Stop; "
+                        "$obj = [PSCustomObject]@{"
+                        "Id=$p.Id;ProcessName=$p.ProcessName;Path=$p.Path}; "
+                        "$obj | ConvertTo-Json -Compress"
+                    ),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            raw = str(proc.stdout or "").strip()
+            if raw:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+        return {"Id": int(pid), "ProcessName": None, "Path": None}
+
+    @classmethod
+    def _stop_external_server_on_port(cls, endpoint: str, *, reason: str = "") -> Dict[str, object]:
+        port = cls._parse_port_from_endpoint(endpoint)
+        pid = cls._find_listening_pid_for_port(port)
+        if pid is None:
+            return {"stopped": False, "reason": "port_not_listening", "port": port}
+        managed_pid = None if cls._server_proc is None else cls._server_proc.pid
+        if managed_pid is not None and pid == managed_pid:
+            cls._stop_managed_server()
+            return {"stopped": True, "reason": "managed_server_restarted", "port": port, "pid": pid}
+
+        details = cls._get_process_details(pid)
+        process_name = str(details.get("ProcessName") or "").lower()
+        process_path = str(details.get("Path") or "").lower()
+        if "llama-server" not in process_name and not process_path.endswith("llama-server.exe"):
+            return {
+                "stopped": False,
+                "reason": "port_busy_non_llama_server",
+                "port": port,
+                "pid": pid,
+                "process": details,
+                "trigger_reason": reason,
+            }
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except Exception:
+            return {
+                "stopped": False,
+                "reason": "taskkill_failed",
+                "port": port,
+                "pid": pid,
+                "process": details,
+                "trigger_reason": reason,
+            }
+        time.sleep(1.0)
+        return {
+            "stopped": True,
+            "reason": "external_llama_server_stopped",
+            "port": port,
+            "pid": pid,
+            "process": details,
+            "trigger_reason": reason,
+        }
+
+    def _validate_runtime_config(self, endpoint: str) -> Dict[str, object]:
+        summary = self._build_config_summary(endpoint)
+        model_summary = dict(summary["model_source"])
+        mmproj_summary = dict(summary["mmproj_source"])
+
+        if not self.base_url.strip():
+            raise WorkerError(
+                "缺少 llama-server base URL",
+                code="llama_model_config_invalid",
+                source="worker.llama_cpp_local",
+                category=self.category,
+                worker_name=self.name,
+                details=summary,
+            )
+
+        if self.server_autostart:
+            try:
+                resolved_exe = self._resolve_llama_server_executable()
+            except Exception as exc:
+                raise WorkerError(
+                    str(exc),
+                    code="llama_server_missing",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=summary,
+                ) from exc
+            summary["resolved_server_exe"] = resolved_exe
+            required_build = summary.get("required_server_build")
+            build_no = self._get_llama_server_build(resolved_exe)
+            if isinstance(required_build, int) and build_no is not None and build_no < required_build:
+                model_family = str(summary.get("model_family") or "unknown model").strip()
+                raise WorkerError(
+                    (
+                        f"目前的 {model_family} 模型需要 llama-server b{required_build}+，"
+                        f"但你目前使用的是 b{build_no}。"
+                        " 這版太舊，還沒支援這個模型架構。"
+                        " 請改用更新的 llama-server 後再試。"
+                    ),
+                    code="llama_server_build_too_old",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=summary,
+                )
+
+        model_source_type = str(model_summary.get("source_type") or "")
+        if model_source_type not in {"local_file", "hf"}:
+            raise WorkerError(
+                "llama_cpp_model_path 無法辨識，請提供本機 .gguf 檔案或 Hugging Face repo/file。",
+                code="llama_model_config_invalid",
+                source="worker.llama_cpp_local",
+                category=self.category,
+                worker_name=self.name,
+                details=summary,
+            )
+
+        if self.enable_vision:
+            if not self.mmproj_path.strip():
+                raise WorkerError(
+                    "目前啟用了 vision，但沒有提供 mmproj。",
+                    code="llama_model_config_invalid",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=summary,
+                )
+            mmproj_source_type = str(mmproj_summary.get("source_type") or "")
+            if mmproj_source_type not in {"local_file", "hf"}:
+                raise WorkerError(
+                    "llama_cpp_mmproj_path 無法辨識，請提供本機 mmproj 或 Hugging Face repo/file。",
+                    code="llama_model_config_invalid",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=summary,
+                )
+            model_size = str(model_summary.get("size_label") or "").lower()
+            mmproj_size = str(mmproj_summary.get("size_label") or "").lower()
+            if model_size and mmproj_size and model_size != mmproj_size:
+                raise WorkerError(
+                    (
+                        "目前的 llama 模型與 mmproj 尺寸不一致，"
+                        f"model={model_size}, mmproj={mmproj_size}。"
+                        " 請改用一致的配對。"
+                    ),
+                    code="llama_mmproj_mismatch",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=summary,
+                )
+
+        return summary
 
     @staticmethod
     def _get_llama_server_build(llama_server_exe: str) -> Optional[int]:
@@ -259,7 +622,48 @@ class LLMLlamaCppLocalWorker(BaseWorker):
             headers["Authorization"] = f"Bearer {self.api_key}"
         req = urllib.request.Request(models_url, headers=headers, method="GET")
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            _ = resp.read()
+            body = resp.read().decode("utf-8", errors="replace")
+        payload: Dict[str, object] = {}
+        try:
+            payload = json.loads(body or "{}")
+        except Exception:
+            payload = {}
+        server_state = self._extract_server_state(payload)
+        model_ids = list(server_state.get("aliases", []) or [])
+        if model_ids and self.model_name and self.model_name not in model_ids:
+            raise RuntimeError(
+                f"llama-server 已啟動，但 /models 中沒有別名 {self.model_name}；目前可用：{model_ids}"
+            )
+        if self.enable_vision:
+            capabilities = [str(value or "").lower() for value in list(server_state.get("capabilities", []) or [])]
+            if capabilities and "multimodal" not in capabilities:
+                raise RuntimeError(
+                    f"llama-server 已啟動，但目前模型不支援 vision/multimodal；capabilities={capabilities}"
+                )
+        expected_size = str(self._summarize_model_source(self.model_path).get("size_label") or "").lower()
+        actual_sizes = [str(value or "").lower() for value in list(server_state.get("size_labels", []) or []) if str(value or "").strip()]
+        if expected_size and actual_sizes and expected_size not in actual_sizes:
+            raise RuntimeError(
+                f"llama-server 模型尺寸與設定不一致；expected={expected_size}, actual={actual_sizes}"
+            )
+
+        completion_payload = {
+            "model": self.model_name or (model_ids[0] if model_ids else ""),
+            "messages": [{"role": "user", "content": "Reply with OK."}],
+            "max_tokens": 1,
+        }
+        completion_req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(completion_payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", **headers},
+            method="POST",
+        )
+        with urllib.request.urlopen(completion_req, timeout=timeout_seconds) as resp:
+            completion_body = resp.read().decode("utf-8", errors="replace")
+        completion_json = json.loads(completion_body or "{}")
+        if not list(completion_json.get("choices", []) or []):
+            raise RuntimeError("llama-server chat/completions 已回應，但沒有 choices")
+        return server_state
 
     def _effective_server_ctx_size(self) -> int:
         # llama-server splits KV cache across parallel slots. Treat configured
@@ -285,8 +689,77 @@ class LLMLlamaCppLocalWorker(BaseWorker):
             pass
         cls._server_proc = None
         cls._server_key = None
+        cls._server_log_path = None
+        cls._server_launch_summary = None
+
+    def _build_server_command(self, endpoint: str, resolved_exe: str) -> Tuple[list[str], Dict[str, object]]:
+        port = self._parse_port_from_endpoint(endpoint)
+        cmd = [
+            resolved_exe,
+            "--alias",
+            self.model_name or "qwen35-vl-gguf",
+            "--port",
+            str(port),
+            "-c",
+            str(self._effective_server_ctx_size()),
+            "-ngl",
+            str(self.n_gpu_layers),
+        ]
+        if self.n_threads > 0:
+            cmd.extend(["-t", str(self.n_threads)])
+
+        src = self.model_path
+        if src and os.path.exists(src):
+            cmd.extend(["-m", src])
+        else:
+            repo_id, hf_file = self._parse_hf_source(src)
+            if repo_id:
+                cmd.extend(["--hf-repo", repo_id])
+                if hf_file:
+                    cmd.extend(["--hf-file", hf_file])
+
+        if self.server_workers > 0:
+            cmd.extend(["-np", str(self.server_workers)])
+        if self.enable_vision and self.mmproj_path:
+            mmproj = self._normalize_hf_download_url(self.mmproj_path.strip())
+            if mmproj.lower().startswith(("http://", "https://")):
+                cmd.extend(["--mmproj-url", mmproj])
+            else:
+                cmd.extend(["--mmproj", mmproj])
+
+        launch_summary = self._build_config_summary(endpoint)
+        launch_summary.update(
+            {
+                "resolved_server_exe": resolved_exe,
+                "port": port,
+                "command": list(cmd),
+            }
+        )
+        return cmd, launch_summary
+
+    def _start_server_process(self, cmd: list[str], launch_summary: Dict[str, object]) -> subprocess.Popen:
+        log_dir = Path(os.getcwd()) / "output" / "runtime-logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"llama-server-{int(time.time())}.log"
+        with log_path.open("w", encoding="utf-8", errors="replace") as handle:
+            handle.write(json.dumps({"launch_summary": launch_summary}, ensure_ascii=False, indent=2))
+            handle.write("\n\n")
+        log_handle = log_path.open("a", encoding="utf-8", errors="replace", buffering=1)
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                cwd=os.getcwd(),
+            )
+        finally:
+            log_handle.close()
+        self.__class__._server_log_path = str(log_path)
+        self.__class__._server_launch_summary = dict(launch_summary)
+        return proc
 
     def _ensure_server_ready(self, endpoint: str):
+        config_summary = self._validate_runtime_config(endpoint)
         key = (
             endpoint,
             self.model_path,
@@ -318,58 +791,45 @@ class LLMLlamaCppLocalWorker(BaseWorker):
             try:
                 self._check_server_ready(endpoint, timeout_seconds=6.0)
                 return
-            except Exception:
-                pass
+            except Exception as exc:
+                stop_result = self._stop_external_server_on_port(endpoint, reason=str(exc))
+                config_summary["external_server_recovery"] = stop_result
+                if not bool(stop_result.get("stopped")) and stop_result.get("reason") == "port_busy_non_llama_server":
+                    raise WorkerError(
+                        "llama-server 端口已被其他程式占用，無法自動重啟。",
+                        code="llama_server_port_busy",
+                        source="worker.llama_cpp_local",
+                        category=self.category,
+                        worker_name=self.name,
+                        details={
+                            **config_summary,
+                            "external_server_recovery": stop_result,
+                        },
+                    ) from exc
 
             if not self.server_autostart:
-                raise RuntimeError("llama-server 未就緒，且 server_autostart 已關閉。")
+                raise WorkerError(
+                    "llama-server 未就緒，且 server_autostart 已關閉。",
+                    code="llama_server_start_failed",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=config_summary,
+                )
 
-            exe = self._resolve_llama_server_executable()
+            exe = str(config_summary.get("resolved_server_exe") or self._resolve_llama_server_executable())
             build_no = self._get_llama_server_build(exe)
             if build_no is not None and build_no < 8189:
-                raise RuntimeError(
-                    f"llama-server build 為 {build_no}，Qwen3.5 VL 需要 b8189+。"
+                raise WorkerError(
+                    f"llama-server build 為 {build_no}，Qwen3.5 VL 需要 b8189+。",
+                    code="llama_server_build_too_old",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details=config_summary,
                 )
-            port = self._parse_port_from_endpoint(endpoint)
-            cmd = [
-                exe,
-                "--alias",
-                self.model_name or "qwen35-vl-gguf",
-                "--port",
-                str(port),
-                "-c",
-                str(self._effective_server_ctx_size()),
-                "-ngl",
-                str(self.n_gpu_layers),
-            ]
-            if self.n_threads > 0:
-                cmd.extend(["-t", str(self.n_threads)])
-
-            src = self.model_path
-            if src and os.path.exists(src):
-                cmd.extend(["-m", src])
-            else:
-                repo_id, hf_file = self._parse_hf_source(src)
-                if repo_id:
-                    cmd.extend(["--hf-repo", repo_id])
-                    if hf_file:
-                        cmd.extend(["--hf-file", hf_file])
-
-            if self.server_workers > 0:
-                cmd.extend(["-np", str(self.server_workers)])
-            if self.enable_vision and self.mmproj_path:
-                mmproj = self.mmproj_path.strip()
-                if mmproj.lower().startswith(("http://", "https://")):
-                    cmd.extend(["--mmproj-url", mmproj])
-                else:
-                    cmd.extend(["--mmproj", mmproj])
-
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=os.getcwd(),
-            )
+            cmd, launch_summary = self._build_server_command(endpoint, exe)
+            proc = self._start_server_process(cmd, launch_summary)
             self.__class__._server_proc = proc
             self.__class__._server_key = key
 
@@ -380,19 +840,81 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                     proc.terminate()
                 except Exception:
                     pass
+                self.__class__._server_proc = None
+                self.__class__._server_key = None
                 raise
 
     def _wait_server_ready(self, endpoint: str, timeout_seconds: int):
         deadline = time.time() + max(1, timeout_seconds)
         last_error = "unknown"
+        last_exception: Optional[BaseException] = None
         while time.time() < deadline:
             try:
                 self._check_server_ready(endpoint, timeout_seconds=6.0)
                 return
             except Exception as exc:
                 last_error = str(exc)
+                last_exception = exc
+            proc = self.__class__._server_proc
+            if proc is not None and proc.poll() is not None:
+                stderr_tail = self._tail_server_log()
+                stderr_text = "\n".join(stderr_tail).lower()
+                if "unknown model architecture: 'gemma4'" in stderr_text:
+                    raise WorkerError(
+                        (
+                            "llama-server 版本太舊，無法載入 Gemma 4（gemma4 architecture）。"
+                            f" 目前 bundled build 是 {self._get_llama_server_build(self._resolve_llama_server_executable()) or 'unknown'}，"
+                            f"Gemma 4 需要 b{MIN_SERVER_BUILD_GEMMA4}+。"
+                        ),
+                        code="llama_server_start_failed",
+                        source="worker.llama_cpp_local",
+                        category=self.category,
+                        worker_name=self.name,
+                        details={
+                            "endpoint": endpoint,
+                            "returncode": proc.poll(),
+                            "port_open": self._is_port_open(endpoint),
+                            "launch_summary": dict(self.__class__._server_launch_summary or {}),
+                            "server_log_path": self.__class__._server_log_path,
+                            "stderr_tail": stderr_tail,
+                            "last_error": "unknown model architecture: gemma4",
+                        },
+                    )
+                raise WorkerError(
+                    "llama-server 在就緒前提前結束。",
+                    code="llama_server_start_failed",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details={
+                        "endpoint": endpoint,
+                        "returncode": proc.poll(),
+                        "port_open": self._is_port_open(endpoint),
+                        "launch_summary": dict(self.__class__._server_launch_summary or {}),
+                        "server_log_path": self.__class__._server_log_path,
+                        "stderr_tail": self._tail_server_log(),
+                        "last_error": last_error,
+                    },
+                )
             time.sleep(2.0)
-        raise RuntimeError(f"等待 llama-server 就緒逾時（{timeout_seconds}s）：{last_error}")
+        raise WorkerError(
+            f"等待 llama-server 就緒逾時（{timeout_seconds}s）：{last_error}",
+            code="llama_server_start_failed",
+            source="worker.llama_cpp_local",
+            category=self.category,
+            worker_name=self.name,
+            details={
+                "endpoint": endpoint,
+                "port_open": self._is_port_open(endpoint),
+                "process_running": bool(self.__class__._server_proc and self.__class__._server_proc.poll() is None),
+                "returncode": None if self.__class__._server_proc is None else self.__class__._server_proc.poll(),
+                "launch_summary": dict(self.__class__._server_launch_summary or {}),
+                "server_log_path": self.__class__._server_log_path,
+                "stderr_tail": self._tail_server_log(),
+                "last_error": last_error,
+                "last_exception_type": last_exception.__class__.__name__ if last_exception is not None else None,
+            },
+        )
 
     def _call_caption(self, endpoint: str, image_data_url: str, user_prompt: str, system_prompt: str, thinking: bool):
         payload = {
@@ -433,14 +955,36 @@ class LLMLlamaCppLocalWorker(BaseWorker):
         resp_json = json.loads(text)
         if "error" in resp_json:
             raise RuntimeError(str(resp_json["error"]))
-        message = (
-            resp_json.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        choice = dict(resp_json.get("choices", [{}])[0] or {})
+        message_obj = dict(choice.get("message", {}) or {})
+        message = message_obj.get("content", "")
         result_text = " ".join(self._extract_text_content(message).strip().split())
         if not result_text:
-            raise RuntimeError("Model returned empty content")
+            reasoning_text = " ".join(
+                str(message_obj.get("reasoning_content", "") or "").strip().split()
+            )
+            finish_reason = str(choice.get("finish_reason") or "")
+            if reasoning_text:
+                raise WorkerError(
+                    "模型只回了 reasoning_content，尚未輸出最終 content；請提高 max_tokens 後再試。",
+                    code="worker_empty_content_response",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details={
+                        "finish_reason": finish_reason,
+                        "reasoning_preview": reasoning_text[:500],
+                        "max_tokens": int(self.max_tokens),
+                    },
+                )
+            raise WorkerError(
+                "Model returned empty content",
+                code="worker_empty_content_response",
+                source="worker.llama_cpp_local",
+                category=self.category,
+                worker_name=self.name,
+                details={"finish_reason": finish_reason, "max_tokens": int(self.max_tokens)},
+            )
         return result_text
 
     def process(self, input_data: WorkerInput) -> WorkerOutput:
@@ -496,6 +1040,16 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                 result_text=result_text,
             )
 
+        except WorkerError as e:
+            return WorkerOutput(
+                success=False,
+                error=str(e),
+                error_info=build_worker_error_info(
+                    e,
+                    category=self.category,
+                    worker_name=self.name,
+                ),
+            )
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
             lower = body.lower()
@@ -505,7 +1059,7 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                     error=(
                         "llama-server 回應：image input is not supported。"
                         "請確認 server 端使用 vision-capable 模型設定（qwen35-vl + mmproj），"
-                        "並使用 b8189+ 版本。"
+                        "並使用支援 vision/multimodal 的新版 llama-server。"
                     ),
                     error_info=build_worker_error_info(
                         None,
@@ -561,9 +1115,30 @@ class LLMLlamaCppLocalWorker(BaseWorker):
                         },
                     ),
                 )
-            return WorkerOutput(success=False, error=f"HTTP {e.code}: {body[:500]}")
+            return WorkerOutput(
+                success=False,
+                error=f"HTTP {e.code}: {body[:500]}",
+                error_info=build_worker_error_info(
+                    None,
+                    code="worker_http_error",
+                    message=f"HTTP {e.code}: {body[:500]}",
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                    details={"status_code": int(e.code)},
+                ),
+            )
         except Exception as e:
-            return WorkerOutput(success=False, error=str(e))
+            return WorkerOutput(
+                success=False,
+                error=str(e),
+                error_info=build_worker_error_info(
+                    e,
+                    source="worker.llama_cpp_local",
+                    category=self.category,
+                    worker_name=self.name,
+                ),
+            )
 
     def validate_input(self, input_data: WorkerInput) -> Optional[str]:
         if not input_data.image:

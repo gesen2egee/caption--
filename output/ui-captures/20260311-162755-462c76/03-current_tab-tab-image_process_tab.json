@@ -1,0 +1,739 @@
+{
+  "capture_name": "tab-image_process_tab-修圖",
+  "scope": "current_tab",
+  "timestamp": "2026-03-11T08:27:53.583Z",
+  "page_title": "Caption Tool",
+  "route": "/",
+  "viewport": {
+    "width": 1180,
+    "height": 860
+  },
+  "device_pixel_ratio": 1,
+  "ui_language": "zh_tw",
+  "agent_surface_mode": "development",
+  "event_stream_status": "live",
+  "active_tab": "tags_tab",
+  "active_tab_title": "標籤",
+  "quick_dialog": "",
+  "root_dir_path": "E:/NE/20_miss valentine",
+  "current_image_path": "E:/NE/20_miss valentine\\0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "current_file_name": "0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "selection": {
+    "current_index": 0,
+    "image_count": 34,
+    "filter_active": false,
+    "filter_query": ""
+  },
+  "controls": {
+    "view_mode": 0,
+    "tagger_save_to_txt": true,
+    "llm_save_to_txt": true
+  },
+  "available_tabs": [
+    {
+      "id": "tags_tab",
+      "title": "標籤"
+    },
+    {
+      "id": "nl_tab",
+      "title": "提示 / NL"
+    },
+    {
+      "id": "image_process_tab",
+      "title": "修圖"
+    }
+  ],
+  "requested_tab_id": "image_process_tab",
+  "requested_tab_title": "修圖",
+  "capture_mode": "normalized-desktop",
+  "capture_target": {
+    "scope": "current_tab",
+    "selector": ".spec-tabs[data-node-id=\"feature_tabs\"] .spec-tab",
+    "bounds": {
+      "x": 555.6,
+      "y": 135.5,
+      "width": 598.4,
+      "height": 1096.5
+    },
+    "baseline_bounds": {
+      "width": 860,
+      "height": 676.5
+    },
+    "baseline_width_px": 860
+  },
+  "capture_environment": {
+    "device_pixel_ratio": 1,
+    "visual_viewport_scale": 1,
+    "inner_width": 1180,
+    "inner_height": 860
+  },
+  "semantic_snapshot": {
+    "tag": "div",
+    "bounds": {
+      "x": 555.6,
+      "y": 135.5,
+      "width": 598.4,
+      "height": 1096.5
+    },
+    "name": "標註目前圖片 標註已載入圖片 寫入 txt 新增自訂標籤 資料夾標籤 miss valentine 自訂標籤 low res low quality low aesthetic T",
+    "children": [
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 562.6,
+          "y": 142.5,
+          "width": 584.4,
+          "height": 34.1
+        },
+        "name": "標註目前圖片 標註已載入圖片 寫入 txt 新增自訂標籤",
+        "children": [
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 562.6,
+              "y": 142.5,
+              "width": 117.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "標註目前圖片"
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 686.4,
+              "y": 142.5,
+              "width": 133.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "標註已載入圖片"
+          },
+          {
+            "tag": "label",
+            "bounds": {
+              "x": 826.2,
+              "y": 147.3,
+              "width": 83,
+              "height": 24.4
+            },
+            "name": "寫入 txt",
+            "children": [
+              {
+                "tag": "input",
+                "bounds": {
+                  "x": 832.4,
+                  "y": 153,
+                  "width": 13,
+                  "height": 13
+                },
+                "role": "checkbox",
+                "name": "on"
+              },
+              {
+                "tag": "span",
+                "bounds": {
+                  "x": 852.4,
+                  "y": 147.9,
+                  "width": 54.6,
+                  "height": 23.2
+                },
+                "name": "寫入 txt"
+              }
+            ]
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 915.3,
+              "y": 142.5,
+              "width": 117.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "新增自訂標籤"
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 562.6,
+          "y": 182.6,
+          "width": 584.4,
+          "height": 77.3
+        },
+        "name": "資料夾標籤 miss valentine",
+        "children": [
+          {
+            "tag": "strong",
+            "bounds": {
+              "x": 571.6,
+              "y": 189.6,
+              "width": 566.4,
+              "height": 20
+            },
+            "name": "資料夾標籤"
+          },
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 571.6,
+              "y": 215.5,
+              "width": 566.4,
+              "height": 37.3
+            },
+            "name": "miss valentine",
+            "children": [
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 215.5,
+                  "width": 566.4,
+                  "height": 37.3
+                },
+                "name": "miss valentine",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 581.6,
+                      "y": 223.5,
+                      "width": 546.4,
+                      "height": 21.3
+                    },
+                    "name": "miss valentine"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 562.6,
+          "y": 265.9,
+          "width": 584.4,
+          "height": 79.1
+        },
+        "name": "自訂標籤 low res low quality low aesthetic",
+        "children": [
+          {
+            "tag": "strong",
+            "bounds": {
+              "x": 571.6,
+              "y": 272.9,
+              "width": 566.4,
+              "height": 20
+            },
+            "name": "自訂標籤"
+          },
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 571.6,
+              "y": 298.8,
+              "width": 566.4,
+              "height": 39.2
+            },
+            "name": "low res low quality low aesthetic",
+            "children": [
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 298.8,
+                  "width": 184.8,
+                  "height": 39.2
+                },
+                "name": "low res",
+                "children": [
+                  {
+                    "tag": "span",
+                    "bounds": {
+                      "x": 581.6,
+                      "y": 306.8,
+                      "width": 164.8,
+                      "height": 23.2
+                    },
+                    "name": "low res"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 762.4,
+                  "y": 298.8,
+                  "width": 184.8,
+                  "height": 39.2
+                },
+                "name": "low quality",
+                "children": [
+                  {
+                    "tag": "span",
+                    "bounds": {
+                      "x": 772.4,
+                      "y": 306.8,
+                      "width": 164.8,
+                      "height": 23.2
+                    },
+                    "name": "low quality"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 953.2,
+                  "y": 298.8,
+                  "width": 184.8,
+                  "height": 39.2
+                },
+                "name": "low aesthetic",
+                "children": [
+                  {
+                    "tag": "span",
+                    "bounds": {
+                      "x": 963.2,
+                      "y": 306.8,
+                      "width": 164.8,
+                      "height": 23.2
+                    },
+                    "name": "low aesthetic"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 562.6,
+          "y": 351,
+          "width": 584.4,
+          "height": 874
+        },
+        "name": "Tagger 標籤 blonde hair 金髮 hat 帽子 1girl 單個女孩 gloves 手套 jewelry 首飾 necklace 項鍊 white gloves 白",
+        "children": [
+          {
+            "tag": "strong",
+            "bounds": {
+              "x": 571.6,
+              "y": 358,
+              "width": 566.4,
+              "height": 20
+            },
+            "name": "Tagger 標籤"
+          },
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 571.6,
+              "y": 384,
+              "width": 566.4,
+              "height": 834
+            },
+            "name": "blonde hair 金髮 hat 帽子 1girl 單個女孩 gloves 手套 jewelry 首飾 necklace 項鍊 white gloves 白手套 breasts",
+            "children": [
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 384,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "blonde hair",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 394.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "blonde hair"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 414,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "金髮"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 384,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "hat",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 394.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "hat"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 414,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "帽子"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 444,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "1girl",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 454.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "1girl"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 474,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "單個女孩"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 444,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "gloves",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 454.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "gloves"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 474,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "手套"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 504,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "jewelry",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 514.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "jewelry"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 534,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "首飾"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 504,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "necklace",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 514.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "necklace"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 534,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "項鍊"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 564,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "white gloves",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 574.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "white gloves"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 594,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "白手套"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 564,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "breasts",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 574.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "breasts"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 594,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "乳房"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 624,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "dress",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 634.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "dress"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 654,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "連衣裙"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 624,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "outdoors",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 634.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "outdoors"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 654,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "戶外"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 571.6,
+                  "y": 684,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "earrings",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 694.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "earrings"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 580.6,
+                      "y": 714,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "耳環"
+                  }
+                ]
+              },
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 857.8,
+                  "y": 684,
+                  "width": 280.2,
+                  "height": 54
+                },
+                "name": "palm tree",
+                "children": [
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 694.7,
+                      "width": 262.2,
+                      "height": 17.3
+                    },
+                    "name": "palm tree"
+                  },
+                  {
+                    "tag": "div",
+                    "bounds": {
+                      "x": 866.8,
+                      "y": 714,
+                      "width": 262.2,
+                      "height": 13.2
+                    },
+                    "name": "棕櫚樹"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "saved_at": "2026-03-11T16:27:55.635000",
+  "saved_paths": {
+    "image_path": "E:\\caption--\\output\\ui-captures\\20260311-162755-462c76\\03-current_tab-tab-image_process_tab.png",
+    "metadata_path": "E:\\caption--\\output\\ui-captures\\20260311-162755-462c76\\03-current_tab-tab-image_process_tab.json"
+  }
+}

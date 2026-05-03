@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import os
 import queue
+import re
+import sys
 import threading
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, urlparse
@@ -22,6 +26,18 @@ def _json_bytes(payload: Dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
+def _is_expected_client_disconnect(exc: BaseException | None) -> bool:
+    return isinstance(
+        exc,
+        (
+            BrokenPipeError,
+            ConnectionAbortedError,
+            ConnectionResetError,
+            TimeoutError,
+        ),
+    )
+
+
 def _frontend_dist_dir() -> str:
     return os.path.normpath(
         os.path.join(
@@ -32,6 +48,87 @@ def _frontend_dist_dir() -> str:
             "dist",
         )
     )
+
+
+def _repo_root_dir() -> str:
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _ui_capture_output_dir() -> str:
+    return os.path.join(_repo_root_dir(), "output", "ui-captures")
+
+
+def _slugify_capture_name(value: str) -> str:
+    sanitized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip()).strip("-")
+    return sanitized[:72] or "capture"
+
+
+def _decode_png_data_url(data_url: str) -> bytes:
+    prefix = "data:image/png;base64,"
+    if not str(data_url or "").startswith(prefix):
+        raise ValueError("Capture payload must be a PNG data URL.")
+    try:
+        return base64.b64decode(data_url[len(prefix) :], validate=True)
+    except Exception as exc:  # pragma: no cover - defensive input path
+        raise ValueError("Invalid PNG data URL.") from exc
+
+
+def _save_ui_capture_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    captures = payload.get("captures", [])
+    if not isinstance(captures, list) or not captures:
+        raise ValueError("Capture request must include a non-empty captures list.")
+
+    capture_dir = os.path.join(
+        _ui_capture_output_dir(),
+        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}",
+    )
+    os.makedirs(capture_dir, exist_ok=True)
+
+    saved_captures: list[Dict[str, Any]] = []
+    for index, item in enumerate(captures, start=1):
+        if not isinstance(item, dict):
+            raise ValueError("Each capture entry must be an object.")
+
+        name = str(item.get("name") or item.get("scope") or f"capture-{index}")
+        scope = str(item.get("scope") or f"capture-{index}")
+        png_data = _decode_png_data_url(str(item.get("png_data_url") or ""))
+        metadata = item.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            raise ValueError("Capture metadata must be an object.")
+
+        stem = f"{index:02d}-{_slugify_capture_name(f'{scope}-{name}')}"
+        image_path = os.path.join(capture_dir, f"{stem}.png")
+        metadata_path = os.path.join(capture_dir, f"{stem}.json")
+
+        with open(image_path, "wb") as handle:
+            handle.write(png_data)
+
+        stored_metadata = {
+            **metadata,
+            "saved_at": datetime.now().isoformat(),
+            "saved_paths": {
+                "image_path": image_path,
+                "metadata_path": metadata_path,
+            },
+        }
+        with open(metadata_path, "w", encoding="utf-8") as handle:
+            json.dump(stored_metadata, handle, ensure_ascii=False, indent=2)
+
+        saved_captures.append(
+            {
+                "name": name,
+                "scope": scope,
+                "image_path": image_path,
+                "metadata_path": metadata_path,
+                "metadata": stored_metadata,
+            }
+        )
+
+    return {
+        "ok": True,
+        "capture_dir": capture_dir,
+        "captures": saved_captures,
+    }
 
 
 class RuntimeCommandInvoker:
@@ -136,31 +233,50 @@ class RuntimeHttpBridge:
 
         bridge = self
 
+        class _BridgeHttpServer(ThreadingHTTPServer):
+            def handle_error(self, request, client_address):  # pragma: no cover - exercised via runtime regression
+                exc = sys.exc_info()[1]
+                if _is_expected_client_disconnect(exc):
+                    return
+                return super().handle_error(request, client_address)
+
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, format, *args):
                 return
 
             def _send(self, status_code: int, payload: Dict[str, Any]) -> None:
                 body = _json_bytes(payload)
-                self.send_response(status_code)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.end_headers()
-                self.wfile.write(body)
+                try:
+                    self.send_response(status_code)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except BaseException as exc:
+                    if _is_expected_client_disconnect(exc):
+                        self.close_connection = True
+                        return
+                    raise
 
             def _send_bytes(self, status_code: int, body: bytes, content_type: str) -> None:
-                self.send_response(status_code)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.end_headers()
-                self.wfile.write(body)
+                try:
+                    self.send_response(status_code)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except BaseException as exc:
+                    if _is_expected_client_disconnect(exc):
+                        self.close_connection = True
+                        return
+                    raise
 
             def _read_json(self) -> Dict[str, Any]:
                 length = int(self.headers.get("Content-Length", "0") or "0")
@@ -281,11 +397,17 @@ class RuntimeHttpBridge:
                 return True
 
             def do_OPTIONS(self):
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.end_headers()
+                try:
+                    self.send_response(204)
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                    self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                    self.end_headers()
+                except BaseException as exc:
+                    if _is_expected_client_disconnect(exc):
+                        self.close_connection = True
+                        return
+                    raise
 
             def do_GET(self):
                 parsed = urlparse(self.path)
@@ -449,6 +571,15 @@ class RuntimeHttpBridge:
             def do_POST(self):
                 parsed = urlparse(self.path)
                 query = parse_qs(parsed.query or "")
+                if parsed.path == "/captures/ui":
+                    try:
+                        payload = self._read_json()
+                        self._send(200, _save_ui_capture_payload(payload))
+                    except ValueError as exc:
+                        self._send_exception(400, exc, source="bridge.capture")
+                    except Exception as exc:
+                        self._send_exception(500, exc, source="bridge.capture")
+                    return
                 if not parsed.path.startswith("/commands/"):
                     self._send_bridge_error(
                         404,
@@ -488,7 +619,7 @@ class RuntimeHttpBridge:
                         access_mode=command_mode,
                     )
 
-        self._server = ThreadingHTTPServer((self._host, self._port), Handler)
+        self._server = _BridgeHttpServer((self._host, self._port), Handler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         return self.status()

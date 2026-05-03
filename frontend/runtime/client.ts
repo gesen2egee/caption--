@@ -10,6 +10,8 @@ import type {
   RuntimeEvent,
   RuntimeState,
   SettingsSchema,
+  UiCaptureSaveItem,
+  UiCaptureSaveResponse,
   WorkersSummary,
 } from "./types";
 
@@ -140,6 +142,17 @@ export class CaptionRuntimeClient {
 
   async getSettingsSchema(): Promise<SettingsSchema> {
     const response = await fetch(`${this.baseUrl}/settings-schema`);
+    return readJson(response);
+  }
+
+  async saveUiCaptures(captures: UiCaptureSaveItem[]): Promise<UiCaptureSaveResponse> {
+    const response = await fetch(`${this.baseUrl}/captures/ui`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ captures }),
+    });
     return readJson(response);
   }
 

@@ -1,0 +1,308 @@
+{
+  "capture_name": "tab-nl_tab",
+  "scope": "current_tab",
+  "timestamp": "2026-03-11T07:49:29.704Z",
+  "page_title": "Caption Tool",
+  "route": "/",
+  "viewport": {
+    "width": 2560,
+    "height": 1305
+  },
+  "device_pixel_ratio": 1,
+  "ui_language": "zh_tw",
+  "agent_surface_mode": "development",
+  "event_stream_status": "live",
+  "active_tab": "tags_tab",
+  "active_tab_title": "標籤",
+  "quick_dialog": "",
+  "root_dir_path": "E:/NE/20_miss valentine",
+  "current_image_path": "E:/NE/20_miss valentine\\0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "current_file_name": "0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "selection": {
+    "current_index": 0,
+    "image_count": 34,
+    "filter_active": false,
+    "filter_query": ""
+  },
+  "controls": {
+    "view_mode": 0,
+    "tagger_save_to_txt": true,
+    "llm_save_to_txt": true
+  },
+  "available_tabs": [
+    {
+      "id": "tags_tab",
+      "title": "標籤"
+    },
+    {
+      "id": "nl_tab",
+      "title": "提示 / NL"
+    },
+    {
+      "id": "image_process_tab",
+      "title": "修圖"
+    }
+  ],
+  "requested_tab_id": "nl_tab",
+  "requested_tab_title": "提示 / NL",
+  "capture_target": {
+    "scope": "current_tab",
+    "selector": ".spec-tabs[data-node-id=\"feature_tabs\"] .spec-tab",
+    "bounds": {
+      "x": 1135.7,
+      "y": -4759.5,
+      "width": 1398.3,
+      "height": 1315.8
+    }
+  },
+  "semantic_snapshot": {
+    "tag": "div",
+    "bounds": {
+      "x": 1135.7,
+      "y": -4759.5,
+      "width": 1398.3,
+      "height": 1315.8
+    },
+    "name": "執行目前圖片 執行已載入圖片 寫入 txt 預設 自訂 Prev Page Next Page 126/126 最新 NL miss valentine stands as a g",
+    "children": [
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 1142.7,
+          "y": -4752.5,
+          "width": 1384.3,
+          "height": 34.1
+        },
+        "name": "執行目前圖片 執行已載入圖片 寫入 txt 預設 自訂",
+        "children": [
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1142.7,
+              "y": -4752.5,
+              "width": 117.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "執行目前圖片"
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1266.5,
+              "y": -4752.5,
+              "width": 133.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "執行已載入圖片"
+          },
+          {
+            "tag": "label",
+            "bounds": {
+              "x": 1406.3,
+              "y": -4747.7,
+              "width": 83,
+              "height": 24.4
+            },
+            "name": "寫入 txt",
+            "children": [
+              {
+                "tag": "input",
+                "bounds": {
+                  "x": 1412.5,
+                  "y": -4742,
+                  "width": 13,
+                  "height": 13
+                },
+                "role": "checkbox",
+                "name": "on"
+              },
+              {
+                "tag": "span",
+                "bounds": {
+                  "x": 1432.5,
+                  "y": -4747.1,
+                  "width": 54.6,
+                  "height": 23.2
+                },
+                "name": "寫入 txt"
+              }
+            ]
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1495.3,
+              "y": -4752.5,
+              "width": 53.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "預設"
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1555.1,
+              "y": -4752.5,
+              "width": 53.8,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "自訂"
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 1142.7,
+          "y": -4712.4,
+          "width": 1384.3,
+          "height": 34.1
+        },
+        "name": "Prev Page Next Page 126/126",
+        "children": [
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1142.7,
+              "y": -4712.4,
+              "width": 91.1,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "Prev Page"
+          },
+          {
+            "tag": "button",
+            "bounds": {
+              "x": 1241.8,
+              "y": -4712.4,
+              "width": 93.6,
+              "height": 34.1
+            },
+            "role": "button",
+            "name": "Next Page"
+          },
+          {
+            "tag": "span",
+            "bounds": {
+              "x": 1343.4,
+              "y": -4712.4,
+              "width": 68.6,
+              "height": 34.1
+            },
+            "name": "126/126"
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 1142.7,
+          "y": -4672.3,
+          "width": 1384.3,
+          "height": 75.2
+        },
+        "name": "最新 NL miss valentine stands as a girl solo outdoors on a sunny day looking at viewer in a ",
+        "children": [
+          {
+            "tag": "strong",
+            "bounds": {
+              "x": 1151.7,
+              "y": -4665.3,
+              "width": 1366.3,
+              "height": 20
+            },
+            "name": "最新 NL"
+          },
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 1151.7,
+              "y": -4639.3,
+              "width": 1366.3,
+              "height": 35.3
+            },
+            "name": "miss valentine stands as a girl solo outdoors on a sunny day looking at viewer in a floral",
+            "children": [
+              {
+                "tag": "div",
+                "bounds": {
+                  "x": 1151.7,
+                  "y": -4639.3,
+                  "width": 1366.3,
+                  "height": 35.3
+                },
+                "name": "miss valentine stands as a girl solo outdoors on a sunny day looking at viewer in a floral"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "bounds": {
+          "x": 1142.7,
+          "y": -4591.1,
+          "width": 1384.3,
+          "height": 216.7
+        },
+        "name": "提示編輯器 Save",
+        "children": [
+          {
+            "tag": "div",
+            "bounds": {
+              "x": 1151.7,
+              "y": -4582.1,
+              "width": 1366.3,
+              "height": 34.1
+            },
+            "name": "提示編輯器 Save",
+            "children": [
+              {
+                "tag": "strong",
+                "bounds": {
+                  "x": 1151.7,
+                  "y": -4576.6,
+                  "width": 80,
+                  "height": 23.2
+                },
+                "name": "提示編輯器"
+              },
+              {
+                "tag": "button",
+                "bounds": {
+                  "x": 2463.5,
+                  "y": -4582.1,
+                  "width": 54.5,
+                  "height": 34.1
+                },
+                "role": "button",
+                "name": "Save"
+              }
+            ]
+          },
+          {
+            "tag": "textarea",
+            "bounds": {
+              "x": 1151.7,
+              "y": -4539.9,
+              "width": 1366.3,
+              "height": 151.3
+            },
+            "role": "textbox",
+            "name": "You are a personalized caption assistant for a text-to-image diffusion model. The concept is {concept name}, and the category of the concept"
+          }
+        ]
+      }
+    ]
+  },
+  "saved_at": "2026-03-11T15:49:29.874698",
+  "saved_paths": {
+    "image_path": "E:\\caption--\\output\\ui-captures\\20260311-154929-376709\\02-tab-nl_tab.png",
+    "metadata_path": "E:\\caption--\\output\\ui-captures\\20260311-154929-376709\\02-tab-nl_tab.json"
+  }
+}

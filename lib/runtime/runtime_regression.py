@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from lib.core.dataclasses import ImageData
+from lib.runtime.http_bridge import RuntimeHttpBridge
 from lib.pipeline.context import TaskResult
 from lib.pipeline.tasks.base_task import BaseTask
 from lib.workers import WorkerInput, invoke_worker
@@ -230,6 +231,30 @@ def check_worker_service_lifecycle(host: Any, root: Path) -> Dict[str, Any]:
     }
 
 
+def check_http_bridge_disconnect_tolerance(host: Any, root: Path) -> Dict[str, Any]:
+    bridge = RuntimeHttpBridge(host, port=0)
+    bridge.start()
+    try:
+        handler_cls = bridge._server.RequestHandlerClass  # type: ignore[union-attr]
+
+        class _DummyWfile:
+            def write(self, data):
+                raise ConnectionAbortedError(10053, "aborted")
+
+        handler = handler_cls.__new__(handler_cls)
+        handler.send_response = lambda status: None
+        handler.send_header = lambda *args, **kwargs: None
+        handler.end_headers = lambda: (_ for _ in ()).throw(ConnectionAbortedError(10053, "aborted during headers"))
+        handler.wfile = _DummyWfile()
+        handler.close_connection = False
+
+        handler._send_bytes(200, b"test", "text/plain")
+        assert handler.close_connection is True
+        return {"disconnect_swallowed": True}
+    finally:
+        bridge.stop()
+
+
 CHECKS: List[Check] = [
     ("runtime_surface", check_runtime_surface),
     ("selection_commands", check_selection_commands),
@@ -241,6 +266,7 @@ CHECKS: List[Check] = [
     ("task_flow", check_task_flow),
     ("worker_errors", check_worker_errors),
     ("worker_service_lifecycle", check_worker_service_lifecycle),
+    ("http_bridge_disconnect_tolerance", check_http_bridge_disconnect_tolerance),
 ]
 
 

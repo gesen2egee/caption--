@@ -300,11 +300,15 @@ def _suite_tagger_llm(host: RuntimeBackendHost, image_path: Optional[Path]) -> D
             "worker_runtime_mode": "service",
             "llm_provider": "llm_llama_cpp_local",
             "llama_cpp_base_url": "http://127.0.0.1:8000/v1",
+            "llama_cpp_model_alias": "qwen35-vl-gguf",
+            "llama_cpp_model_path": "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/blob/main/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-Q8_0.gguf",
+            "llama_cpp_mmproj_path": "https://huggingface.co/HauhauCS/Qwen3.5-9B-Uncensored-HauhauCS-Aggressive/resolve/main/mmproj-Qwen3.5-9B-Uncensored-HauhauCS-Aggressive-BF16.gguf",
+            "llama_cpp_enable_vision": True,
             "llama_cpp_n_ctx": 8192,
             "llama_cpp_n_threads": 0,
             "llama_cpp_server_workers": 1,
             "llama_cpp_server_autostart": True,
-            "llama_cpp_server_exe": r"E:\caption--\tasks\runtime\llama-b8189\llama-server.exe",
+            "llama_cpp_server_exe": r"E:\caption--\tasks\runtime\llama-b8848\llama-server.exe",
             "startup_defer_worker_scan": True,
         }
     )

@@ -1,0 +1,82 @@
+{
+  "capture_name": "擷取預覽",
+  "scope": "preview",
+  "timestamp": "2026-03-11T07:51:17.612Z",
+  "page_title": "Caption Tool",
+  "route": "/",
+  "viewport": {
+    "width": 2560,
+    "height": 1305
+  },
+  "device_pixel_ratio": 1,
+  "ui_language": "zh_tw",
+  "agent_surface_mode": "development",
+  "event_stream_status": "live",
+  "active_tab": "tags_tab",
+  "active_tab_title": "標籤",
+  "quick_dialog": "",
+  "root_dir_path": "E:/NE/20_miss valentine",
+  "current_image_path": "E:/NE/20_miss valentine\\0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "current_file_name": "0ff53f1a-f2c7-4074-ac98-096cfe7e5a66.webp",
+  "selection": {
+    "current_index": 0,
+    "image_count": 34,
+    "filter_active": false,
+    "filter_query": ""
+  },
+  "controls": {
+    "view_mode": 0,
+    "tagger_save_to_txt": true,
+    "llm_save_to_txt": true
+  },
+  "available_tabs": [
+    {
+      "id": "tags_tab",
+      "title": "標籤"
+    },
+    {
+      "id": "nl_tab",
+      "title": "提示 / NL"
+    },
+    {
+      "id": "image_process_tab",
+      "title": "修圖"
+    }
+  ],
+  "capture_target": {
+    "scope": "preview",
+    "selector": "[data-node-id=\"image_viewer\"]",
+    "bounds": {
+      "x": 11,
+      "y": 219.8,
+      "width": 1118.7,
+      "height": 1438.3
+    }
+  },
+  "semantic_snapshot": {
+    "tag": "div",
+    "bounds": {
+      "x": 11,
+      "y": 198.8,
+      "width": 1118.7,
+      "height": 1438.3
+    },
+    "children": [
+      {
+        "tag": "img",
+        "bounds": {
+          "x": 11,
+          "y": 198.8,
+          "width": 1118.7,
+          "height": 1438.3
+        },
+        "role": "img"
+      }
+    ]
+  },
+  "saved_at": "2026-03-11T15:51:18.160232",
+  "saved_paths": {
+    "image_path": "E:\\caption--\\output\\ui-captures\\20260311-155118-3e1c05\\01-preview.png",
+    "metadata_path": "E:\\caption--\\output\\ui-captures\\20260311-155118-3e1c05\\01-preview.json"
+  }
+}
